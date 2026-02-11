@@ -815,6 +815,10 @@ input:checked+.toggle-slider:before {
     animation: fadeIn 0.3s ease;
 }
 
+.modal.active {
+    display: block;
+}
+
 .modal-content {
     background-color: var(--bg-panel);
     margin: 2% auto;
@@ -827,6 +831,11 @@ input:checked+.toggle-slider:before {
     flex-direction: column;
     box-shadow: 0 0 30px rgba(0, 255, 0, 0.2);
     overflow: hidden;
+}
+
+.modal-content.compact {
+    height: auto !important;
+    max-height: 85vh;
 }
 
 .modal-header {

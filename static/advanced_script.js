@@ -138,10 +138,42 @@ function addTradeSignal(trade) {
     const noMsg = document.getElementById('noSignalsMsg');
     if (noMsg) noMsg.style.display = 'none';
 
-    signalsCount++;
-    document.getElementById('signalsCount').innerText = `${signalsCount} Found`;
+    // Normalize symbol (e.g., remove underscores from MEXC symbols like BTC_USDT)
+    const cleanSymbol = trade.symbol.replace(/_/g, '').toUpperCase();
 
-    const card = document.createElement('div');
+    // Generate a unique ID for the 'Master Signal' (Symbol + Direction)
+    // This ensures that multiple strategies firing on the same coin deduplicate visually in real-time.
+    const signalId = `signal-${cleanSymbol}-${trade.type}`.replace(/[^a-zA-Z0-9-]/g, '');
+    let card = document.getElementById(signalId);
+    let isUpdate = !!card;
+
+    if (!isUpdate) {
+        card = document.createElement('div');
+        card.id = signalId;
+        card.dataset.agreeingStrategies = JSON.stringify([trade.strategy]);
+        signalsCount++;
+        document.getElementById('signalsCount').innerText = `${signalsCount} Found`;
+    } else {
+        // Build agreement list incrementally during live scan
+        let existing = JSON.parse(card.dataset.agreeingStrategies || '[]');
+
+        // Strategy label with timeframe for better detail
+        const currentStratLabel = `${trade.strategy} (${trade.timeframe || '?'})`;
+
+        // If the backend sends a full list (post-processing), use it. Otherwise append.
+        if (trade.agreeing_strategies && trade.agreeing_strategies.length > 0) {
+            existing = trade.agreeing_strategies;
+        } else if (!existing.includes(currentStratLabel) && !existing.includes(trade.strategy)) {
+            // Check if we already have it in either simple or TF-enriched form
+            existing.push(currentStratLabel);
+        }
+        card.dataset.agreeingStrategies = JSON.stringify(existing);
+    }
+
+    // Get final agreement list for this render
+    const agreeingStrategies = JSON.parse(card.dataset.agreeingStrategies);
+    const agreementCount = trade.agreement_count || agreeingStrategies.length;
+
     card.className = `trade-card ${trade.type.toLowerCase()}`;
 
     // Simplified color mapping for UI
@@ -164,15 +196,39 @@ function addTradeSignal(trade) {
     // Store trade data as a data attribute so the copy button can access it
     const tradeDataEncoded = encodeURIComponent(JSON.stringify(trade));
 
+    // Signal quality badge colors
+    const qualityStyles = {
+        'ELITE': { bg: '#ffd70022', color: '#ffd700', border: '#ffd70055', icon: '🏆', label: 'ELITE' },
+        'STRONG': { bg: '#00ff8822', color: '#00ff88', border: '#00ff8855', icon: '💪', label: 'STRONG' },
+        'STANDARD': { bg: '#00d4ff22', color: '#00d4ff', border: '#00d4ff55', icon: '📊', label: 'STANDARD' }
+    };
+    const quality = qualityStyles[trade.signal_quality] || qualityStyles['STANDARD'];
+
+    // Agreement badge (Now an interactive button)
+    const agreementHtml = agreementCount > 1
+        ? `<button onclick="event.stopPropagation(); showAgreementDetails('${signalId}')" style="background: #00ff8822; color: #00ff88; border: 1px solid #00ff8855; padding: 2px 8px; border-radius: 4px; font-size: 0.75em; margin-left: 6px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#00ff8833'" onmouseout="this.style.background='#00ff8822'">✅ ${agreementCount} agree</button>`
+        : '';
+
+    // Conflict warning
+    const conflictHtml = trade.conflict_warning
+        ? `<div style="background: #ff444422; border: 1px solid #ff444455; border-radius: 6px; padding: 6px 10px; margin-top: 8px; font-size: 0.8em; color: #ff8888;">${trade.conflict_warning}</div>`
+        : '';
+
+    // Confidence boost info
+    const boostHtml = (trade.original_confidence && trade.original_confidence !== trade.confidence_score)
+        ? `<span style="color: #00ff88; font-size: 0.75em; margin-left: 5px;">↑ ${trade.original_confidence}→${trade.confidence_score}</span>`
+        : '';
+
     card.innerHTML = `
         <div class="trade-header">
             <span class="exchange-badge" style="background: ${exchangeColor}22; color: ${exchangeColor}; border: 1px solid ${exchangeColor}55;">${exchangeName}</span>
+            <span style="background: ${quality.bg}; color: ${quality.color}; border: 1px solid ${quality.border}; padding: 2px 8px; border-radius: 4px; font-size: 0.75em; font-weight: bold;">${quality.icon} ${quality.label}</span>
             <span style="font-weight: bold; color: #aaa;">[${trade.strategy}]</span>
             <span style="color: #666; font-size: 0.85em; font-weight: normal; margin-left: 5px;">(${trade.timeframe})</span>
             <span style="font-weight: bold; color: #fff; margin-left: 8px;">${trade.symbol}</span>
-            <span style="font-weight: bold; color: ${typeColor}; margin-left: 8px;">${trade.type}</span>
+            <span style="font-weight: bold; color: ${typeColor}; margin-left: 8px;">${trade.type}</span>${agreementHtml}
             <span style="color: #666; font-size: 0.8em; margin-left: auto; margin-right: 15px;">🕒 ${trade.timestamp || 'Just now'}</span>
-            <span style="color: #00d4ff; font-size: 0.9em; margin-right: 10px;">${trade.confidence_score}/10</span>
+            <span style="color: #00d4ff; font-size: 0.9em; margin-right: 10px;">${trade.confidence_score}/10${boostHtml}</span>
             <button class="copy-btn" data-trade="${tradeDataEncoded}" onclick="copyTradeFromBtn(this)" title="Copy Signal">
                 📋
             </button>
@@ -201,7 +257,7 @@ function addTradeSignal(trade) {
                 </div>
                 <div style="font-size: 0.85em; color: #999; margin-top: 5px; font-style: italic;">
                     ${trade.indicators}
-                </div>
+                </div>${conflictHtml}
                 <button class="view-analysis-btn" data-trade="${tradeDataEncoded}" onclick="openAnalysisChart(this)">
                     🔍 View Analysis Chart
                 </button>
@@ -209,10 +265,11 @@ function addTradeSignal(trade) {
         </div>
     `;
 
-    signalsBox.prepend(card);
-
-    // Play alert sound
-    playAlertSound('trade');
+    if (!isUpdate) {
+        signalsBox.prepend(card);
+        // Play alert sound only for NEW signals to avoid spam on updates
+        playAlertSound('trade');
+    }
 }
 
 // Global Sound Controller
@@ -1053,10 +1110,76 @@ function plotAnalysisData(chart, series, data, candles, trade) {
     }
 }
 
-// Keyboard listener for modal
+// Keyboard listener for modals
 document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeAnalysisModal();
+    if (e.key === 'Escape') {
+        closeAnalysisModal();
+        closeAgreementModal();
+    }
 });
+
+// ===== Agreement Details Popup =====
+
+window.showAgreementDetails = function (signalId) {
+    console.log("Opening agreement details for:", signalId);
+    const card = document.getElementById(signalId);
+    if (!card) {
+        console.error("Card not found for signalId:", signalId);
+        return;
+    }
+
+    let strategies = [];
+    try {
+        strategies = JSON.parse(card.dataset.agreeingStrategies || '[]');
+    } catch (e) {
+        console.error("Error parsing strategies:", e);
+    }
+
+    const symbol = signalId.replace('signal-', '').split('-')[0].toUpperCase();
+
+    const titleEl = document.getElementById('agreementTitle');
+    const subtitleEl = document.getElementById('agreementSubtitle');
+    const modal = document.getElementById('agreementModal');
+    const list = document.getElementById('agreementList');
+
+    if (!modal || !list) {
+        console.error("Agreement modal or list container not found!");
+        return;
+    }
+
+    titleEl.innerText = `🤝 ${symbol} Confluence`;
+    subtitleEl.innerText = `${strategies.length} Strategies Aligning`;
+
+    list.innerHTML = '';
+
+    if (strategies.length === 0) {
+        list.innerHTML = '<div style="color: #666; padding: 10px;">No specific strategies recorded yet.</div>';
+    } else {
+        strategies.forEach((strat, index) => {
+            const item = document.createElement('div');
+            item.style.padding = '12px';
+            item.style.marginBottom = '8px';
+            item.style.background = 'rgba(255,255,255,0.03)';
+            item.style.borderLeft = '3px solid #00ff88';
+            item.style.borderRadius = '0 4px 4px 0';
+            item.style.fontSize = '0.9em';
+            item.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-weight: bold; color: #fff;">${strat}</span>
+                    <span style="font-size: 0.8em; color: #00ff88;">✅ Active</span>
+                </div>
+            `;
+            list.appendChild(item);
+        });
+    }
+
+    modal.style.display = 'block';
+    console.log("Agreement modal displayed");
+};
+
+window.closeAgreementModal = function () {
+    document.getElementById('agreementModal').style.display = 'none';
+};
 
 // ===== Market Status Updates =====
 

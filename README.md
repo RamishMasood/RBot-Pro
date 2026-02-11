@@ -67,10 +67,21 @@ Fully automated quantitative analysis on **200+ coins simultaneously** in under 
 | Codebase size | **4,100+ lines** of pure analysis logic | <500 lines |
 | News & Sentiment | ✅ **Real-time Feed + AI Analysis** | ❌ None |
 | Volatility Protection | ✅ **Flash Crash Protection** | ❌ None |
+| Signal Intelligence | ✅ **Deduplication & Anti-Conflict** | ❌ None |
+| Cross-Timeframe Voting | ✅ **Weighted Confluence** | ❌ None |
+| Signal Performance Log | ✅ **Auto-JSON History** | ❌ None |
 
 ---
 
 ## 🚀 Key Features
+
+### 🧠 Signal Intelligence Pipeline (NEW)
+- **Signal Deduplication Engine**: Merges signals from multiple strategies firing on the same coin. Instead of 5 separate alerts, you get one high-confidence "Master Signal" with an **Agreement Count** badge.
+- **Anti-Conflict Shield**: Detects when different strategies provide opposing signals (LONG vs SHORT) on the same coin. It automatically warns you or suppresses the weaker signal if one is dominant.
+- **Cross-Timeframe Voting**: Higher timeframes (4h, 1d) carry more weight. A 15m signal is automatically boosted if it aligns with the daily trend.
+- **Dynamic Confidence Enhancement**: Boosts confidence scores for signals with >3:1 Risk/Reward, high volume agreement, or multi-strategy confluence.
+- **Elite/Strong/Standard Classification**: Every signal is classified into quality tiers (🏆 ELITE, 💪 STRONG, 📊 STANDARD) based on over 10 quality factors.
+- **Signal History Logging**: Every trade ever generated is written to `signals_history.json` for later performance review and strategy calibration.
 
 ### 📡 Live Data Pipeline
 - **Multi-Exchange Hub**: Integrated with **MEXC, Binance, Bitget, Bybit, OKX, KuCoin, Gate.io, and HTX**.
@@ -81,6 +92,11 @@ Fully automated quantitative analysis on **200+ coins simultaneously** in under 
 ### 💻 Professional Web UI
 - **Dark terminal-style interface** with green-on-black aesthetic
 - **Live WebSocket streaming** — real-time output as analysis runs
+- **Smart Signal Cards**:
+  - **Quality Badges** (ELITE / STRONG / STANDARD)
+  - **Agreement Tracker** ("✅ 3 strategies agree")
+  - **Confidence Boost Info** ("↑ 7 → 9")
+  - **Conflict Warnings** ("⚠️ Mixed signals detected")
 - **Trade Signal Cards** — beautifully rendered with entry/SL/TP/R:R and copy-to-clipboard
 - **Symbol search & filter** — instantly find any coin
 - **Add custom coins** — type any coin pair (e.g. `NMRUSDT`) and add it to the analysis
@@ -96,6 +112,7 @@ Fully automated quantitative analysis on **200+ coins simultaneously** in under 
 - **Thread-safe output** — `print_lock` prevents garbled console output
 - **Queue-based streaming** — reliable WebSocket delivery via `queue.Queue`
 - **UTF-8 everywhere** — full emoji and Unicode support on all platforms
+- **Autonomous Error Recovery** — Automatically skips failed API calls and continues analysis without crashing.
 
 ### 🛑 Stop Control
 - **Instant process termination** — kills entire process tree on Windows (`taskkill /F /T`)

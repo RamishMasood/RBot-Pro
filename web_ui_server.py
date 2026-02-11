@@ -169,15 +169,16 @@ def run_analysis_subprocess(symbols, indicators, timeframes, min_conf):
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
+            text=True,
+            encoding='utf-8',
             bufsize=1,
             cwd=os.path.dirname(os.path.abspath(__file__)),
             env=env
         )
         active_process = proc
         
-        # Stream output to queue - read bytes and decode
-        for line_bytes in iter(proc.stdout.readline, b''):
-            line = line_bytes.decode('utf-8', errors='replace')
+        # Stream output to queue
+        for line in iter(proc.stdout.readline, ''):
             if line:
                 if line.startswith('SIGNAL_DATA:'):
                     try:

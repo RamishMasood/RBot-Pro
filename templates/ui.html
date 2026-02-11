@@ -415,7 +415,28 @@
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='advanced_script.js') }}?v=1739221300"></script>
+    <!-- Strategy Agreement Modal -->
+    <div id="agreementModal" class="modal">
+        <div class="modal-content compact" style="max-width: 450px;">
+            <div class="modal-header">
+                <div class="modal-info">
+                    <h2 id="agreementTitle" style="color: #00ff88;">🤝 Strategy Agreement</h2>
+                    <p id="agreementSubtitle">Strategies aligning on this setup</p>
+                </div>
+                <button class="close-modal" onclick="closeAgreementModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="agreementList" class="agreement-list" style="padding: 10px 0;">
+                    <!-- Strategies will be listed here -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-mini" onclick="closeAgreementModal()" style="width: 100%;">Close Details</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='advanced_script.js') }}?v=1739221302"></script>
 </body>
 
 </html>

@@ -4327,6 +4327,291 @@ def run_strategies(symbol, analyses):
     
     return all_trades
 
+# === Signal Quality Engine (Post-Processing) ===
+
+# Timeframe weights for cross-timeframe voting (higher = stronger signal)
+TF_WEIGHTS = {'1d': 5, '4h': 4, '1h': 3, '30m': 2, '15m': 2, '5m': 1, '3m': 1, '1m': 1}
+
+def deduplicate_signals(trades):
+    """
+    Merge duplicate signals on the same symbol + direction.
+    Keeps the highest-confidence/highest-TF signal and enriches it with agreement data.
+    """
+    if not trades:
+        return trades
+
+    # Group by (symbol, direction)
+    groups = {}
+    for trade in trades:
+        key = (trade['symbol'], trade['type'])  # e.g. ('BTCUSDT', 'LONG')
+        if key not in groups:
+            groups[key] = []
+        groups[key].append(trade)
+
+    merged = []
+    total_dupes_removed = 0
+
+    for key, group in groups.items():
+        if len(group) == 1:
+            # No duplicates — just add agreement info
+            group[0]['agreement_count'] = 1
+            group[0]['agreeing_strategies'] = [group[0]['strategy']]
+            merged.append(group[0])
+            continue
+
+        # Multiple strategies agree on same symbol + direction
+        # Sort by: confidence_score DESC, then timeframe weight DESC
+        group.sort(key=lambda t: (
+            t.get('confidence_score', 0),
+            TF_WEIGHTS.get(t.get('timeframe', '1m'), 1),
+            t.get('risk_reward', 0)
+        ), reverse=True)
+
+        # Keep the best signal as primary
+        best = group[0]
+        
+        # Combine strategy names with timeframes and deduplicate
+        strategy_list = []
+        seen_pairs = set()
+        for t in group:
+            st_name = f"{t['strategy']} ({t.get('timeframe', 'N/A')})"
+            if st_name not in seen_pairs:
+                strategy_list.append(st_name)
+                seen_pairs.add(st_name)
+        
+        # Enrich with agreement data
+        best['agreement_count'] = len(strategy_list)
+        best['agreeing_strategies'] = strategy_list
+
+        # Boost confidence for agreement (+1 per extra strategy, capped at 10)
+        original_conf = best.get('confidence_score', 0)
+        best['original_confidence'] = original_conf
+        agreement_bonus = min(len(group) - 1, 3)  # Max +3 from agreement
+        best['confidence_score'] = min(10, original_conf + agreement_bonus)
+
+        # Combine reasons from all strategies (keep it concise)
+        all_reasons = set()
+        for t in group:
+            for reason in t.get('reason', '').split(' + '):
+                if reason.strip():
+                    all_reasons.add(reason.strip())
+        best['reason'] = ' + '.join(list(all_reasons)[:5])
+
+        merged.append(best)
+        total_dupes_removed += len(group) - 1
+
+    return merged, total_dupes_removed
+
+
+def resolve_conflicts(trades):
+    """
+    Detect LONG vs SHORT conflicts on the same symbol.
+    Also identifies global market correlation (e.g. 5+ LONGS = high directional bias).
+    """
+    if not trades:
+        return trades, 0
+
+    # Group by symbol
+    by_symbol = {}
+    long_total = 0
+    short_total = 0
+    
+    for trade in trades:
+        sym = trade['symbol']
+        if sym not in by_symbol:
+            by_symbol[sym] = {'LONG': [], 'SHORT': []}
+        direction = trade['type']
+        if direction == 'LONG': long_total += 1
+        else: short_total += 1
+        
+        if direction in by_symbol[sym]:
+            by_symbol[sym][direction].append(trade)
+
+    resolved = []
+    conflicts_found = 0
+
+    for sym, directions in by_symbol.items():
+        longs = directions.get('LONG', [])
+        shorts = directions.get('SHORT', [])
+
+        if longs and shorts:
+            # Conflict detected!
+            conflicts_found += 1
+
+            best_long_conf = max(t.get('confidence_score', 0) for t in longs)
+            best_short_conf = max(t.get('confidence_score', 0) for t in shorts)
+
+            if best_long_conf >= best_short_conf * 2:
+                # Long is dominant — keep longs, suppress shorts
+                for t in longs:
+                    t['conflict_warning'] = f"⚠️ Conflicting SHORT signals suppressed (LONG {best_long_conf}/10 vs SHORT {best_short_conf}/10)"
+                    resolved.append(t)
+            elif best_short_conf >= best_long_conf * 2:
+                # Short is dominant — keep shorts, suppress longs
+                for t in shorts:
+                    t['conflict_warning'] = f"⚠️ Conflicting LONG signals suppressed (SHORT {best_short_conf}/10 vs LONG {best_long_conf}/10)"
+                    resolved.append(t)
+            else:
+                # Both sides similar — keep both but warn
+                for t in longs + shorts:
+                    t['conflict_warning'] = f"⚠️ Mixed signals: LONG ({best_long_conf}/10) vs SHORT ({best_short_conf}/10) — trade with caution"
+                    resolved.append(t)
+        else:
+            # No conflict — pass through
+            resolved.extend(longs)
+            resolved.extend(shorts)
+
+    # Add correlation metrics to each trade
+    for t in resolved:
+        t['market_correlation'] = f"Overall Analysis Bias: {long_total} LONGs / {short_total} SHORTs"
+        if (t['type'] == 'LONG' and long_total >= 10) or (t['type'] == 'SHORT' and short_total >= 10):
+            t['correlation_warning'] = "⚠️ Extreme Directional Bias Detected — Caution on Size"
+
+    return resolved, conflicts_found
+
+
+def enhance_confidence(trades):
+    """
+    Apply dynamic confidence bonuses based on signal quality factors.
+    Bonuses are additive and the final score is capped at 10.
+    """
+    for trade in trades:
+        if 'original_confidence' not in trade:
+            trade['original_confidence'] = trade.get('confidence_score', 0)
+
+        bonuses = 0
+
+        # +1 for excellent R:R (>= 3:1)
+        if trade.get('risk_reward', 0) >= 3:
+            bonuses += 1
+
+        # +1 for strong agreement (3+ strategies)
+        if trade.get('agreement_count', 1) >= 3:
+            bonuses += 1
+
+        # +1 for high-timeframe confirmation (1h, 4h, 1d)
+        if TF_WEIGHTS.get(trade.get('timeframe', '1m'), 1) >= 3:
+            bonuses += 1
+
+        # Apply bonuses (capped at 10)
+        trade['confidence_score'] = min(10, trade['confidence_score'] + bonuses)
+        
+        # Calculate Adaptive Risk / Recommended Position Sizing
+        calculate_adaptive_risk(trade)
+
+    return trades
+
+def calculate_adaptive_risk(trade):
+    """
+    Calculate suggested position size and risk parameters.
+    Based on $10,000 default balance and 1% risk per trade.
+    """
+    # Use defaults if not provided
+    balance = float(trade.get('account_balance', 10000.0))
+    risk_pct = float(trade.get('risk_per_trade', 1.0)) # 1% risk per trade
+    
+    risk_amount = balance * (risk_pct / 100.0)
+    
+    entry = float(trade.get('entry', 0))
+    sl = float(trade.get('sl', 0))
+    
+    if entry and sl and entry != sl:
+        # Distance to Stop Loss
+        sl_dist = abs(entry - sl)
+        sl_pct = (sl_dist / entry) * 100.0
+        
+        # Suggested Quantity (Units)
+        # Formula: Quantity = (Balance * Risk%) / (Entry - SL)
+        qty = risk_amount / sl_dist
+        
+        # Position Size in Dollars (Leveraged if necessary)
+        pos_size_dollars = qty * entry
+        
+        # Leverage needed if pos_size > balance
+        leverage = pos_size_dollars / balance
+        
+        trade['suggested_qty'] = round(qty, 6)
+        trade['suggested_pos_size'] = round(pos_size_dollars, 2)
+        trade['risk_amount'] = round(risk_amount, 2)
+        trade['sl_pct'] = round(sl_pct, 2)
+        trade['leverage_needed'] = round(leverage, 1) if leverage > 1 else 1.0
+        
+        # Strategic Advice
+        if trade.get('risk_reward', 0) >= 2:
+            trade['trailing_advice'] = "Move SL to Entry at 1:1 Profit; Take 50% at 2:1"
+        else:
+            trade['trailing_advice'] = "Aggressive trailing stop recommended"
+            
+    return trade
+
+
+def get_signal_quality(trade):
+    """Classify signal quality based on enhanced confidence and agreement."""
+    score = trade.get('confidence_score', 0)
+    agreement = trade.get('agreement_count', 1)
+    rr = trade.get('risk_reward', 0)
+
+    if score >= 9 and agreement >= 2 and rr >= 2.5:
+        return 'ELITE'
+    elif score >= 7 and rr >= 2:
+        return 'STRONG'
+    else:
+        return 'STANDARD'
+
+
+def save_signal_history(trades, filepath='signals_history.json'):
+    """Append trade signals to a JSON history file for performance tracking."""
+    try:
+        import os
+        history = []
+        full_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), filepath)
+
+        # Load existing history
+        if os.path.exists(full_path):
+            try:
+                with open(full_path, 'r', encoding='utf-8') as f:
+                    content = f.read().strip()
+                    if content:
+                        history = json.loads(content)
+            except (json.JSONDecodeError, IOError):
+                history = []
+
+        # Add new trades (compact format for storage)
+        for trade in trades:
+            entry = {
+                'timestamp': trade.get('timestamp', datetime.now().strftime('%Y-%m-%d %H:%M:%S')),
+                'symbol': trade.get('symbol'),
+                'type': trade.get('type'),
+                'strategy': trade.get('strategy'),
+                'exchange': trade.get('exchange', 'N/A'),
+                'entry': trade.get('entry'),
+                'sl': trade.get('sl'),
+                'tp1': trade.get('tp1'),
+                'tp2': trade.get('tp2'),
+                'risk_reward': trade.get('risk_reward'),
+                'confidence_score': trade.get('confidence_score'),
+                'original_confidence': trade.get('original_confidence'),
+                'agreement_count': trade.get('agreement_count', 1),
+                'agreeing_strategies': trade.get('agreeing_strategies', []),
+                'signal_quality': trade.get('signal_quality', 'STANDARD'),
+                'conflict_warning': trade.get('conflict_warning'),
+                'timeframe': trade.get('timeframe'),
+                'reason': trade.get('reason'),
+                'result': None  # To be filled in later for performance tracking
+            }
+            history.append(entry)
+
+        # Keep only last 1000 signals to avoid huge files
+        if len(history) > 1000:
+            history = history[-1000:]
+
+        with open(full_path, 'w', encoding='utf-8') as f:
+            json.dump(history, f, indent=2, ensure_ascii=False)
+
+    except Exception as e:
+        with print_lock:
+            print(f"  ⚠️ Could not save signal history: {e}")
+
 def run_analysis():
     exchanges_str = ', '.join(ENABLED_EXCHANGES)
     print("\n" + "="*120)
@@ -4375,15 +4660,55 @@ def run_analysis():
                                 print(f"[{trade['strategy']}] TRADE FOUND - {trade['type']} {trade['symbol']} on {exchange} (Conf: {trade['confidence_score']}/10)")
                                 print(f"Entry: ${trade['entry']:.6f}  SL: ${trade['sl']:.6f}  TP1: ${trade['tp1']:.6f}  R/R: {trade['risk_reward']}:1")
                                 print(f"Indicators: {trade['indicators']} | Reason: {trade['reason']} | Expected: {trade['expected_time']}")
-                                print(f"SIGNAL_DATA:{json.dumps(trade)}")
+                                # Pre-calculate enriched data for real-time UI display
+                                trade['signal_quality'] = get_signal_quality(trade)
+                                calculate_adaptive_risk(trade)
+                                print(f"SIGNAL_DATA:{json.dumps(trade, default=str)}")
+    # === SIGNAL QUALITY POST-PROCESSING PIPELINE ===
+    raw_count = len(all_trades)
+    dupes_removed = 0
+    conflicts_found = 0
+
+    if all_trades:
+        # Step 1: Deduplicate signals (merge same symbol + direction)
+        all_trades, dupes_removed = deduplicate_signals(all_trades)
+
+        # Step 2: Resolve LONG vs SHORT conflicts on same symbol
+        all_trades, conflicts_found = resolve_conflicts(all_trades)
+
+        # Step 3: Enhance confidence with dynamic bonuses
+        all_trades = enhance_confidence(all_trades)
+
+        # Step 4: Classify signal quality
+        for trade in all_trades:
+            trade['signal_quality'] = get_signal_quality(trade)
+
+    # === PRINT FINAL RESULTS ===
     print("\n" + "="*120)
     print(f"🚀 TRADE SETUPS (Confidence Score {MIN_CONFIDENCE}/10+  |  Minimum 2:1 Risk/Reward)")
-    print("="*120 + "\n")
+    print("="*120)
+
+    # Signal Quality Stats
     if all_trades:
-        all_trades.sort(key=lambda x: (x['confidence_score'], x['risk_reward']), reverse=True)
+        elite_count = sum(1 for t in all_trades if t.get('signal_quality') == 'ELITE')
+        strong_count = sum(1 for t in all_trades if t.get('signal_quality') == 'STRONG')
+        standard_count = sum(1 for t in all_trades if t.get('signal_quality') == 'STANDARD')
+        print(f"\n🧠 SIGNAL INTELLIGENCE: {raw_count} raw → {len(all_trades)} final signals | {dupes_removed} duplicates merged | {conflicts_found} conflicts resolved")
+        print(f"   Quality Breakdown: 🏆 ELITE: {elite_count}  |  💪 STRONG: {strong_count}  |  📊 STANDARD: {standard_count}")
+        print("="*120 + "\n")
+
+        all_trades.sort(key=lambda x: (
+            {'ELITE': 3, 'STRONG': 2, 'STANDARD': 1}.get(x.get('signal_quality', 'STANDARD'), 0),
+            x['confidence_score'],
+            x['risk_reward']
+        ), reverse=True)
+
         for i, trade in enumerate(all_trades, 1):
+            quality_badge = {'ELITE': '🏆 ELITE', 'STRONG': '💪 STRONG', 'STANDARD': '📊 STANDARD'}.get(trade.get('signal_quality', 'STANDARD'), '📊 STANDARD')
+            agreement_str = f"  |  ✅ {trade.get('agreement_count', 1)} strategies agree" if trade.get('agreement_count', 1) > 1 else ""
+
             print(f"\n{'='*120}")
-            print(f"TRADE #{i} [{trade['strategy']}] - {trade['type']} {trade['symbol']} on {trade.get('exchange', 'N/A')} (Confidence: {trade['confidence_score']}/10)")
+            print(f"TRADE #{i} [{trade['strategy']}] - {trade['type']} {trade['symbol']} on {trade.get('exchange', 'N/A')} (Confidence: {trade['confidence_score']}/10) [{quality_badge}]{agreement_str}")
             print(f"{'='*120}")
             print(f"📍 Entry:        ${trade['entry']:.6f}  ({trade['entry_type']})")
             print(f"🛑 Stop Loss:    ${trade['sl']:.6f}        Risk: ${trade['risk']:.6f}")
@@ -4394,9 +4719,25 @@ def run_analysis():
             print(f"📊 Indicators:         {trade['indicators']}")
             print(f"🔍 Setup Reason:       {trade['reason']}")
             print(f"🏢 Exchange:           {trade.get('exchange', 'N/A')}")
+            if trade.get('agreement_count', 1) > 1:
+                print(f"🤝 Agreement:          {trade['agreement_count']} strategies ({', '.join(trade.get('agreeing_strategies', []))})")
+            if trade.get('conflict_warning'):
+                print(f"{trade['conflict_warning']}")
+            if trade.get('original_confidence') and trade['original_confidence'] != trade['confidence_score']:
+                print(f"📈 Confidence Boost:   {trade['original_confidence']} → {trade['confidence_score']} (quality bonuses applied)")
+
+            # Emit enriched SIGNAL_DATA for web UI
+            print(f"SIGNAL_DATA:{json.dumps(trade, default=str)}")
     else:
+        print("\n")
         print("⏳ No trades meeting the configured confidence threshold found at this moment.")
         print(f"   System is waiting for optimal alignment across selected timeframes...")
+
+    # Save signal history
+    if all_trades:
+        save_signal_history(all_trades)
+        print(f"\n💾 Signal history saved ({len(all_trades)} signals → signals_history.json)")
+
     print("\n" + "="*120)
     print(f"✅ Analysis Complete - RBot Pro Multi-Exchange Analysis ({exchanges_str})")
     print("="*120 + "\n")
