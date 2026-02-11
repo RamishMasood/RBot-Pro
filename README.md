@@ -59,9 +59,10 @@ Unlike traditional signal services that rely on human analysis, RBot Pro perform
 | ICT / SMC concepts | ✅ Full support | ❌ None |
 | Kill Zone detection | ✅ London, NY, Asia | ❌ |
 | Real-time Web UI | ✅ WebSocket streaming | ❌ CLI only |
+| Visual Analysis Charts | ✅ **Integrated TradingView** | ❌ Text-only / External |
 | Custom coin addition | ✅ Add any USDT pair | ❌ Fixed lists |
 | Data source | Live data from 8 Exchanges | Delayed / single source |
-| Codebase size | **4,000+ lines** of pure analysis logic | <500 lines |
+| Codebase size | **4,100+ lines** of pure analysis logic | <500 lines |
 
 ---
 
@@ -82,6 +83,7 @@ Unlike traditional signal services that rely on human analysis, RBot Pro perform
 - **Select/Deselect All** buttons for coins, indicators, and timeframes
 - **Confidence slider** — adjust minimum confidence threshold (1–10)
 - **Auto-Run scheduling** — automatic re-analysis every 10s, 30s, 45s, 1m, 3m, 5m, 10m, or 15m
+- **Visual Analysis Charts** — Full TradingView integration! Click "View Analysis" to see real-time candles with Entry, SL, TP, and indicator markers (FVG, MB, Squeeze, etc.) drawn directly on the chart.
 - **Keyboard shortcuts** — `Ctrl+Enter` to start, `Ctrl+L` to clear
 - **Responsive design** — works on desktop, tablet, and mobile
 
@@ -507,9 +509,10 @@ RBot Pro enforces strict risk management on every signal:
 
 ### Why RBot Pro Wins
 
-1. **🧠 Most Indicators**: 38 vs. industry average of 5–15
-2. **⚔️ Most Strategies**: 31 automated vs. 1–5 typical
-3. **🏛️ ICT / Smart Money**: Only bot with full CHoCH, FVG, Silver Bullet, Wealth Division
+1.  **🧠 Most Indicators**: 38 vs. industry average of 5–15
+2.  **⚔️ Most Strategies**: 31 automated vs. 1–5 typical
+3.  **📊 Visual Analysis**: Full TradingView charts for every signal with indicator overlays.
+4.  **🏛️ ICT / Smart Money**: Only bot with full CHoCH, FVG, Silver Bullet, Wealth Division
 4. **⚡ Speed**: 200+ coins in under 2 minutes with parallel processing
 5. **🔒 Privacy**: Self-hosted — your data never leaves your machine
 6. **💎 Signal Quality**: Multi-timeframe + multi-indicator confluence scoring

@@ -9,6 +9,9 @@
         content="RBot Pro - Advanced Multi-Exchange Real-Time Technical Analysis Signal Generator supporting MEXC, Binance, Bitget, Bybit, OKX, KuCoin, Gate.io, HTX">
     <script src="{{ url_for('static', filename='socket.io.min.js') }}"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='advanced_style.css') }}">
+    <!-- TradingView Lightweight Charts -->
+    <script
+        src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
 </head>
 
 <body>
@@ -336,6 +339,38 @@
                     </div>
                 </div>
             </section>
+        </div>
+    </div>
+
+    <!-- Analysis Modal -->
+    <div id="analysisModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-info">
+                    <h2 id="modalTitle">Analysis Chart</h2>
+                    <p id="modalSubtitle">Loading analysis data...</p>
+                    <p id="modalReason"
+                        style="font-size: 0.85em; color: #aaa; margin-top: 5px; font-style: italic; border-left: 2px solid var(--primary); padding-left: 10px;">
+                    </p>
+                </div>
+                <button class="close-modal" onclick="closeAnalysisModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="chartContainer"></div>
+                <div id="chartOverlay" class="chart-overlay">
+                    <div class="loader"></div>
+                    <span>Initializing Chart Data...</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div id="modalTradeKey" class="trade-key-grid">
+                    <!-- Dynamic indicators will be added here -->
+                </div>
+                <div class="modal-actions">
+                    <button class="btn btn-mini" onclick="closeAnalysisModal()">Close Analysis</button>
+                    <button id="modalCopyBtn" class="btn btn-mini btn-primary">Copy Signal</button>
+                </div>
+            </div>
         </div>
     </div>
 

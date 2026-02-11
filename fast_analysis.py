@@ -2756,7 +2756,13 @@ def strategy_squeeze_breakout(symbol, analyses):
                         'expected_time': '8-24 hours',
                         'risk': risk, 'reward': reward,
                         'entry_type': 'STOP-MARKET',
-                        'timeframe': tf
+                        'timeframe': tf,
+                        'analysis_data': {
+                            'squeeze': 'OFF',
+                            'momentum': sqz['val'],
+                            'adx': a['adx']['adx'],
+                            'trend': a['trend']
+                        }
                     })
 
         # SHORT: Negative momentum
@@ -2791,7 +2797,13 @@ def strategy_squeeze_breakout(symbol, analyses):
                         'expected_time': '8-24 hours',
                         'risk': risk, 'reward': reward,
                         'entry_type': 'STOP-MARKET',
-                        'timeframe': tf
+                        'timeframe': tf,
+                        'analysis_data': {
+                            'squeeze': 'OFF',
+                            'momentum': sqz['val'],
+                            'adx': a['adx']['adx'],
+                            'trend': a['trend']
+                        }
                     })
                     
     return trades
@@ -3414,7 +3426,11 @@ def strategy_ict_silver_bullet(symbol, analyses):
                 'expected_time': '1-2 hours',
                 'risk': risk, 'reward': reward,
                 'entry_type': 'LIMIT',
-                'timeframe': tf
+                'timeframe': tf,
+                'analysis_data': {
+                    'fvg': {'top': fvg['top'], 'bottom': fvg['bottom'], 'type': 'BULLISH'},
+                    'kill_zone': kz
+                }
             })
                 
     elif fvg['type'] == 'BEARISH' and a['trend'] == 'BEARISH':
@@ -3444,7 +3460,11 @@ def strategy_ict_silver_bullet(symbol, analyses):
                 'expected_time': '1-2 hours',
                 'risk': risk, 'reward': reward,
                 'entry_type': 'LIMIT',
-                'timeframe': tf
+                'timeframe': tf,
+                'analysis_data': {
+                    'fvg': {'top': fvg['top'], 'bottom': fvg['bottom'], 'type': 'BEARISH'},
+                    'kill_zone': kz
+                }
             })
                 
     return trades
@@ -3562,7 +3582,11 @@ def strategy_smc_elite(symbol, analyses):
                     'risk_reward': 2.0,
                     'reason': f"SMC Elite: {mb['type']} Mitigation Block + FVG Fusion",
                     'indicators': f"MB:{entry:.4f} | FVG:{fvg['type']}",
-                    'expected_time': '12-36 hours', 'entry_type': 'LIMIT', 'timeframe': tf
+                    'expected_time': '12-36 hours', 'entry_type': 'LIMIT', 'timeframe': tf,
+                    'analysis_data': {
+                        'fvg': {'top': fvg['top'], 'bottom': fvg['bottom'], 'type': fvg['type']},
+                        'mitigation_block': {'level': mb['level'], 'type': mb['type']}
+                    }
                 })
     return trades
 
@@ -3592,7 +3616,11 @@ def strategy_harmonic_pro(symbol, analyses):
                 'risk_reward': 2.0,
                 'reason': f"Advanced Harmonic Pattern: {pattern['pattern']} Detected",
                 'indicators': f"XABCD Geometric Scan ({tf})",
-                'expected_time': '24-48 hours', 'entry_type': 'MARKET', 'timeframe': tf
+                'expected_time': '24-48 hours', 'entry_type': 'MARKET', 'timeframe': tf,
+                'analysis_data': {
+                    'harmonic_pattern': pattern['pattern'],
+                    'type': pattern['type']
+                }
             })
     return trades
 
@@ -3632,7 +3660,12 @@ def strategy_volatility_capitulation(symbol, analyses):
                 'expected_time': '6-24 hours',
                 'risk': risk, 'reward': reward,
                 'entry_type': 'MARKET',
-                'timeframe': tf
+                'timeframe': tf,
+                'analysis_data': {
+                    'indicator': 'Volatility Capitulation',
+                    'rsi': a['rsi'],
+                    'bb_lower': a['bb']['lower']
+                }
             })
     return trades
 
@@ -3676,7 +3709,12 @@ def strategy_momentum_confluence(symbol, analyses):
                 'expected_time': '1-4 hours',
                 'risk': risk, 'reward': reward,
                 'entry_type': 'MARKET',
-                'timeframe': tf
+                'timeframe': tf,
+                'analysis_data': {
+                    'momentum_score': score,
+                    'adx': a['adx']['adx'],
+                    'macd': a['macd']['histogram']
+                }
             })
     return trades
 
@@ -3709,7 +3747,11 @@ def strategy_ict_wealth_division(symbol, analyses):
             'expected_time': '12-48 hours',
             'risk': entry-sl, 'reward': tp1-entry,
             'entry_type': 'LIMIT',
-            'timeframe': tf
+            'timeframe': tf,
+            'analysis_data': {
+                'ict_phase': phase,
+                'price_level': entry
+            }
         })
     elif phase == "DISTRIBUTION":
         confidence = 7
@@ -3731,7 +3773,11 @@ def strategy_ict_wealth_division(symbol, analyses):
             'expected_time': '12-48 hours',
             'risk': sl-entry, 'reward': entry-tp1,
             'entry_type': 'LIMIT',
-            'timeframe': tf
+            'timeframe': tf,
+            'analysis_data': {
+                'ict_phase': phase,
+                'price_level': entry
+            }
         })
     return trades
 
@@ -3771,7 +3817,11 @@ def strategy_harmonic_gartley(symbol, analyses):
                 'expected_time': '24-72 hours',
                 'risk': risk, 'reward': reward,
                 'entry_type': 'LIMIT',
-                'timeframe': tf
+                'timeframe': tf,
+                'analysis_data': {
+                    'harmonic_level': level,
+                    'fib_level': fib['0.618']
+                }
             })
     return trades
 

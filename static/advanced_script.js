@@ -198,6 +198,9 @@ function addTradeSignal(trade) {
                 <div style="font-size: 0.85em; color: #999; margin-top: 5px; font-style: italic;">
                     ${trade.indicators}
                 </div>
+                <button class="view-analysis-btn" data-trade="${tradeDataEncoded}" onclick="openAnalysisChart(this)">
+                    🔍 View Analysis Chart
+                </button>
             </div>
         </div>
     `;
@@ -678,6 +681,352 @@ document.addEventListener('DOMContentLoaded', () => {
     updateIndicatorCount();
     updateExchangeCount();
     addTerminalLine('RBot Pro ready. Select exchanges and click START ANALYSIS or press Ctrl+Enter', 'success');
-    addTerminalLine('Supported Exchanges: MEXC • Binance • Bitget • Bybit • OKX • KuCoin • Gate.io • HTX', 'info');
     addTerminalLine('Use Ctrl+L to clear output', 'info');
+});
+
+// ===== Analysis Chart Functions =====
+
+let activeChart = null;
+
+function closeAnalysisModal() {
+    document.getElementById('analysisModal').style.display = 'none';
+    if (activeChart) {
+        activeChart.remove();
+        activeChart = null;
+    }
+}
+
+async function openAnalysisChart(btn) {
+    let trade;
+    try {
+        trade = JSON.parse(decodeURIComponent(btn.getAttribute('data-trade')));
+    } catch (e) {
+        console.error("Failed to parse trade data:", e);
+        return;
+    }
+
+    const modal = document.getElementById('analysisModal');
+    const overlay = document.getElementById('chartOverlay');
+    const chartContainer = document.getElementById('chartContainer');
+
+    // Setup Modal Initial State
+    modal.style.display = 'block';
+    overlay.style.display = 'flex';
+    document.getElementById('modalTitle').innerText = `📊 ${trade.symbol} Analysis - ${trade.exchange}`;
+    document.getElementById('modalSubtitle').innerText = `${trade.strategy} | TF: ${trade.timeframe} | ${trade.type}`;
+    document.getElementById('modalReason').innerText = trade.reason || "";
+    chartContainer.innerHTML = '';
+    document.getElementById('modalTradeKey').innerHTML = '';
+
+    const modalCopyBtn = document.getElementById('modalCopyBtn');
+    modalCopyBtn.onclick = () => copyTradeFromBtn(btn);
+
+    try {
+        // Fetch historical candles
+        const candles = await fetchCandles(trade.exchange, trade.symbol, trade.timeframe);
+        if (!candles || candles.length === 0) throw new Error("No pricing data found for " + trade.symbol);
+
+        overlay.style.display = 'none';
+
+        // Initialize Chart
+        if (typeof LightweightCharts === 'undefined') {
+            throw new Error("TradingView Library not found");
+        }
+
+        const chart = LightweightCharts.createChart(chartContainer, {
+            layout: {
+                background: { color: '#0a0a0a' },
+                textColor: '#d1d4dc',
+            },
+            grid: {
+                vertLines: { color: '#111' },
+                horzLines: { color: '#111' },
+            },
+            rightPriceScale: {
+                borderColor: '#333',
+                visible: true,
+                autoScale: true,
+            },
+            timeScale: {
+                borderColor: '#333',
+                timeVisible: true,
+            },
+        });
+        activeChart = chart;
+
+        // Create Series
+        const candlestickSeries = chart.addCandlestickSeries({
+            upColor: '#00ff88',
+            downColor: '#ff4444',
+            borderVisible: false,
+            wickUpColor: '#00ff88',
+            wickDownColor: '#ff4444',
+        });
+
+        candlestickSeries.setData(candles);
+
+        // Lines Colors
+        const entryColor = '#f0b90b';
+        const slColor = '#ff4444';
+        const tpColor = '#00ff88';
+
+        // Add Price Lines
+        candlestickSeries.createPriceLine({
+            price: trade.entry,
+            color: entryColor,
+            lineWidth: 2,
+            lineStyle: 0,
+            axisLabelVisible: true,
+            title: 'ENTRY',
+        });
+
+        candlestickSeries.createPriceLine({
+            price: trade.sl,
+            color: slColor,
+            lineWidth: 2,
+            lineStyle: 1,
+            axisLabelVisible: true,
+            title: 'STOP LOSS',
+        });
+
+        candlestickSeries.createPriceLine({
+            price: trade.tp1,
+            color: tpColor,
+            lineWidth: 2,
+            lineStyle: 1,
+            axisLabelVisible: true,
+            title: 'TARGET 1',
+        });
+
+        // Plot Analysis Data (FVG, MB, etc.)
+        if (trade.analysis_data) {
+            plotAnalysisData(chart, candlestickSeries, trade.analysis_data, candles, trade);
+        }
+
+        // Add Key items
+        addModalKey(`${trade.type} Signal`, trade.type === 'LONG' ? tpColor : slColor);
+        addModalKey(`R/R ${trade.risk_reward}:1`, '#00d4ff');
+        addModalKey(`Conf: ${trade.confidence_score}/10`, '#fff');
+
+        // Handle Resize - Critical for proper rendering
+        const resizeChart = () => {
+            const w = chartContainer.clientWidth;
+            const h = chartContainer.clientHeight;
+            if (w && h && chart) chart.resize(w, h);
+        };
+
+        window.addEventListener('resize', resizeChart);
+
+        // Initial resize & fit 
+        setTimeout(() => {
+            resizeChart();
+            if (chart) chart.timeScale().fitContent();
+        }, 150);
+
+    } catch (err) {
+        console.error('Chart UI error:', err);
+        overlay.innerHTML = `<div style="text-align:center;"><span style="color: #ff4444; display:block; margin-bottom:10px;">✗ ${err.name}: ${err.message}</span>
+            <p style="font-size:0.8em; color:#888;">Ensure TradingView script is loaded and you have internet access.</p>
+            <button class="btn btn-mini" style="margin-top:10px" onclick="closeAnalysisModal()">Close</button></div>`;
+    }
+}
+
+async function fetchCandles(exchange, symbol, timeframe) {
+    const tfMap = { '1m': '1m', '3m': '3m', '5m': '5m', '15m': '15m', '30m': '30m', '1h': '1h', '4h': '4h', '1d': '1d' };
+    const tf = tfMap[timeframe] || '1h';
+
+    // Normalize symbol
+    const cleanSymbol = symbol.replace('_', '').replace('-', '').toUpperCase();
+    const exch = exchange ? exchange.toUpperCase() : 'BINANCE';
+
+    let url = '';
+    if (exch === 'BINANCE') {
+        url = `https://api.binance.com/api/v3/klines?symbol=${cleanSymbol}&interval=${tf}&limit=200`;
+    } else {
+        url = `https://api.mexc.com/api/v3/klines?symbol=${cleanSymbol}&interval=${tf}&limit=200`;
+    }
+
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`API returned ${response.status}`);
+        const data = await response.json();
+        return parseKlines(data);
+    } catch (e) {
+        console.warn(`Fetch from ${exch} failed, trying fallback...`, e);
+        const fallbackExch = exch === 'BINANCE' ? 'MEXC' : 'BINANCE';
+        const fallbackUrl = fallbackExch === 'BINANCE' ?
+            `https://api.binance.com/api/v3/klines?symbol=${cleanSymbol}&interval=${tf}&limit=200` :
+            `https://api.mexc.com/api/v3/klines?symbol=${cleanSymbol}&interval=${tf}&limit=200`;
+
+        const response = await fetch(fallbackUrl);
+        if (!response.ok) throw new Error(`Could not fetch data for ${symbol} from Binance or MEXC`);
+        const data = await response.json();
+        return parseKlines(data);
+    }
+}
+
+function parseKlines(data) {
+    if (!Array.isArray(data)) return [];
+    return data.map(d => ({
+        time: d[0] / 1000,
+        open: parseFloat(d[1]),
+        high: parseFloat(d[2]),
+        low: parseFloat(d[3]),
+        close: parseFloat(d[4])
+    }));
+}
+
+function addModalKey(label, color) {
+    const key = document.getElementById('modalTradeKey');
+    const item = document.createElement('div');
+    item.className = 'key-item';
+    item.style.display = 'flex';
+    item.style.alignItems = 'center';
+    item.style.gap = '8px';
+    item.innerHTML = `<span style="width: 12px; height: 12px; background: ${color}; border-radius: 2px;"></span><span style="color: #ccc;">${label}</span>`;
+    key.appendChild(item);
+}
+
+function plotAnalysisData(chart, series, data, candles, trade) {
+    if (!data) data = {};
+    const reason = (trade.reason || "").toUpperCase();
+
+    // 1. Draw Fair Value Gaps (FVG)
+    if (data.fvg) {
+        const color = data.fvg.type === 'BULLISH' ? 'rgba(0, 255, 136, 0.2)' : 'rgba(255, 68, 68, 0.2)';
+        const borderColor = data.fvg.type === 'BULLISH' ? '#00ff88' : '#ff4444';
+
+        series.createPriceLine({
+            price: data.fvg.top,
+            color: borderColor,
+            lineWidth: 1,
+            lineStyle: 1, // Dotted
+            title: 'FVG TOP',
+        });
+        series.createPriceLine({
+            price: data.fvg.bottom,
+            color: borderColor,
+            lineWidth: 1,
+            lineStyle: 1, // Dotted
+            title: 'FVG BTM',
+        });
+        addModalKey(`FVG (${data.fvg.type})`, color);
+    }
+
+    // 2. Mitigation Block (MB)
+    if (data.mitigation_block) {
+        series.createPriceLine({
+            price: data.mitigation_block.level,
+            color: '#00d4ff',
+            lineWidth: 2,
+            lineStyle: 0, // Solid
+            axisLabelVisible: true,
+            title: 'MB LEVEL',
+        });
+        addModalKey('Mitigation Block', '#00d4ff');
+    }
+
+    // 3. ICT Phase Visualization
+    if (data.ict_phase) {
+        const color = data.ict_phase === 'ACCUMULATION' ? '#00ff88' : '#ff4444';
+        series.createPriceLine({
+            price: data.price_level,
+            color: color,
+            lineWidth: 2,
+            lineStyle: 0, // Solid
+            axisLabelVisible: true,
+            title: `ICT ${data.ict_phase}`,
+        });
+        addModalKey(`ICT ${data.ict_phase}`, color);
+    }
+
+    // 4. UT Bot Stop Level
+    if (data.ut_stop) {
+        series.createPriceLine({
+            price: data.ut_stop,
+            color: '#ffaa00',
+            lineWidth: 1,
+            lineStyle: 2, // Dashed
+            axisLabelVisible: true,
+            title: 'UT STOP',
+        });
+        addModalKey('UT Bot Stop', '#ffaa00');
+    }
+
+    // 5. Harmonic Level
+    if (data.harmonic_level) {
+        series.createPriceLine({
+            price: data.fib_level,
+            color: '#ff00ff',
+            lineWidth: 1,
+            lineStyle: 1, // Dotted
+            axisLabelVisible: true,
+            title: `FIB ${data.harmonic_level}`,
+        });
+        addModalKey(`Fib ${data.harmonic_level}`, '#ff00ff');
+    }
+
+    // 6. Keltner Channels (Heuristic or Data)
+    if (data.keltner_upper) {
+        series.createPriceLine({ price: data.keltner_upper, color: 'rgba(255,255,255,0.1)', lineWidth: 1, lineStyle: 1, title: 'KC UPPER' });
+        series.createPriceLine({ price: data.keltner_lower, color: 'rgba(255,255,255,0.1)', lineWidth: 1, lineStyle: 1, title: 'KC LOWER' });
+        addModalKey('Keltner Channels', 'rgba(255,255,255,0.3)');
+    }
+
+    // 7. Mark the Signal Candle & Confluences (Markers)
+    if (candles && candles.length > 0) {
+        const lastCandle = candles[candles.length - 1];
+        const markers = [
+            {
+                time: lastCandle.time,
+                position: 'aboveBar',
+                color: '#f0b90b',
+                shape: 'arrowDown',
+                text: 'SIGNAL',
+            }
+        ];
+
+        // Squeeze Release
+        if (data.squeeze === 'OFF' || reason.includes('SQUEEZE') || reason.includes('SQZ')) {
+            markers.push({
+                time: lastCandle.time,
+                position: 'belowBar',
+                color: '#00ff88',
+                shape: 'circle',
+                text: 'SQZ BRK',
+            });
+            addModalKey('Squeeze Release', '#00ff88');
+        }
+
+        // ADX / Momentum
+        if (reason.includes('ADX') || reason.includes('MOMENTUM') || reason.includes('MOM:')) {
+            markers.push({
+                time: lastCandle.time,
+                position: 'belowBar',
+                color: '#00d4ff',
+                shape: 'arrowUp',
+                text: 'MOM',
+            });
+            addModalKey('Momentum Confirmed', '#00d4ff');
+        }
+
+        // Trend Alignment
+        if (reason.includes('TREND') || reason.includes('ALIGNMENT')) {
+            markers.push({
+                time: lastCandle.time,
+                position: trade.type === 'LONG' ? 'belowBar' : 'aboveBar',
+                color: trade.type === 'LONG' ? '#00ff88' : '#ff4444',
+                shape: trade.type === 'LONG' ? 'arrowUp' : 'arrowDown',
+                text: 'TREND',
+            });
+            addModalKey('Trend Alignment', trade.type === 'LONG' ? '#00ff88' : '#ff4444');
+        }
+
+        series.setMarkers(markers);
+    }
+}
+
+// Keyboard listener for modal
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeAnalysisModal();
 });
