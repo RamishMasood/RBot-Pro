@@ -1352,6 +1352,141 @@ def calculate_ict_phases(rsi, adx, volume, avg_volume, trend):
         return "MARKUP" if trend == 'BULLISH' else "MARKDOWN"
     return "CONSOLIDATION"
 
+def calculate_psar(highs, lows, closes, accent=0.02, max_accent=0.2):
+    """Calculate Parabolic SAR"""
+    try:
+        if len(closes) < 5: return {'psar': closes[-1], 'trend': 'NEUTRAL'}
+        
+        psar = closes[0]
+        bull = True
+        af = accent
+        hp = highs[0]
+        lp = lows[0]
+        
+        psar_list = [psar]
+        
+        for i in range(1, len(closes)):
+            prev_psar = psar
+            if bull:
+                psar = prev_psar + af * (hp - prev_psar)
+            else:
+                psar = prev_psar + af * (lp - prev_psar)
+                
+            reverse = False
+            if bull:
+                if lows[i] < psar:
+                    bull = False
+                    reverse = True
+                    psar = hp
+                    lp = lows[i]
+                    af = accent
+            else:
+                if highs[i] > psar:
+                    bull = True
+                    reverse = True
+                    psar = lp
+                    hp = highs[i]
+                    af = accent
+                    
+            if not reverse:
+                if bull:
+                    if highs[i] > hp:
+                        hp = highs[i]
+                        af = min(af + accent, max_accent)
+                    if lows[i-1] < psar: psar = lows[i-1]
+                    if lows[max(0, i-2)] < psar: psar = lows[max(0, i-2)]
+                else:
+                    if lows[i] < lp:
+                        lp = lows[i]
+                        af = min(af + accent, max_accent)
+                    if highs[i-1] > psar: psar = highs[i-1]
+                    if highs[max(0, i-2)] > psar: psar = highs[max(0, i-2)]
+            psar_list.append(psar)
+            
+        return {'psar': psar_list[-1], 'trend': 'BULLISH' if closes[-1] > psar_list[-1] else 'BEARISH'}
+    except:
+        return {'psar': closes[-1], 'trend': 'NEUTRAL'}
+
+def calculate_tema(closes, period=9):
+    """Triple Exponential Moving Average"""
+    try:
+        if len(closes) < period * 3: return closes[-1]
+        
+        def ema_inner(data, p):
+            m = 2 / (p + 1)
+            res = [data[0]]
+            for i in range(1, len(data)):
+                res.append(data[i] * m + res[-1] * (1 - m))
+            return res
+            
+        ema1 = ema_inner(closes, period)
+        ema2 = ema_inner(ema1, period)
+        ema3 = ema_inner(ema2, period)
+        
+        tema = [3 * e1 - 3 * e2 + e3 for e1, e2, e3 in zip(ema1, ema2, ema3)]
+        return tema[-1]
+    except:
+        return closes[-1]
+
+def calculate_chandelier_exit(highs, lows, closes, period=22, multiplier=3):
+    """Chandelier Exit for trend following"""
+    try:
+        if len(closes) < period: return {'long': closes[-1], 'short': closes[-1]}
+        
+        atr = calculate_atr(highs, lows, closes, period)
+        highest_high = max(highs[-period:])
+        lowest_low = min(lows[-period:])
+        
+        long_stop = highest_high - atr * multiplier
+        short_stop = lowest_low + atr * multiplier
+        
+        return {'long': long_stop, 'short': short_stop}
+    except:
+        return {'long': closes[-1], 'short': closes[-1]}
+
+def calculate_kama(closes, period=10, fast=2, slow=30):
+    """Kaufman's Adaptive Moving Average"""
+    try:
+        if len(closes) < period + 1: return closes[-1]
+        
+        change = abs(closes[-1] - closes[-period])
+        volatility = sum(abs(closes[i] - closes[i-1]) for i in range(len(closes)-period+1, len(closes)))
+        
+        er = change / volatility if volatility != 0 else 0
+        fast_sc = 2 / (fast + 1)
+        slow_sc = 2 / (slow + 1)
+        sc = (er * (fast_sc - slow_sc) + slow_sc)**2
+        
+        kama = closes[-period]
+        for i in range(len(closes)-period+1, len(closes)):
+            kama = kama + sc * (closes[i] - kama)
+        return kama
+    except:
+        return closes[-1]
+
+def calculate_vfi(closes, volumes, period=130, coef=0.2):
+    """Volume Flow Indicator"""
+    try:
+        if len(closes) < 2: return 0
+        
+        tp = [(closes[i] + closes[i] + closes[i])/3 for i in range(len(closes))] # Simplified
+        cutoff = coef * sum(abs(closes[i]-closes[i-1]) for i in range(1, len(closes))) / len(closes)
+        
+        vfi_sum = 0
+        lookback = min(len(closes), period)
+        for i in range(1, lookback):
+            inter = tp[-i] - tp[-i-1]
+            v_val = volumes[-i]
+            if inter > cutoff:
+                vfi_sum += v_val
+            elif inter < -cutoff:
+                vfi_sum -= v_val
+                
+        avg_v = sum(volumes[-period:]) / period if len(volumes) >= period else sum(volumes)/len(volumes)
+        return (vfi_sum / avg_v) if avg_v != 0 else 0
+    except:
+        return 0
+
 def analyze_timeframe(candles, timeframe_name):
     if not candles or len(candles) < 50:
         return None
@@ -1374,7 +1509,7 @@ def analyze_timeframe(candles, timeframe_name):
     obv = calculate_obv(closes, volumes) if 'OBV' in ENABLED_INDICATORS else []
     hma = calculate_hma(closes, 21) if 'HMA' in ENABLED_INDICATORS else closes[-1]
     supertrend = calculate_supertrend(candles) if 'ST' in ENABLED_INDICATORS else {'trend': 'NEUTRAL'}
-    vwap = calculate_vwap(candles) if 'VWAP' in ENABLED_INDICATORS else {'value': current_price}
+    vwap = calculate_vwap(candles) if 'VWAP' in ENABLED_INDICATORS else current_price
     cmf = calculate_cmf(candles) if 'CMF' in ENABLED_INDICATORS else 0
     ichimoku = calculate_ichimoku(highs, lows) if 'ICHI' in ENABLED_INDICATORS else {'tenkan': 0, 'kijun': 0, 'cloud_top': 0, 'cloud_bottom': 0}
     fvg = detect_fvg(candles) if 'FVG' in ENABLED_INDICATORS else None
@@ -1419,6 +1554,13 @@ def analyze_timeframe(candles, timeframe_name):
     vp = calculate_volume_profile(candles[-50:]) if 'VP' in ENABLED_INDICATORS else None
     sup_dem = detect_supply_demand_zones(candles[-50:]) if 'SUPDEM' in ENABLED_INDICATORS else None
     fib = calculate_fib_levels(max(highs[-50:]), min(lows[-50:])) if 'FIB' in ENABLED_INDICATORS else None
+    
+    # SUPERSCALP 2026 INDICATORS
+    psar = calculate_psar(highs, lows, closes) if 'PSAR' in ENABLED_INDICATORS else {'psar': current_price, 'trend': 'NEUTRAL'}
+    tema = calculate_tema(closes) if 'TEMA' in ENABLED_INDICATORS else current_price
+    chandelier = calculate_chandelier_exit(highs, lows, closes) if 'CHANDELIER' in ENABLED_INDICATORS else {'long': 0, 'short': 0}
+    kama = calculate_kama(closes) if 'KAMA' in ENABLED_INDICATORS else current_price
+    vfi = calculate_vfi(closes, volumes) if 'VFI' in ENABLED_INDICATORS else 0
     
     rvol = volumes[-1] / (sum(volumes[-20:])/20) if len(volumes) >= 20 else 1.0
     
@@ -1482,6 +1624,11 @@ def analyze_timeframe(candles, timeframe_name):
         'fisher': fisher,
         'zlsma': zlsma,
         'tsi': tsi,
+        'psar': psar,
+        'tema': tema,
+        'chandelier': chandelier,
+        'kama': kama,
+        'vfi': vfi,
         'rvol': rvol,
         'volume': volumes[-1] if volumes else 0,
         'avg_volume': sum(volumes[-20:]) / 20 if len(volumes) >= 20 else 0,
@@ -3970,6 +4117,170 @@ def strategy_keltner_reversion(symbol, analyses):
                 
     return trades
 
+def strategy_psar_tema_scalp(symbol, analyses):
+    """Strategy: PSAR Trend + TEMA Cross Scalper (Fast 1m/3m)"""
+    tf = '1m' if '1m' in analyses else '3m' if '3m' in analyses else '5m'
+    if tf not in analyses: return []
+    
+    a = analyses[tf]
+    psar = a['psar']
+    tema = a['tema']
+    current = a['current_price']
+    trades = []
+    
+    # LONG: PSAR Bullish + Price above TEMA
+    if psar['trend'] == 'BULLISH' and current > tema:
+        confidence = 7
+        reasons = [f"PSAR Bullish ({tf})", f"Price > TEMA ({tf})"]
+        
+        if a['rsi'] > 50:
+            confidence += 1
+            reasons.append("RSI Bullish Momentum")
+        if a['adx']['adx'] > 20:
+            confidence += 1
+            reasons.append("Trend Strength (ADX)")
+            
+        if confidence >= MIN_CONFIDENCE:
+            atr = a['atr']
+            entry = current
+            sl = psar['psar'] if psar['psar'] < current else current - (atr * 1.5)
+            tp1 = entry + (entry - sl) * 2
+            tp2 = entry + (entry - sl) * 3
+            risk = entry - sl
+            reward = tp1 - entry
+            
+            if risk > 0:
+                trades.append({
+                    'strategy': 'PSAR-TEMA Scalp',
+                    'type': 'LONG',
+                    'symbol': symbol,
+                    'entry': entry,
+                    'sl': sl, 'tp1': tp1, 'tp2': tp2,
+                    'confidence': 'HIGH',
+                    'confidence_score': confidence,
+                    'risk_reward': round(reward/risk, 1),
+                    'reason': ' + '.join(reasons),
+                    'indicators': f"PSAR: {psar['psar']:.4f}, TEMA: {tema:.4f}",
+                    'expected_time': '5-15 mins',
+                    'risk': risk, 'reward': reward,
+                    'entry_type': 'MARKET',
+                    'timeframe': tf,
+                    'analysis_data': {
+                        'psar': psar['psar'],
+                        'tema': tema,
+                        'rsi': a['rsi']
+                    }
+                })
+    return trades
+
+def strategy_kama_volatility_scalp(symbol, analyses):
+    """Strategy: KAMA Trend + Chandelier Exit Confirmation (5m Scalp)"""
+    tf = '5m' if '5m' in analyses else '3m' if '3m' in analyses else '15m'
+    if tf not in analyses: return []
+    
+    a = analyses[tf]
+    kama = a['kama']
+    chan = a['chandelier']
+    current = a['current_price']
+    trades = []
+    
+    # LONG: Price > KAMA + Price > Chandelier Long Stop
+    if current > kama and current > chan['long']:
+        confidence = 7
+        reasons = [f"Price above KAMA Adaptive ({tf})", "Chandelier Exit Bullish"]
+        
+        if a['vfi'] > 0:
+            confidence += 2
+            reasons.append("Volume Flow Positive (VFI)")
+            
+        if confidence >= MIN_CONFIDENCE:
+            atr = a['atr']
+            entry = current
+            sl = chan['long'] if chan['long'] < current else current - (atr * 2)
+            tp1 = entry + (entry - sl) * 2.5
+            tp2 = entry + (entry - sl) * 4
+            risk = entry - sl
+            reward = tp1 - entry
+            
+            if risk > 0:
+                trades.append({
+                    'strategy': 'KAMA-Volatility Scalp',
+                    'type': 'LONG',
+                    'symbol': symbol,
+                    'entry': entry,
+                    'sl': sl, 'tp1': tp1, 'tp2': tp2,
+                    'confidence': 'HIGH',
+                    'confidence_score': confidence,
+                    'risk_reward': round(reward/risk, 1),
+                    'reason': ' + '.join(reasons),
+                    'indicators': f"KAMA: {kama:.4f}, VFI: {a['vfi']:.2f}",
+                    'expected_time': '15-45 mins',
+                    'risk': risk, 'reward': reward,
+                    'entry_type': 'MARKET',
+                    'timeframe': tf,
+                    'analysis_data': {
+                        'kama': kama,
+                        'chandelier_long': chan['long'],
+                        'vfi': a['vfi']
+                    }
+                })
+    return trades
+
+def strategy_vfi_momentum_scalp(symbol, analyses):
+    """Strategy: VFI Volume Flow + Momentum Confluence (Perfect Scalping)"""
+    tf = '1m' if '1m' in analyses else '3m' if '3m' in analyses else '5m'
+    if tf not in analyses: return []
+    
+    a = analyses[tf]
+    vfi = a['vfi']
+    rsi = a['rsi']
+    uo = a['uo']
+    current = a['current_price']
+    trades = []
+    
+    # BULLISH: VFI > 0 + RSI > 50 + UO > 50
+    if vfi > 0 and rsi > 50 and uo > 50:
+        confidence = 6
+        reasons = ["Positive Volume Flow (VFI)", "RSI Momentum", "Ultimate Oscillator Positive"]
+        
+        if a['zlsma'] < current:
+            confidence += 2
+            reasons.append("Above ZLSMA")
+            
+        if confidence >= MIN_CONFIDENCE:
+            atr = a['atr']
+            entry = current
+            sl = entry - (atr * 2)
+            tp1 = entry + (atr * 4)
+            tp2 = entry + (atr * 6)
+            risk = entry - sl
+            reward = tp1 - entry
+            
+            if risk > 0:
+                trades.append({
+                    'strategy': 'VFI Perfect Scalper',
+                    'type': 'LONG',
+                    'symbol': symbol,
+                    'entry': entry,
+                    'sl': sl, 'tp1': tp1, 'tp2': tp2,
+                    'confidence': 'VERY HIGH',
+                    'confidence_score': confidence,
+                    'risk_reward': round(reward/risk, 1),
+                    'reason': ' + '.join(reasons),
+                    'indicators': f"VFI: {vfi:.2f}, RSI: {rsi:.0f}, UO: {uo:.0f}",
+                    'expected_time': '10-30 mins',
+                    'risk': risk, 'reward': reward,
+                    'entry_type': 'MARKET',
+                    'timeframe': tf,
+                    'analysis_data': {
+                        'vfi': vfi,
+                        'rsi': rsi,
+                        'uo': uo,
+                        'zlsma': a['zlsma']
+                    }
+                })
+    return trades
+
 def run_strategies(symbol, analyses):
     """Run all available strategies"""
     all_trades = []
@@ -4009,9 +4320,10 @@ def run_strategies(symbol, analyses):
     all_trades.extend(strategy_ict_wealth_division(symbol, analyses))
     all_trades.extend(strategy_harmonic_gartley(symbol, analyses))
     
-    # ELITE 2026 UPGRADES
-    all_trades.extend(strategy_smc_elite(symbol, analyses))
-    all_trades.extend(strategy_harmonic_pro(symbol, analyses))
+    # SUPERSCALP 2026 UPGRADES
+    all_trades.extend(strategy_psar_tema_scalp(symbol, analyses))
+    all_trades.extend(strategy_kama_volatility_scalp(symbol, analyses))
+    all_trades.extend(strategy_vfi_momentum_scalp(symbol, analyses))
     
     return all_trades
 
@@ -4021,7 +4333,7 @@ def run_analysis():
     print("🔥 RBOT PRO | MULTI-EXCHANGE REAL-TIME ANALYSIS - HIGH CONFIDENCE TRADES ONLY")
     print("="*120)
     print(f"Exchanges: {exchanges_str} | Timeframes: {', '.join(ENABLED_TIMEFRAMES)} (VERIFIED) | Indicators ({len(ENABLED_INDICATORS)}): {', '.join(ENABLED_INDICATORS)} (VERIFIED)")
-    print(f"Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Minimum Confidence: {MIN_CONFIDENCE}/10 | Strategies: Swing, Scalp, Stoch-Pullback, Breakout, SuperTrend, VWAP, Ichimoku, FVG, Divergence, ADX-Mom, BB-Rev, Liquidity, WaveTrend, Squeeze, Z-Scalp, MFI, Fisher, VolSpike, SMC-CHoCH, Donchian, STC-Mom, Vortex, ICT-Silver, UT-Bot Elite, Keltner-Rev, Vol-Cap, Mom-Confluence, ICT-Wealth, Harmonic-Gartley, SMC-Elite, Harmonic-Pro")
+    print(f"Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Minimum Confidence: {MIN_CONFIDENCE}/10 | Strategies: Swing, Scalp, Stoch-Pullback, Breakout, SuperTrend, VWAP, Ichimoku, FVG, Divergence, ADX-Mom, BB-Rev, Liquidity, WaveTrend, Squeeze, Z-Scalp, MFI, Fisher, VolSpike, SMC-CHoCH, Donchian, STC-Mom, Vortex, ICT-Silver, UT-Bot Elite, Keltner-Rev, Vol-Cap, Mom-Confluence, ICT-Wealth, Harmonic-Gartley, SMC-Elite, Harmonic-Pro, PSAR-TEMA, KAMA-Vol, VFI-Scalp")
     print("="*120 + "\n")
     all_trades = []
     print(f"📡 Fetching LIVE real-time chart data from {exchanges_str} APIs...\n")

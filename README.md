@@ -1,7 +1,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/RBot%20Pro-v3.0-00ff00?style=for-the-badge&logo=bitcoin&logoColor=white&labelColor=0a0a0a" alt="Version" />
-  <img src="https://img.shields.io/badge/Indicators-38-00d4ff?style=for-the-badge&labelColor=0a0a0a" alt="Indicators" />
-  <img src="https://img.shields.io/badge/Strategies-31-ff3e3e?style=for-the-badge&labelColor=0a0a0a" alt="Strategies" />
+  <img src="https://img.shields.io/badge/Indicators-43-00d4ff?style=for-the-badge&labelColor=0a0a0a" alt="Indicators" />
+  <img src="https://img.shields.io/badge/Strategies-34-ff3e3e?style=for-the-badge&labelColor=0a0a0a" alt="Strategies" />
   <img src="https://img.shields.io/badge/Timeframes-8-ffaa00?style=for-the-badge&labelColor=0a0a0a" alt="Timeframes" />
   <img src="https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white&labelColor=0a0a0a" alt="Python" />
   <img src="https://img.shields.io/badge/License-Proprietary-888888?style=for-the-badge&labelColor=0a0a0a" alt="License" />
@@ -11,7 +11,7 @@
 
 <p align="center">
   <b>The World's Most Advanced Real-Time Cryptocurrency Technical Analysis System</b><br/>
-    <i>38 Indicators · 31 Strategies · 8 Timeframes · 200+ Coins · 8 Exchanges Live Data</i>
+    <i>43 Indicators · 34 Strategies · 8 Timeframes · 200+ Coins · 8 Exchanges Live Data</i>
 </p>
 
 <p align="center">
@@ -29,8 +29,8 @@
 
 - [Overview](#-overview)
 - [Key Features](#-key-features)
-- [Intelligence Suite (38)](#-elite-2026-intelligence-suite--38-indicators)
-- [Strategy Core (31)](#-proprietary-strategy-core--31-power-strategies)
+- [Intelligence Suite (43)](#-elite-2026-intelligence-suite--43-indicators)
+- [Strategy Core (34)](#-proprietary-strategy-core--34-power-strategies)
 - [Trade Engine](#-institutional-trade-engine-architecture)
 - [Installation](#-installation)
 - [Usage](#-usage)
@@ -46,16 +46,16 @@
 
 ## 🌟 Overview
 
-**RBot Pro** is a professional-grade, real-time cryptocurrency technical analysis and trading signal generation system. It connects directly to **8 major exchanges** (**MEXC, Binance, Bitget, Bybit, OKX, KuCoin, Gate.io, and HTX**), fetches live candlestick (kline) data, computes **38 advanced technical indicators** across **8 timeframes**, and runs **31 proprietary trading strategies** to identify high-confidence trade setups with precise entry, stop-loss, and take-profit levels.
+**RBot Pro** is a professional-grade, real-time cryptocurrency technical analysis and trading signal generation system. It connects directly to **8 major exchanges** (**MEXC, Binance, Bitget, Bybit, OKX, KuCoin, Gate.io, and HTX**), fetches live candlestick (kline) data, computes **43 advanced technical indicators** across **8 timeframes**, and runs **34 proprietary trading strategies** to identify high-confidence trade setups with precise entry, stop-loss, and take-profit levels.
 
-Unlike traditional signal services that rely on human analysis, RBot Pro performs **fully automated quantitative analysis** on **200+ coins simultaneously** in under 2 minutes, scanning for institutional-grade setups using Smart Money Concepts (SMC), ICT methodology, and classical technical analysis.
+Fully automated quantitative analysis on **200+ coins simultaneously** in under 2 minutes, scanning for institutional-grade setups using Smart Money Concepts (SMC), ICT methodology, and classical technical analysis.
 
 ### 🏆 Why RBot Pro?
 
 | Feature | RBot Pro | Typical Bots |
 |---------|----------|--------------|
-| Indicators | **38** | 5–10 |
-| Strategies | **31** | 1–3 |
+| Indicators | **43** | 5–10 |
+| Strategies | **34** | 1–3 |
 | Timeframes | **8** simultaneous | 1–2 |
 | Coins scanned | **200+** concurrent | 5–20 |
 | ICT / SMC concepts | ✅ Full support | ❌ None |
@@ -102,9 +102,19 @@ Unlike traditional signal services that rely on human analysis, RBot Pro perform
 
 ---
 
-## 📊 Elite 2026 Intelligence Suite — 38 Indicators
+## 📊 Elite 2026 Intelligence Suite — 43 Indicators
 
-RBot Pro computes **38 technical indicators** on every timeframe for every coin. Each indicator is implemented from scratch in pure Python with zero external TA library dependencies.
+RBot Pro computes **43 technical indicators** on every timeframe for every coin. Each indicator is implemented from scratch in pure Python with zero external TA library dependencies.
+
+### 🚀 SuperScalp 2026 Scalping Suite (5)
+
+| # | Indicator | Code | Description | Advantage |
+|---|-----------|------|-------------|-----------|
+| 1 | **Parabolic SAR** | `PSAR` | Parabolic Stop and Reverse for trend trailing | Perfect for 1m/3m trend reversals |
+| 2 | **Triple EMA (TEMA)** | `TEMA` | Triple Exponential Moving Average with zero lag | Fastest MA for high-speed scalping |
+| 3 | **Chandelier Exit** | `CHANDELIER` | Volatility-based trailing stop derived from ATR | Keeps you in winning trades longer |
+| 4 | **Kaufman Adaptive MA** | `KAMA` | Adaptive MA that filters out market noise | Noise-free trend detection in 5m charts |
+| 5 | **Volume Flow Indicator** | `VFI` | Advanced volume-based trend follower | Detects heavy institutional accumulation |
 
 ### 🔥 Elite 2026 Indicators (13)
 
@@ -166,7 +176,7 @@ In addition to the 38 core indicators, the engine also computes:
 
 ---
 
-## 🎯 Proprietary Strategy Core — 31 Power Strategies
+## 🎯 Proprietary Strategy Core — 34 Power Strategies
 
 Every strategy produces trade signals with precise **Entry**, **Stop Loss**, **TP1**, **TP2**, **Risk/Reward Ratio**, **Confidence Score (1–10)**, and **Expected Resolution Time**.
 
@@ -216,10 +226,15 @@ Every strategy produces trade signals with precise **Entry**, **Stop Loss**, **T
 | 30 | **SMC Elite (MB+FVG)** | `strategy_smc_elite` | 5m-1h | SMC Elite | Premium fusion of Mitigation Blocks and Fair Value Gaps for high-probability institutional entries. |
 | 31 | **Harmonic Pro Scanner** | `strategy_harmonic_pro` | 1h / 4h | Harmonic Pro | Full XABCD geometric verification for Gartley and Bat patterns with ultra-precise Fibonacci ratios. |
 
+### 🚀 SuperScalp 2026 Strategies (3)
 
----
+| # | Strategy | Function | Timeframe | Style | Description |
+|---|----------|----------|-----------|-------|-------------|
+| 32 | **PSAR-TEMA Scalp** | `strategy_psar_tema_scalp` | 1m / 3m | Scalp | PSAR-confirmed trend follow-through with TEMA-based fast entry alignment. |
+| 33 | **KAMA-Vol Scalp** | `strategy_kama_volatility_scalp` | 3m / 5m | Scalp | Adaptive KAMA trend combined with Chandelier Exit for ultra-reliable volatility scalping. |
+| 34 | **VFI Perfect Scalper** | `strategy_vfi_momentum_scalp` | 1m / 5m | Scalp | THE "PERFECT" SCALPER: Multi-indicator confluence (VFI + RSI + UO + ZLSMA) for institutional-grade accuracy. |
 
-## 🏗️ Institutional Trade Engine (Architecture)
+### 🏗️ Institutional Trade Engine (Architecture)
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -227,17 +242,17 @@ Every strategy produces trade signals with precise **Entry**, **Stop Loss**, **T
 ├──────────────────────────────────────────────────────────────────────┤
 │                                                                      │
 │  ┌─────────────────┐    ┌──────────────┐    ┌────────────────────────┐   │
-│  │ 8 Live Exchanges │───▶│  Data Layer  │───▶│  Indicator Engine (38) │   │
+│  │ 8 Live Exchanges │───▶│  Data Layer  │───▶│  Indicator Engine (43) │   │
 │  │ MEXC, Binance,   │    │  get_klines  │    │  RSI, MACD, BB, ADX,  │   │
-│  │ Bybit, Bitget,   │    │  200 candles  │    │  STC, UT Bot, CHoCH,  │   │
+│  │ Bybit, Bitget,   │    │  200 candles  │    │  PSAR, TEMA, KAMA, ...│   │
 │  │ OKX, KuCoin,     │    │  per TF       │    │  Ichimoku, FVG, ...   │   │
 │  │ Gate.io, HTX     │    └──────┬───────┘    └───────────┬────────────┘   │
 │  └─────────────────┘            │                        │               │
 │                                 ▼                        ▼               │
 │                        ┌────────────────┐    ┌────────────────────────┐   │
-│                        │ Multi-Exchange │    │  Strategy Engine (31)  │   │
+│                        │ Multi-Exchange │    │  Strategy Engine (34)  │   │
 │                        │ Fallback Hub   │    │  Swing, Scalp, SMC,   │   │
-│                        └────────────────┘    │  ICT, Breakout, ...   │   │
+│                        └────────────────┘    │  ICT, PSAR-TEMA, ...  │   │
 │                                              └───────────┬────────────┘   │
 │                                                          │               │
 │                                                          ▼               │
@@ -511,8 +526,8 @@ RBot Pro enforces strict risk management on every signal:
 
 ### Why RBot Pro Wins
 
-1.  **🧠 Most Indicators**: 38 vs. industry average of 5–15
-2.  **⚔️ Most Strategies**: 31 automated vs. 1–5 typical
+1.  **🧠 Most Indicators**: 43 vs. industry average of 5–15
+2.  **⚔️ Most Strategies**: 34 automated vs. 1–5 typical
 3.  **📊 Visual Analysis**: Full TradingView charts for every signal with indicator overlays.
 4.  **🏛️ ICT / Smart Money**: Only bot with full CHoCH, FVG, Silver Bullet, Wealth Division
 4. **⚡ Speed**: 200+ coins in under 2 minutes with parallel processing
@@ -552,7 +567,7 @@ A: Python 3.10+, 2GB RAM, stable internet connection. Works on Windows, macOS, a
 
 <p align="center">
   <b>RBot Pro v3.0</b> — Built with 🔥 for elite traders<br/>
-  <i>38 Indicators · 31 Strategies · 8 Timeframes · 200+ Coins · Zero Compromise</i><br/><br/>
+  <i>43 Indicators · 34 Strategies · 8 Timeframes · 200+ Coins · Zero Compromise</i><br/><br/>
   <img src="https://img.shields.io/badge/Made%20with-Python-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python" />
   <img src="https://img.shields.io/badge/UI-Flask%20%2B%20SocketIO-00ff00?style=flat-square" alt="Flask" />
   <img src="https://img.shields.io/badge/Data-MEXC%20Live-ff3e3e?style=flat-square" alt="MEXC" />

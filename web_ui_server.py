@@ -36,7 +36,7 @@ output_queue = queue.Queue()
 
 config = {
     'symbols': ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT'],
-    'indicators': ['RSI', 'EMA', 'MACD', 'BB', 'ATR', 'ADX', 'OB', 'PA', 'StochRSI', 'OBV', 'ST', 'VWAP', 'HMA', 'CMF', 'ICHI', 'FVG', 'DIV', 'WT', 'SQZ', 'LIQ', 'BOS', 'MFI', 'FISH', 'ZLSMA', 'TSI', 'CHOP', 'VI', 'STC', 'DON', 'CHoCH', 'KC', 'UTBOT', 'UO', 'STDEV', 'VP', 'SUPDEM', 'FIB', 'ICT_WD'],
+    'indicators': ['RSI', 'EMA', 'MACD', 'BB', 'ATR', 'ADX', 'OB', 'PA', 'StochRSI', 'OBV', 'ST', 'VWAP', 'HMA', 'CMF', 'ICHI', 'FVG', 'DIV', 'WT', 'SQZ', 'LIQ', 'BOS', 'MFI', 'FISH', 'ZLSMA', 'TSI', 'CHOP', 'VI', 'STC', 'DON', 'CHoCH', 'KC', 'UTBOT', 'UO', 'STDEV', 'VP', 'SUPDEM', 'FIB', 'ICT_WD', 'PSAR', 'TEMA', 'CHANDELIER', 'KAMA', 'VFI'],
     'min_confidence': 5,
     'timeframes': ['1m', '3m', '5m', '15m', '30m', '1h', '4h', '1d'],
     'exchanges': ['MEXC', 'Binance'],
@@ -458,6 +458,38 @@ def update_scheduler():
         )
         if not scheduler.running:
             scheduler.start()
+
+@app.route('/api/proxy/klines')
+def proxy_klines():
+    """Proxy kline requests to avoid CORS"""
+    symbol = request.args.get('symbol', 'BTCUSDT').upper().replace('_', '')
+    interval = request.args.get('interval', '1h')
+    limit = request.args.get('limit', '200')
+    exchange = request.args.get('exchange', 'BINANCE').upper()
+    
+    import requests
+    
+    # Try Binance first
+    try:
+        url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
+        r = requests.get(url, timeout=5)
+        if r.status_code == 200:
+            return jsonify(r.json())
+    except:
+        pass
+        
+    # Fallback to MEXC
+    try:
+        # MEXC uses 60m for 1h? Actually standard Binance API format is widely used.
+        # But let's check basic mapping if needed. For now assume standard.
+        url = f"https://api.mexc.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
+        r = requests.get(url, timeout=5)
+        if r.status_code == 200:
+            return jsonify(r.json())
+    except:
+        pass
+        
+    return jsonify({'error': 'Failed to fetch klines'}), 500
 
 @app.errorhandler(404)
 def not_found(e):

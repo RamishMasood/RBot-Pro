@@ -839,29 +839,17 @@ async function fetchCandles(exchange, symbol, timeframe) {
     const cleanSymbol = symbol.replace('_', '').replace('-', '').toUpperCase();
     const exch = exchange ? exchange.toUpperCase() : 'BINANCE';
 
-    let url = '';
-    if (exch === 'BINANCE') {
-        url = `https://api.binance.com/api/v3/klines?symbol=${cleanSymbol}&interval=${tf}&limit=200`;
-    } else {
-        url = `https://api.mexc.com/api/v3/klines?symbol=${cleanSymbol}&interval=${tf}&limit=200`;
-    }
+    // Use local proxy to avoid CORS issues with browser fetch
+    const url = `/api/proxy/klines?symbol=${cleanSymbol}&interval=${tf}&limit=200&exchange=${exch}`;
 
     try {
         const response = await fetch(url);
-        if (!response.ok) throw new Error(`API returned ${response.status}`);
+        if (!response.ok) throw new Error(`Proxy API returned ${response.status}`);
         const data = await response.json();
         return parseKlines(data);
     } catch (e) {
-        console.warn(`Fetch from ${exch} failed, trying fallback...`, e);
-        const fallbackExch = exch === 'BINANCE' ? 'MEXC' : 'BINANCE';
-        const fallbackUrl = fallbackExch === 'BINANCE' ?
-            `https://api.binance.com/api/v3/klines?symbol=${cleanSymbol}&interval=${tf}&limit=200` :
-            `https://api.mexc.com/api/v3/klines?symbol=${cleanSymbol}&interval=${tf}&limit=200`;
-
-        const response = await fetch(fallbackUrl);
-        if (!response.ok) throw new Error(`Could not fetch data for ${symbol} from Binance or MEXC`);
-        const data = await response.json();
-        return parseKlines(data);
+        console.error(`Fetch klines failed via proxy for ${cleanSymbol}:`, e);
+        return [];
     }
 }
 
@@ -971,6 +959,45 @@ function plotAnalysisData(chart, series, data, candles, trade) {
         series.createPriceLine({ price: data.keltner_upper, color: 'rgba(255,255,255,0.1)', lineWidth: 1, lineStyle: 1, title: 'KC UPPER' });
         series.createPriceLine({ price: data.keltner_lower, color: 'rgba(255,255,255,0.1)', lineWidth: 1, lineStyle: 1, title: 'KC LOWER' });
         addModalKey('Keltner Channels', 'rgba(255,255,255,0.3)');
+    }
+
+    // 8. PSAR Scalp
+    if (data.psar) {
+        series.createPriceLine({ price: data.psar, color: '#ff00ff', lineWidth: 1, lineStyle: 2, title: 'PSAR' });
+        addModalKey('PSAR', '#ff00ff');
+    }
+
+    // 9. TEMA Level
+    if (data.tema) {
+        series.createPriceLine({ price: data.tema, color: '#00d4ff', lineWidth: 1, lineStyle: 0, title: 'TEMA' });
+        addModalKey('TEMA', '#00d4ff');
+    }
+
+    // 10. KAMA Level
+    if (data.kama) {
+        series.createPriceLine({ price: data.kama, color: '#ffaa00', lineWidth: 1, lineStyle: 0, title: 'KAMA' });
+        addModalKey('KAMA', '#ffaa00');
+    }
+
+    // 11. Chandelier Exit
+    if (data.chandelier_long) {
+        series.createPriceLine({ price: data.chandelier_long, color: '#00ff88', lineWidth: 1, lineStyle: 1, title: 'CHANDELIER' });
+        addModalKey('Chandelier Exit', '#00ff88');
+    }
+
+    // 12. ZLSMA
+    if (data.zlsma) {
+        series.createPriceLine({ price: data.zlsma, color: '#f0b90b', lineWidth: 1, lineStyle: 0, title: 'ZLSMA' });
+        addModalKey('ZLSMA', '#f0b90b');
+    }
+
+    // 13. Momentum Indicators (RSI, UO, VFI labels)
+    if (data.rsi !== undefined || data.uo !== undefined || data.vfi !== undefined) {
+        let label = "";
+        if (data.rsi !== undefined) label += `RSI:${data.rsi.toFixed(0)} `;
+        if (data.uo !== undefined) label += `UO:${data.uo.toFixed(0)} `;
+        if (data.vfi !== undefined) label += `VFI:${data.vfi.toFixed(2)}`;
+        addModalKey(label.trim(), '#888');
     }
 
     // 7. Mark the Signal Candle & Confluences (Markers)
