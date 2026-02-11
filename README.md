@@ -65,6 +65,8 @@ Fully automated quantitative analysis on **200+ coins simultaneously** in under 
 | Custom coin addition | ✅ Add any USDT pair | ❌ Fixed lists |
 | Data source | Live data from 8 Exchanges | Delayed / single source |
 | Codebase size | **4,100+ lines** of pure analysis logic | <500 lines |
+| News & Sentiment | ✅ **Real-time Feed + AI Analysis** | ❌ None |
+| Volatility Protection | ✅ **Flash Crash Protection** | ❌ None |
 
 ---
 
@@ -99,6 +101,12 @@ Fully automated quantitative analysis on **200+ coins simultaneously** in under 
 - **Instant process termination** — kills entire process tree on Windows (`taskkill /F /T`)
 - **Clean state reset** — properly resets UI buttons, status indicator, and timer
 - **No zombie processes** — guaranteed cleanup via `try/finally`
+
+### 📰 Market Intelligence & Volatility Protection (NEW)
+- **Live Crypto News Feed** — Fetches real-time market news from top sources every 5 seconds.
+- **AI Sentiment Analysis** — Auto-analyzes news headers to determine **Bullish** 🚀 / **Bearish** 🐻 / **Neutral** 😐 market sentiment.
+- **Flash Volatility Scanner** — Monitors BTC price tick-by-tick. If a sudden pump or dump (>0.3% in 30s) is detected, a **RED WARNING BANNER** appears to protect you from entering bad trades.
+- **Safe-Trade Protocol** — All trade signals generated during high volatility events are automatically tagged with a warning.
 
 ---
 

@@ -14,6 +14,10 @@ import queue
 from datetime import datetime
 import json
 from apscheduler.schedulers.background import BackgroundScheduler
+import time
+
+# Import News Manager
+from news_manager import news_manager
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 app.config['SECRET_KEY'] = 'rbot-pro-analysis-ui-secret'
@@ -87,6 +91,14 @@ def stream_output_loop():
                     try:
                         trade_json = line.split('SIGNAL_DATA:')[1].strip()
                         trade = json.loads(trade_json)
+                        
+                        # INJECT MARKET WARNING IF EXISTS
+                        status = news_manager.get_market_status()
+                        if status.get('volatility_warning'):
+                            trade['warning'] = status['volatility_warning']
+                        if status.get('news_warning'):
+                            trade['warning'] = f"{trade.get('warning', '')} {status['news_warning']}"
+                            
                         socketio.emit('trade', trade, namespace='/')
                         # Forward to Telegram
                         thread = threading.Thread(target=send_telegram_alert, args=(trade,), daemon=True)
@@ -99,6 +111,37 @@ def stream_output_loop():
             continue
         except Exception as e:
             print(f"Stream error: {e}")
+
+def market_monitor_loop():
+    """Background thread to monitor market news and volatility"""
+    last_news_time = 0
+    while True:
+        try:
+            current_time = time.time()
+            
+            # check volatility every 5 seconds
+            news_manager.check_btc_volatility()
+            
+            # fetch news every 5 seconds
+            if current_time - last_news_time >= 5:
+                news_manager.fetch_news()
+                last_news_time = current_time
+                
+            # Broadcast status
+            status = news_manager.get_market_status()
+            socketio.emit('market_status', status, namespace='/')
+            
+            # If severe warning, maybe log it
+            if status.get('volatility_warning'):
+                # We don't want to spam the log, so maybe just trust the UI update
+                # or send a special alert event
+                pass
+                
+            time.sleep(2)
+            
+        except Exception as e:
+            print(f"Market Monitor Error: {e}")
+            time.sleep(10)
 
 def run_analysis_subprocess(symbols, indicators, timeframes, min_conf):
     """Run the analysis script with custom parameters"""
@@ -436,6 +479,17 @@ def handle_stop():
         analysis_running = False
         socketio.emit('status', {'status': 'stopped'}, namespace='/')
 
+@socketio.on('refresh_news', namespace='/')
+def handle_refresh_news():
+    """Manual trigger to refresh news"""
+    try:
+        # socketio.emit('output', {'data': '📰 Refreshing news...'}, namespace='/')
+        news_manager.fetch_news()
+        status = news_manager.get_market_status()
+        emit('market_status', status, broadcast=True, namespace='/')
+    except Exception as e:
+        emit('output', {'data': f"Error refreshing news: {e}"}, namespace='/')
+
 @socketio.on('clear_output', namespace='/')
 def handle_clear():
     """Clear terminal"""
@@ -504,6 +558,10 @@ if __name__ == '__main__':
     # Start background output stream reader
     reader = threading.Thread(target=stream_output_loop, daemon=True)
     reader.start()
+
+    # Start Market Monitor (News + Volatility)
+    market_thread = threading.Thread(target=market_monitor_loop, daemon=True)
+    market_thread.start()
     
     print("🌐 RBot Pro Multi-Exchange Analysis UI Server")
     print("📱 Open: http://localhost:5000")

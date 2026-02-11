@@ -275,10 +275,16 @@
                         <span id="elapsedTime">00:00:00</span>
                     </div>
                 </div>
+
             </aside>
 
             <!-- Main Terminal Area -->
             <section class="main-area">
+                <div id="marketWarning"
+                    style="display:none; background: rgba(255, 0, 0, 0.2); border: 1px solid #ff4444; color: #ffcccc; padding: 12px; margin-bottom: 15px; border-radius: 4px; font-weight: bold; text-align: center; animation: pulse 2s infinite;">
+                    ⚠️ MARKET WARNING
+                </div>
+
                 <div class="terminal-wrapper">
                     <div class="terminal-header">
                         <span class="terminal-title">💻 Live Analysis Terminal</span>
@@ -318,6 +324,31 @@
                             <span class="line-prefix">#</span>
                             <span class="line-text" style="color: #666;">Signals found during the current run will
                                 appear here...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Market News & Sentiment Area -->
+                <div class="terminal-wrapper news-wrapper" style="margin-top: 20px; height: auto; min-height: 250px;">
+                    <div class="terminal-header news-header"
+                        style="background: linear-gradient(90deg, #101020, #050510); border-bottom: 1px solid #202040;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span class="terminal-title" style="color: #aaddff;">📰 Market News & Sentiment</span>
+                            <div id="sentimentBadge"
+                                style="padding: 2px 8px; background: #223; border-radius: 4px; font-weight: bold; border: 1px solid #445; font-size: 0.75em;">
+                                Waiting for data...
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 15px;">
+                            <span class="terminal-info" style="white-space: nowrap;">Live Feed (5s updates)</span>
+                            <button id="refreshNewsBtn" class="btn btn-mini" style="margin: 0; white-space: nowrap;"
+                                onclick="refreshNews()">↻ Refresh</button>
+                        </div>
+                    </div>
+                    <div class="terminal" id="newsFeedList" style="background: #020205 !important;">
+                        <div class="terminal-line" style="color: #666;">
+                            <span class="line-prefix">#</span>
+                            <span class="line-text">Waiting for latest market news...</span>
                         </div>
                     </div>
                 </div>

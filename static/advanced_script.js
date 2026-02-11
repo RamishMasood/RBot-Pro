@@ -94,6 +94,10 @@ socket.on('trade_signal', (trade) => {
     addTradeSignal(trade);
 });
 
+socket.on('market_status', (data) => {
+    updateMarketStatus(data);
+});
+
 // ===== Terminal Functions =====
 
 function addTerminalLine(text, type = 'normal') {
@@ -798,10 +802,6 @@ async function openAnalysisChart(btn) {
             title: 'TARGET 1',
         });
 
-        // Plot Analysis Data (FVG, MB, etc.)
-        if (trade.analysis_data) {
-            plotAnalysisData(chart, candlestickSeries, trade.analysis_data, candles, trade);
-        }
 
         // Add Key items
         addModalKey(`${trade.type} Signal`, trade.type === 'LONG' ? tpColor : slColor);
@@ -1057,3 +1057,94 @@ function plotAnalysisData(chart, series, data, candles, trade) {
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeAnalysisModal();
 });
+
+// ===== Market Status Updates =====
+
+function updateMarketStatus(data) {
+    // 1. Update Sentinel Badge
+    const badge = document.getElementById('sentimentBadge');
+    if (badge) {
+        let color = '#777';
+        if (data.sentiment.includes('BULLISH')) color = '#00ff00';
+        else if (data.sentiment.includes('BEARISH')) color = '#ff4444';
+
+        badge.style.color = color;
+        badge.style.borderColor = color;
+        badge.innerHTML = `BTC SENTIMENT: ${data.sentiment}`;
+    }
+
+    // 2. Update Volatility Warning
+    const warningBox = document.getElementById('marketWarning');
+    if (warningBox) {
+        if (data.volatility_warning) {
+            warningBox.style.display = 'block';
+            warningBox.innerText = data.volatility_warning;
+        } else if (data.news_warning) {
+            warningBox.style.display = 'block';
+            warningBox.innerText = data.news_warning;
+        } else {
+            warningBox.style.display = 'none';
+        }
+    }
+
+    // 3. Update News Feed
+    const feedList = document.getElementById('newsFeedList');
+    if (feedList && data.news_feed) {
+        // Update header info with last sync time
+        const info = document.querySelector('.news-wrapper .terminal-info');
+        if (info) {
+            const now = new Date();
+            info.innerHTML = `Live Feed (last sync: ${now.toLocaleTimeString()})`;
+        }
+        feedList.innerHTML = '';
+        data.news_feed.forEach(item => {
+            const div = document.createElement('div');
+            div.className = 'news-item';
+
+            // Color based on sentiment
+            let sentimentColor = '#888';
+            if (item.sentiment === 'POSITIVE') sentimentColor = '#00ff88';
+            if (item.sentiment === 'NEGATIVE') sentimentColor = '#ff4444';
+
+            // Format Date
+            let dateDisplay = item.pub_date;
+            try {
+                const d = new Date(item.pub_date);
+                if (!isNaN(d.getTime())) {
+                    dateDisplay = d.toLocaleString();
+                }
+            } catch (e) { }
+
+            div.innerHTML = `
+                <div style="margin-bottom: 2px;">
+                    <a href="${item.link}" target="_blank" style="color: #ddd; text-decoration: none; font-weight: bold;">${item.title}</a>
+                </div>
+                <div style="font-size: 0.85em; display: flex; justify-content: space-between;">
+                    <span style="color: #666;">🕒 ${dateDisplay}</span>
+                    <span style="color: ${sentimentColor}; font-weight: bold;">[${item.sentiment}]</span>
+                </div>
+            `;
+            // Add subtle separator
+            div.style.borderBottom = '1px solid #333';
+            div.style.padding = '8px 0';
+            feedList.appendChild(div);
+        });
+    }
+}
+// Refresh News Manually
+window.refreshNews = function () {
+    const btn = document.getElementById('refreshNewsBtn');
+    if (btn) {
+        btn.innerHTML = '↻ Loading...';
+        btn.disabled = true;
+    }
+    socket.emit('refresh_news');
+
+    // Re-enable in 2 seconds (visual feedback)
+    setTimeout(() => {
+        if (btn) {
+            btn.innerHTML = '↻ Refresh';
+            btn.disabled = false;
+        }
+    }, 2000);
+}
