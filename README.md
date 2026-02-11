@@ -16,8 +16,10 @@
 
 <p align="center">
     <img src="https://img.shields.io/badge/Exchanges-8%20Supported-00ff88?style=flat-square&labelColor=1a1a1a" alt="Exchanges" />
+      <img src="https://img.shields.io/badge/OKX%2FKuCoin-Live-ffffff?style=flat-square&labelColor=1a1a1a" alt="Binance/MEXC" />
   <img src="https://img.shields.io/badge/Bitget%2FBybit-Live-00d4ff?style=flat-square&labelColor=1a1a1a" alt="Bitget/Bybit" />
   <img src="https://img.shields.io/badge/OKX%2FKuCoin-Live-ffffff?style=flat-square&labelColor=1a1a1a" alt="OKX/KuCoin" />
+    <img src="https://img.shields.io/badge/Bitget%2FBybit-Live-00d4ff?style=flat-square&labelColor=1a1a1a" alt="Gate.io/HTX" />
   <img src="https://img.shields.io/badge/ICT%20%2F%20SMC-Elite-ff3e3e?style=flat-square&labelColor=1a1a1a" alt="ICT/SMC" />
 </p>
 
