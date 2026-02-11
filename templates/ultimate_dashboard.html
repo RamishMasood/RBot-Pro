@@ -1,0 +1,1400 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RBOT PRO - Ultimate Trading Platform</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        :root {
+            --primary: #0d6efd;
+            --success: #198754;
+            --danger: #dc3545;
+            --warning: #ffc107;
+            --dark: #1a1a2e;
+            --darker: #16213e;
+            --card-bg: #0f3460;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, var(--dark) 0%, var(--darker) 100%);
+            min-height: 100vh;
+            color: #fff;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        .sidebar {
+            background: var(--darker);
+            min-height: 100vh;
+            padding: 20px 0;
+            position: fixed;
+            width: 250px;
+            left: 0;
+            top: 0;
+            z-index: 1000;
+        }
+
+        .sidebar-brand {
+            padding: 20px;
+            text-align: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 20px;
+        }
+
+        .sidebar-brand h3 {
+            color: #00d9ff;
+            font-weight: bold;
+        }
+
+        .sidebar-brand span {
+            color: #00ff88;
+            font-size: 12px;
+        }
+
+        .nav-item {
+            margin: 5px 10px;
+        }
+
+        .nav-link {
+            color: #aaa;
+            padding: 12px 20px;
+            border-radius: 10px;
+            transition: all 0.3s;
+        }
+
+        .nav-link:hover,
+        .nav-link.active {
+            background: var(--primary);
+            color: #fff;
+        }
+
+        .nav-link i {
+            width: 25px;
+        }
+
+        .main-content {
+            margin-left: 250px;
+            padding: 20px;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: none;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .card-header {
+            background: transparent;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 15px 20px;
+            font-weight: bold;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, var(--card-bg) 0%, rgba(15, 52, 96, 0.8) 100%);
+            border-radius: 15px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #00d9ff;
+        }
+
+        .stat-label {
+            color: #aaa;
+            font-size: 0.9rem;
+        }
+
+        .price-up {
+            color: #00ff88;
+        }
+
+        .price-down {
+            color: #ff4757;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary) 0%, #0a5bb5 100%);
+            border: none;
+            border-radius: 10px;
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #00ff88 0%, #00b894 100%);
+            border: none;
+            border-radius: 10px;
+            color: #000;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #ff4757 0%, #c0392b 100%);
+            border: none;
+            border-radius: 10px;
+        }
+
+        .table {
+            color: #fff;
+        }
+
+        .table th {
+            border-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .table td {
+            border-color: rgba(255, 255, 255, 0.05);
+        }
+
+        .form-control {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            border-radius: 10px;
+        }
+
+        .form-control:focus {
+            background: rgba(255, 255, 255, 0.15);
+            border-color: var(--primary);
+            color: #fff;
+        }
+
+        .strategy-card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .strategy-card:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .strategy-card.selected {
+            border: 2px solid var(--primary);
+            background: rgba(13, 110, 253, 0.2);
+        }
+
+        .tab-content {
+            padding: 20px 0;
+        }
+
+        .price-ticker {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .price-item {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 10px 15px;
+            border-radius: 10px;
+            min-width: 150px;
+        }
+
+        .price-item .symbol {
+            font-weight: bold;
+            color: #00d9ff;
+        }
+
+        .price-item .price {
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+
+        .trade-form {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 20px;
+            border-radius: 15px;
+        }
+
+        .order-type-btn {
+            width: 50%;
+            border-radius: 10px 10px 0 0;
+        }
+
+        .position-badge {
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 0.8rem;
+        }
+
+        .long-position {
+            background: rgba(0, 255, 136, 0.2);
+            color: #00ff88;
+        }
+
+        .short-position {
+            background: rgba(255, 71, 87, 0.2);
+            color: #ff4757;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #666;
+        }
+
+        .status-dot.active {
+            background: #00ff88;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        .chart-container {
+            position: relative;
+            height: 400px;
+        }
+
+        .grid-strategies {
+            display: grid;
+
+            /* Chart container */
+            .chart-container-pro {
+                height: 400px;
+                position: relative;
+                background: rgba(15, 52, 96, 0.5);
+                border-radius: 8px;
+                overflow: hidden;
+                border: 1px solid rgba(0, 217, 255, 0.2);
+            }
+
+            .chart-loading {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                height: 100%;
+                color: #00d9ff;
+            }
+
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 10px;
+        }
+
+        .strategy-tag {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 0.8rem;
+            margin: 2px;
+        }
+
+        .tag-buy {
+            background: rgba(0, 255, 136, 0.2);
+            color: #00ff88;
+        }
+
+        .tag-sell {
+            background: rgba(255, 71, 87, 0.2);
+            color: #ff4757;
+        }
+
+        .tag-hold {
+            background: rgba(255, 193, 7, 0.2);
+            color: #ffc107;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div class="sidebar-brand">
+            <h3><i class="fas fa-robot"></i> RBOT PRO</h3>
+            <span>Ultimate Trading v4.0</span>
+        </div>
+
+        <ul class="nav flex-column">
+            <li class="nav-item">
+                <a class="nav-link active" href="#dashboard" data-bs-toggle="tab">
+                    <i class="fas fa-chart-line"></i> Dashboard
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#trading" data-bs-toggle="tab">
+                    <i class="fas fa-exchange-alt"></i> Trading
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#strategies" data-bs-toggle="tab">
+                    <i class="fas fa-brain"></i> Strategies
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#backtest" data-bs-toggle="tab">
+                    <i class="fas fa-history"></i> Backtest
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#autotrade" data-bs-toggle="tab">
+                    <i class="fas fa-robot"></i> Auto Trade
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#futures" data-bs-toggle="tab">
+                    <i class="fas fa-bolt"></i> Futures
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#portfolio" data-bs-toggle="tab">
+                    <i class="fas fa-wallet"></i> Portfolio
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#settings" data-bs-toggle="tab">
+                    <i class="fas fa-cog"></i> Settings
+                </a>
+            </li>
+        </ul>
+
+        <div style="position: absolute; bottom: 20px; left: 20px; right: 20px;">
+            <div class="auto-trade-status">
+                <div class="status-dot" id="botStatus"></div>
+                <span id="botStatusText">Bot Offline</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <div class="tab-content">
+
+            <!-- DASHBOARD -->
+            <div class="tab-pane fade show active" id="dashboard">
+                <h2 class="mb-4"><i class="fas fa-chart-line"></i> Trading Dashboard</h2>
+
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <div class="stat-card">
+                            <div class="stat-value" id="totalBalance">$10,000.00</div>
+                            <div class="stat-label">Total Balance</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="stat-card">
+                            <div class="stat-value price-up" id="dailyPnL">+$0.00</div>
+                            <div class="stat-label">Daily P&L</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="stat-card">
+                            <div class="stat-value" id="winRate">0%</div>
+                            <div class="stat-label">Win Rate</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="stat-card">
+                            <div class="stat-value" id="openPositions">0</div>
+                            <div class="stat-label">Open Positions</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <div class="stat-card">
+                            <div class="stat-value" id="totalTrades">0</div>
+                            <div class="stat-label">Total Trades</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="stat-card">
+                            <div class="stat-value" id="profitFactor">1.0</div>
+                            <div class="stat-label">Profit Factor</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="stat-card">
+                            <div class="stat-value price-up" id="totalProfit">$0.00</div>
+                            <div class="stat-label">Total Profit</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="stat-card">
+                            <div class="stat-label">Last Updated</div>
+                            <div style="font-size: 0.85rem; color: #00d9ff;" id="lastUpdate">Just now</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <i class="fas fa-bitcoin"></i> Real-Time Prices (Binance Public API)
+                    </div>
+                    <div class="card-body">
+                        <div class="price-ticker" id="priceTicker"></div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-8">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="fas fa-chart-area"></i> Price Chart
+                                <select class="form-control form-control-sm float-end" style="width: 150px;"
+                                    id="chartSymbol">
+                                    <option value="BTC/USDT">BTC/USDT</option>
+                                    <option value="ETH/USDT">ETH/USDT</option>
+                                    <option value="SOL/USDT">SOL/USDT</option>
+                                </select>
+                            </div>
+                            <div class="card-body">
+                                <div class="chart-container">
+                                    <canvas id="priceChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="fas fa-list"></i> Recent Trades
+                            </div>
+                            <div class="card-body" style="max-height: 400px; overflow-y: auto;">
+                                <table class="table" id="recentTrades">
+                                    <thead>
+                                        <tr>
+                                            <th>Time</th>
+                                            <th>Symbol</th>
+                                            <th>Side</th>
+                                            <th>Qty</th>
+                                            <th>Price</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TRADING -->
+            <div class="tab-pane fade" id="trading">
+                <h2 class="mb-4"><i class="fas fa-exchange-alt"></i> Trading Panel</h2>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="fas fa-hand-holding-usd"></i> Place Order
+                            </div>
+                            <div class="card-body">
+                                <div class="trade-form">
+                                    <div class="row mb-3">
+                                        <div class="col-6">
+                                            <button class="btn btn-success w-100" onclick="setOrderSide('buy')">
+                                                <i class="fas fa-arrow-up"></i> BUY
+                                            </button>
+                                        </div>
+                                        <div class="col-6">
+                                            <button class="btn btn-danger w-100" onclick="setOrderSide('sell')">
+                                                <i class="fas fa-arrow-down"></i> SELL
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label">Symbol</label>
+                                        <select class="form-control" id="tradeSymbol">
+                                            <optgroup label="SPOT">
+                                                <option value="BTC/USDT">BTC/USDT</option>
+                                                <option value="ETH/USDT">ETH/USDT</option>
+                                                <option value="SOL/USDT">SOL/USDT</option>
+                                                <option value="BNB/USDT">BNB/USDT</option>
+                                            </optgroup>
+                                            <optgroup label="FUTURES">
+                                                <option value="BTC/USDT_PERP">BTC/USDT_PERP</option>
+                                                <option value="ETH/USDT_PERP">ETH/USDT_PERP</option>
+                                            </optgroup>
+                                        </select>
+
+
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label">Order Type</label>
+                                        <select class="form-control" id="orderType">
+                                            <option value="market">Market</option>
+                                            <option value="limit">Limit</option>
+                                        </select>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label">Quantity</label>
+                                        <input type="number" class="form-control" id="orderQuantity" placeholder="0.00"
+                                            step="0.001">
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label">Mode</label>
+                                        <select class="form-control" id="tradeMode">
+                                            <option value="paper">PAPER TRADING ($10,000 Demo)</option>
+                                            <option value="live">LIVE TRADING (Real Money)</option>
+                                        </select>
+                                    </div>
+
+                                    <button class="btn btn-primary w-100" onclick="placeOrder()">
+                                        <i class="fas fa-paper-plane"></i> Place Order
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="fas fa-book"></i> Open Orders
+                            </div>
+                            <div class="card-body">
+                                <table class="table" id="openOrdersTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Symbol</th>
+                                            <th>Side</th>
+                                            <th>Type</th>
+                                            <th>Qty</th>
+                                            <th>Price</th>
+                                            <th>Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STRATEGIES -->
+            <div class="tab-pane fade" id="strategies">
+                <h2 class="mb-4"><i class="fas fa-brain"></i> Trading Strategies</h2>
+
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="fas fa-list"></i> Available Strategies (20+)
+                            </div>
+                            <div class="card-body">
+                                <div class="grid-strategies" id="strategyList"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-8">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="fas fa-signal"></i> Live Strategy Signals
+                            </div>
+                            <div class="card-body">
+                                <table class="table" id="strategySignalsTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Strategy</th>
+                                            <th>Symbol</th>
+                                            <th>Signal</th>
+                                            <th>Confidence</th>
+                                            <th>Stop Loss</th>
+                                            <th>Take Profit</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="card mt-3">
+                            <div class="card-header">
+                                <i class="fas fa-sliders-h"></i> Strategy Parameters (Tuning)
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <label class="form-label">Strategy</label>
+                                    <select class="form-control" id="paramStrategySelect"
+                                        onchange="onParamStrategyChange()"></select>
+                                </div>
+                                <div id="paramForm"></div>
+                                <div class="mt-3">
+                                    <button class="btn btn-primary" onclick="saveStrategyParams()"><i
+                                            class="fas fa-save"></i> Save Parameters</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- BACKTEST -->
+            <div class="tab-pane fade" id="backtest">
+                <h2 class="mb-4"><i class="fas fa-history"></i> Backtesting</h2>
+
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="fas fa-cog"></i> Backtest Settings
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <label class="form-label">Strategy</label>
+                                    <select class="form-control" id="backtestStrategy">
+                                        <option value="supertrend_rsi">SuperTrend + RSI</option>
+                                        <option value="vwap_mean_reversion">VWAP Mean Reversion</option>
+                                        <option value="ichimoku">Ichimoku Cloud</option>
+                                        <option value="adr">ADR Strategy</option>
+                                        <option value="volume_profile">Volume Profile</option>
+                                        <option value="triple_ema">Triple EMA</option>
+                                        <option value="turtle">Turtle Trading</option>
+                                        <option value="bollinger_squeeze">Bollinger Squeeze</option>
+                                    </select>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Symbol</label>
+                                    <select class="form-control" id="backtestSymbol">
+                                        <option value="BTC/USDT">BTC/USDT</option>
+                                        <option value="ETH/USDT">ETH/USDT</option>
+                                        <option value="SOL/USDT">SOL/USDT</option>
+                                    </select>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Timeframe</label>
+                                    <select class="form-control" id="backtestTimeframe">
+                                        <option value="1h">1 Hour</option>
+                                        <option value="4h">4 Hours</option>
+                                        <option value="1d">1 Day</option>
+                                    </select>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Initial Capital</label>
+                                    <input type="number" class="form-control" id="backtestCapital" value="10000">
+                                </div>
+
+                                <button class="btn btn-primary w-100" onclick="runBacktest()">
+                                    <i class="fas fa-play"></i> Run Backtest
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-8">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="fas fa-chart-line"></i> Backtest Results
+                            </div>
+                            <div class="card-body">
+                                <div class="chart-container">
+                                    <canvas id="backtestChart"></canvas>
+                                </div>
+                                <div id="backtestResults"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AUTO TRADE -->
+            <div class="tab-pane fade" id="autotrade">
+                <h2 class="mb-4"><i class="fas fa-robot"></i> Auto-Trading Bot</h2>
+
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="fas fa-power-off"></i> Bot Control
+                            </div>
+                            <div class="card-body text-center">
+                                <div class="feature-icon">
+                                    <i class="fas fa-robot" style="color: #00d9ff; font-size: 3rem;"></i>
+                                </div>
+                                <h4 id="botStatusTitle">Bot Offline</h4>
+                                <p class="text-muted">Start the bot to begin automated trading</p>
+
+                                <div class="mb-3">
+                                    <button class="btn btn-success btn-lg" id="botStatusBtn" onclick="toggleBot()">
+                                        <i class="fas fa-play"></i> START BOT
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card mt-3">
+                            <div class="card-header">
+                                <i class="fas fa-cog"></i> Bot Settings
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <label class="form-label">Mode</label>
+                                    <select class="form-control" id="botMode">
+                                        <option value="paper">Paper Trading</option>
+                                        <option value="live">Live Trading</option>
+                                    </select>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Strategy</label>
+                                    <select class="form-control" id="botStrategy">
+                                        <option value="supertrend_rsi">SuperTrend + RSI</option>
+                                        <option value="vwap_mean_reversion">VWAP Mean Reversion</option>
+                                    </select>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Symbols</label>
+                                    <input type="text" class="form-control" id="botSymbols"
+                                        value="BTC/USDT,ETH/USDT,SOL/USDT">
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Min Confidence (%)</label>
+                                    <input type="range" class="form-range" id="botMinConfidence" min="50" max="90"
+                                        value="70">
+                                    <span id="botConfidenceValue">70%</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-8">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="fas fa-history"></i> Bot Activity Log
+                            </div>
+                            <div class="card-body">
+                                <div id="botLog"
+                                    style="height: 400px; overflow-y: auto; font-family: monospace; font-size: 0.85rem;">
+                                    <p class="text-muted">Bot log will appear here...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- FUTURES -->
+            <div class="tab-pane fade" id="futures">
+                <h2 class="mb-4"><i class="fas fa-bolt"></i> Futures Trading</h2>
+
+                <div class="alert alert-info">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>Warning:</strong> Leverage trading involves high risk!
+                </div>
+
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <div class="stat-card">
+                            <div class="stat-value" style="color: #00ff88;">$10,000</div>
+                            <div class="stat-label">Available Balance</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="stat-card">
+                            <div class="stat-value">0</div>
+                            <div class="stat-label">Open Positions</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="stat-card">
+                            <div class="stat-value price-up">$0.00</div>
+                            <div class="stat-label">Unrealized P&L</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="stat-card">
+                            <label class="stat-label">Leverage</label>
+                            <select class="form-control" id="leverage">
+                                <option value="1">1x</option>
+                                <option value="2">2x</option>
+                                <option value="5">5x</option>
+                                <option value="10">10x</option>
+                                <option value="20">20x</option>
+                                <option value="50">50x</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="fas fa-exchange-alt"></i> Open Position
+                            </div>
+                            <div class="card-body">
+                                <div class="row mb-3">
+                                    <div class="col-6">
+                                        <button class="btn btn-success w-100" onclick="openFutures('long')">
+                                            <i class="fas fa-arrow-up"></i> OPEN LONG
+                                        </button>
+                                    </div>
+                                    <div class="col-6">
+                                        <button class="btn btn-danger w-100" onclick="openFutures('short')">
+                                            <i class="fas fa-arrow-down"></i> OPEN SHORT
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Symbol</label>
+                                    <select class="form-control" id="futuresSymbol">
+                                        <option value="BTC/USDT_PERP">BTC/USDT_PERP</option>
+                                        <option value="ETH/USDT_PERP">ETH/USDT_PERP</option>
+                                    </select>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Quantity</label>
+                                    <input type="number" class="form-control" id="futuresQuantity" placeholder="0">
+                                </div>
+
+                                <button class="btn btn-primary w-100" onclick="closeFutures()">
+                                    <i class="fas fa-times"></i> CLOSE POSITION
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="fas fa-list"></i> Active Positions
+                            </div>
+                            <div class="card-body">
+                                <table class="table" id="positionsTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Symbol</th>
+                                            <th>Side</th>
+                                            <th>Size</th>
+                                            <th>Entry</th>
+                                            <th>Mark</th>
+                                            <th>P&L</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PORTFOLIO -->
+            <div class="tab-pane fade" id="portfolio">
+                <h2 class="mb-4"><i class="fas fa-wallet"></i> Portfolio</h2>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="fas fa-coins"></i> Holdings
+                            </div>
+                            <div class="card-body">
+                                <table class="table" id="holdingsTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Asset</th>
+                                            <th>Balance</th>
+                                            <th>Value (USD)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td>USDT</td>
+                                            <td>$10,000.00</td>
+                                            <td>$10,000.00</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="fas fa-history"></i> Trade History
+                            </div>
+                            <div class="card-body">
+                                <table class="table" id="tradeHistoryTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Time</th>
+                                            <th>Symbol</th>
+                                            <th>Side</th>
+                                            <th>Qty</th>
+                                            <th>Price</th>
+                                            <th>P&L</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SETTINGS -->
+            <div class="tab-pane fade" id="settings">
+                <h2 class="mb-4"><i class="fas fa-cog"></i> Settings</h2>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="fas fa-key"></i> Exchange API Keys
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <label class="form-label">Exchange</label>
+                                    <select class="form-control" id="apiExchange">
+                                        <option value="mexc">MEXC</option>
+                                        <option value="binance">Binance</option>
+                                        <option value="bitget">Bitget</option>
+                                        <option value="bybit">Bybit</option>
+                                        <option value="okx">OKX</option>
+                                        <option value="kucoin">KuCoin</option>
+                                        <option value="gateio">Gate.io</option>
+                                        <option value="htx">HTX</option>
+                                    </select>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">API Key</label>
+                                    <input type="text" class="form-control api-key-input" placeholder="Enter API Key">
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">API Secret</label>
+                                    <input type="password" class="form-control api-key-input"
+                                        placeholder="Enter API Secret">
+                                </div>
+
+                                <div class="form-check form-switch mb-3">
+                                    <input class="form-check-input" type="checkbox" id="testnetMode">
+                                    <label class="form-check-label">Use Testnet</label>
+                                </div>
+
+                                <button class="btn btn-primary">
+                                    <i class="fas fa-save"></i> Save API Keys
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="fas fa-shield-alt"></i> Risk Management
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <label class="form-label">Max Position Size (%)</label>
+                                    <input type="number" class="form-control" value="10">
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Stop Loss (%)</label>
+                                    <input type="number" class="form-control" value="2">
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Take Profit (%)</label>
+                                    <input type="number" class="form-control" value="5">
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Daily Loss Limit (%)</label>
+                                    <input type="number" class="form-control" value="5">
+                                </div>
+
+                                <button class="btn btn-primary">
+                                    <i class="fas fa-save"></i> Save Risk Settings
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        // RBOT PRO Ultimate Dashboard JavaScript
+        const API_URL = 'http://localhost:5000';
+        let priceChart, backtestChart;
+        let botRunning = false;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function () {
+            initCharts();
+            loadPrices();
+            loadStrategies();
+            loadAnalytics();
+            loadSignals();
+            loadPortfolio();
+            updateBotSettings();
+            loadBotLogs();
+
+            // Set up periodic updates
+            setInterval(loadPrices, 5000);
+            setInterval(loadSignals, 10000);
+            setInterval(loadAnalytics, 15000);
+            setInterval(loadBotLogs, 10000);
+            setInterval(loadLiveChart, 5000);
+            loadLiveChart();
+
+            // Update confidence display
+            const confInput = document.getElementById('botMinConfidence');
+            if (confInput) {
+                confInput.addEventListener('input', function (e) {
+                    document.getElementById('botConfidenceValue').textContent = e.target.value + '%';
+                });
+            }
+
+            // Add tab change listeners
+            const tabList = document.querySelectorAll('a[data-bs-toggle="tab"]');
+            tabList.forEach(tab => {
+                tab.addEventListener('shown.bs.tab', function () {
+                    const tabId = this.getAttribute('href').substring(1);
+                    if (tabId === 'portfolio') { loadPortfolio(); }
+                    if (tabId === 'strategies') { loadStrategies(); loadSignals(); }
+                    if (tabId === 'dashboard') { loadAnalytics(); }
+                    if (tabId === 'trading') { loadLiveChart(); }
+                });
+            });
+        });
+
+        // Charts
+        function initCharts() {
+            const priceCtx = document.getElementById('priceChart');
+            if (priceCtx) {
+                priceChart = new Chart(priceCtx.getContext('2d'), {
+                    type: 'line',
+                    data: { labels: [], datasets: [{ label: 'Price', data: [], borderColor: '#00d9ff', backgroundColor: 'rgba(0, 217, 255, 0.1)', fill: true }] },
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { grid: { color: 'rgba(255,255,255,0.1)' } } } }
+                });
+            }
+        }
+
+        // Load Prices  
+        async function loadPrices() {
+            try {
+                const response = await fetch(`${API_URL}/api/prices`);
+                const prices = await response.json();
+                const container = document.getElementById('priceTicker');
+                if (container) {
+                    container.innerHTML = prices.map(p => `
+                        <div class="price-item">
+                            <div class="symbol">${p.symbol}</div>
+                            <div class="price">$${p.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+                            <div class="${p.change >= 0 ? 'price-up' : 'price-down'}">${p.change >= 0 ? '+' : ''}${p.change.toFixed(2)}%</div>
+                        </div>
+                    `).join('');
+                }
+            } catch (e) { console.error('Error loading prices:', e); }
+        }
+
+        // Load Strategies
+        async function loadStrategies() {
+            try {
+                const response = await fetch(`${API_URL}/api/strategies`);
+                const data = await response.json();
+                const container = document.getElementById('strategyList');
+                if (container && data.strategies) {
+                    container.innerHTML = Object.entries(data.strategies).map(([key, strategy]) => `
+                        <div class="strategy-card">
+                            <div class="strategy-name">${strategy.name}</div>
+                            <div class="strategy-param">${JSON.stringify(strategy.parameters).substring(0, 50)}...</div>
+                            <div class="strategy-status ${strategy.enabled ? 'enabled' : 'disabled'}">
+                                ${strategy.enabled ? '✓ Active' : '○ Inactive'}
+                            </div>
+                        </div>
+                    `).join('');
+                }
+            } catch (e) { console.error('Error loading strategies:', e); }
+        }
+
+        // Load Analytics
+        async function loadAnalytics() {
+            try {
+                const response = await fetch(`${API_URL}/api/analytics`);
+                const data = await response.json();
+                if (data.overview) {
+                    const o = data.overview;
+                    document.getElementById('totalTrades') && (document.getElementById('totalTrades').textContent = o.total_trades || 0);
+                    document.getElementById('winRate') && (document.getElementById('winRate').textContent = o.win_rate + '%' || '0%');
+                    document.getElementById('profitFactor') && (document.getElementById('profitFactor').textContent = o.profit_factor || '0');
+                    document.getElementById('totalProfit') && (document.getElementById('totalProfit').textContent = '$' + (o.total_profit || 0).toFixed(2));
+                }
+            } catch (e) { console.error('Error loading analytics:', e); }
+        }
+
+        // Load Signals
+        async function loadSignals() {
+            try {
+                const response = await fetch(`${API_URL}/api/signals`);
+                const data = await response.json();
+                const table = document.querySelector('#strategySignalsTable tbody');
+                if (table && data.signals) {
+                    table.innerHTML = data.signals.slice(0, 20).map(s => `
+                        <tr>
+                            <td>${s.strategy}</td>
+                            <td>${s.symbol}</td>
+                            <td><span class="badge bg-${s.signal === 'BUY' ? 'success' : s.signal === 'SELL' ? 'danger' : 'warning'}">${s.signal}</span></td>
+                            <td>${s.confidence}%</td>
+                            <td>$${s.stop_loss}</td>
+                            <td>$${s.take_profit}</td>
+                        </tr>
+                    `).join('');
+                }
+            } catch (e) { console.error('Error loading signals:', e); }
+        }
+
+        // Load Live Chart
+        async function loadLiveChart() {
+            try {
+                const symbol = document.getElementById('chartSymbolSelect')?.value || 'BTC/USDT';
+                const response = await fetch(`${API_URL}/api/chart/${symbol}`);
+                const data = await response.json();
+
+                const container = document.getElementById('liveChartContainer');
+                if (!container || !data.klines) return;
+
+                // Create candlestick data
+                const candleData = data.klines.map(k => ({
+                    time: Math.floor(k.timestamp / 1000),
+                    open: k.open,
+                    high: k.high,
+                    low: k.low,
+                    close: k.close
+                }));
+
+                if (window.lwChart) window.lwChart.remove();
+
+                const chartOptions = {
+                    layout: {
+                        textColor: '#d1d5db',
+                        background: { color: '#0f3460' },
+                    },
+                    timeScale: { timeVisible: true, secondsVisible: false },
+                    height: 400,
+                };
+
+                window.lwChart = LightweightCharts.createChart(container, chartOptions);
+                const candleSeries = window.lwChart.addCandlestickSeries({
+                    upColor: '#4ade80',
+                    downColor: '#f87171',
+                    borderDownColor: '#f87171',
+                    borderUpColor: '#4ade80',
+                    wickDownColor: '#f87171',
+                    wickUpColor: '#4ade80',
+                });
+
+                candleSeries.setData(candleData);
+                window.lwChart.timeScale().fitContent();
+
+            } catch (e) { console.error('Error loading chart:', e); }
+        }
+        // Update Bot Settings
+        function updateBotSettings() {
+            const statusBtn = document.getElementById('botStatusBtn');
+            if (statusBtn) {
+                statusBtn.addEventListener('click', function () { toggleBot(); });
+            }
+        }
+
+        // Toggle Bot
+        async function toggleBot() {
+            const endpoint = botRunning ? '/api/bot/stop' : '/api/bot/start';
+            try {
+                const response = await fetch(`${API_URL}${endpoint}`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+                const data = await response.json();
+                botRunning = !botRunning;
+                const statusBtn = document.getElementById('botStatusBtn');
+                if (statusBtn) {
+                    statusBtn.textContent = botRunning ? 'STOP BOT' : 'START BOT';
+                    statusBtn.className = botRunning ? 'btn btn-danger' : 'btn btn-success';
+                }
+                loadBotLogs();
+            } catch (e) { console.error('Error toggling bot:', e); }
+        }
+
+        // Load Bot Logs
+        async function loadBotLogs() {
+            try {
+                const response = await fetch(`${API_URL}/api/bot/logs`);
+                const data = await response.json();
+                const logDiv = document.getElementById('botLog');
+                if (logDiv && data.logs) {
+                    logDiv.innerHTML = data.logs.map(log => `<div class="log-entry"><span class="timestamp">[${log.timestamp}]</span> <span class="level-${log.level.toLowerCase()}">${log.level}</span> ${log.message}</div>`).join('');
+                }
+            } catch (e) { console.error('Error loading bot logs:', e); }
+        }
+
+        // Load Portfolio
+        async function loadPortfolio() {
+            try {
+                const response = await fetch(`${API_URL}/api/portfolio`);
+                const data = await response.json();
+                const hTable = document.querySelector('#holdingsTable tbody');
+                const tTable = document.querySelector('#tradeHistoryTable tbody');
+                if (hTable && data.holdings) {
+                    hTable.innerHTML = data.holdings.map(h => `<tr><td>${h.asset}</td><td>${h.balance.toFixed(6)}</td><td>$${h.value.toFixed(2)}</td></tr>`).join('');
+                }
+                if (tTable && data.trade_history) {
+                    tTable.innerHTML = data.trade_history.slice(-20).map(t => `<tr><td>${t.time}</td><td>${t.symbol}</td><td>${t.side}</td><td>${t.quantity}</td><td>$${t.price.toFixed(2)}</td><td>$0</td></tr>`).join('');
+                }
+            } catch (e) { console.error('Error loading portfolio:', e); }
+        }
+
+        // Place Order
+        async function placeOrder() {
+            const symbol = document.getElementById('symbolSelect')?.value || 'BTC/USDT';
+            const quantity = document.getElementById('quantityInput')?.value || 0;
+            const side = document.getElementById('sideSelect')?.value || 'BUY';
+            try {
+                const response = await fetch(`${API_URL}/api/order`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symbol, quantity: parseFloat(quantity), side })
+                });
+                const data = await response.json();
+                if (data.status === 'success') {
+                    alert(`Order placed successfully! New balance: $${data.balance.toFixed(2)}`);
+                    loadPortfolio();
+                }
+            } catch (e) { console.error('Error placing order:', e); }
+        }
+
+        // Run Backtest
+        async function runBacktest() {
+            const strategy = document.getElementById('backtestStrategy')?.value || 'supertrend_rsi';
+            const symbol = document.getElementById('backtestSymbol')?.value || 'BTC/USDT';
+            const timeframe = document.getElementById('backtestTimeframe')?.value || '1h';
+            const capital = document.getElementById('backtestCapital')?.value || 10000;
+            try {
+                const response = await fetch(`${API_URL}/api/backtest`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ strategy, symbol, timeframe, capital: parseFloat(capital) })
+                });
+                const data = await response.json();
+                if (data.results) {
+                    const r = data.results;
+                    document.getElementById('backtestResults').innerHTML = `
+                        <h5>Backtest Results</h5>
+                        <div class="row">
+                            <div class="col-md-6"><div class="stat-card"><div class="stat-value">${r.total_return_pct}%</div><div class="stat-label">Total Return</div></div></div>
+                            <div class="col-md-6"><div class="stat-card"><div class="stat-value">${r.win_rate}%</div><div class="stat-label">Win Rate</div></div></div>
+                            <div class="col-md-6"><div class="stat-card"><div class="stat-value">${r.total_trades}</div><div class="stat-label">Total Trades</div></div></div>
+                            <div class="col-md-6"><div class="stat-card"><div class="stat-value">${r.profit_factor}</div><div class="stat-label">Profit Factor</div></div></div>
+                        </div>
+                    `;
+                }
+            } catch (e) { console.error('Error running backtest:', e); }
+        }
+
+        // Strategy Parameter Tuning: load and save
+        async function loadStrategyParams() {
+            try {
+                const resp = await fetch(`${API_URL}/api/strategy_params`);
+                const data = await resp.json();
+                const select = document.getElementById('paramStrategySelect');
+                if (!select) return;
+                select.innerHTML = Object.keys(data.params).map(k => `<option value="${k}">${k}</option>`).join('');
+                // initialize form for first strategy
+                onParamStrategyChange();
+            } catch (e) { console.error('Error loading strategy params:', e); }
+        }
+
+        function onParamStrategyChange() {
+            const sel = document.getElementById('paramStrategySelect');
+            const name = sel?.value;
+            const form = document.getElementById('paramForm');
+            if (!name || !form) return;
+            fetch(`${API_URL}/api/strategy_params`).then(r => r.json()).then(data => {
+                const params = data.params[name] || {};
+                form.innerHTML = Object.entries(params).map(([k, v]) => `
+                    <div class="mb-2">
+                        <label class="form-label">${k}</label>
+                        <input class="form-control" id="param_${k}" value="${v}" />
+                    </div>
+                `).join('');
+            }).catch(e => console.error(e));
+        }
+
+        async function saveStrategyParams() {
+            const sel = document.getElementById('paramStrategySelect');
+            const name = sel?.value;
+            if (!name) return alert('Select a strategy');
+            const form = document.getElementById('paramForm');
+            const inputs = form.querySelectorAll('input');
+            const params = {};
+            inputs.forEach(inp => {
+                const id = inp.id.replace('param_', '');
+                const raw = inp.value;
+                // try to coerce numbers
+                const num = Number(raw);
+                params[id] = isNaN(num) ? raw : num;
+            });
+
+            try {
+                const resp = await fetch(`${API_URL}/api/strategy_params`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ strategy: name, params })
+                });
+                const data = await resp.json();
+                if (data.status === 'success') {
+                    alert('Parameters saved');
+                    loadStrategies();
+                } else {
+                    alert('Error saving parameters: ' + (data.message || JSON.stringify(data)));
+                }
+            } catch (e) { console.error('Error saving params:', e); alert('Save failed'); }
+        }
+
+        // initialize params panel
+        loadStrategyParams();
+
+        // Futures functions
+        function openFutures(side) { alert(`Open ${side.toUpperCase()} position`); }
+        function closeFutures() { alert('Close position'); }
+    </script>

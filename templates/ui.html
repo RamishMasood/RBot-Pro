@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RBot Pro | Multi-Exchange Technical Analysis</title>
+    <meta name="description"
+        content="RBot Pro - Advanced Multi-Exchange Real-Time Technical Analysis Signal Generator supporting MEXC, Binance, Bitget, Bybit, OKX, KuCoin, Gate.io, HTX">
+    <script src="{{ url_for('static', filename='socket.io.min.js') }}"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='advanced_style.css') }}">
+</head>
+
+<body>
+    <div class="main-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1>🔥 RBot Pro | Real-Time Complete Technical Analysis</h1>
+                <p>Advanced Multi-Exchange Trading Signal Generator — All Exchanges Supported</p>
+            </div>
+            <div class="status-bar">
+                <span class="status-indicator" id="statusIndicator">●</span>
+                <span id="statusText">Disconnected</span>
+            </div>
+        </header>
+
+        <div class="main-content">
+            <!-- Sidebar Settings -->
+            <aside class="sidebar">
+                <div class="sidebar-section">
+                    <h3>⚙️ Configuration</h3>
+
+                    <!-- Exchange Selector (Multi-Select) -->
+                    <div class="config-group">
+                        <label>🏢 Select Exchanges</label>
+                        <div class="selector-controls">
+                            <button class="btn-mini" onclick="selectAllExchanges()">Select All</button>
+                            <button class="btn-mini" onclick="deselectAllExchanges()">Deselect All</button>
+                        </div>
+                        <div id="exchangeList" class="checkbox-group exchange-grid">
+                            <label class="exchange-label mexc"><input type="checkbox" value="MEXC" checked> <span
+                                    class="exchange-icon">🟢</span> MEXC</label>
+                            <label class="exchange-label binance"><input type="checkbox" value="Binance" checked> <span
+                                    class="exchange-icon">🟡</span> Binance</label>
+                            <label class="exchange-label bitget"><input type="checkbox" value="Bitget"> <span
+                                    class="exchange-icon">🔵</span> Bitget</label>
+                            <label class="exchange-label bybit"><input type="checkbox" value="Bybit"> <span
+                                    class="exchange-icon">🟠</span> Bybit</label>
+                            <label class="exchange-label okx"><input type="checkbox" value="OKX"> <span
+                                    class="exchange-icon">⚪</span> OKX</label>
+                            <label class="exchange-label kucoin"><input type="checkbox" value="KuCoin"> <span
+                                    class="exchange-icon">🟢</span> KuCoin</label>
+                            <label class="exchange-label gateio"><input type="checkbox" value="GateIO"> <span
+                                    class="exchange-icon">🔷</span> Gate.io</label>
+                            <label class="exchange-label htx"><input type="checkbox" value="HTX"> <span
+                                    class="exchange-icon">🔶</span> HTX</label>
+                        </div>
+                        <div class="exchange-info-badge">
+                            <span id="selectedExchangesCount">2</span> exchange(s) selected
+                        </div>
+                    </div>
+
+                    <!-- Symbols Selector -->
+                    <div class="config-group">
+                        <label>📊 Select Cryptocurrencies</label>
+                        <div class="selector-controls">
+                            <button class="btn-mini" onclick="selectAllSymbols()">Select All</button>
+                            <button class="btn-mini" onclick="deselectAllSymbols()">Deselect All</button>
+                        </div>
+                        <div class="coin-search-box">
+                            <input type="text" id="coinSearchInput" placeholder="🔍 Search coins..."
+                                oninput="searchSymbols(this.value)" autocomplete="off">
+                        </div>
+                        <div id="symbolList" class="checkbox-group">
+                            <label><input type="checkbox" value="BTCUSDT" checked> Bitcoin</label>
+                            <label><input type="checkbox" value="ETHUSDT" checked> Ethereum</label>
+                            <label><input type="checkbox" value="SOLUSDT" checked> Solana</label>
+                            <label><input type="checkbox" value="BNBUSDT" checked> Binance</label>
+                            <label><input type="checkbox" value="XRPUSDT" checked> XRP</label>
+                        </div>
+                        <div class="add-coin-box">
+                            <input type="text" id="addCoinInput" placeholder="e.g. NMRUSDT" autocomplete="off"
+                                onkeydown="if(event.key==='Enter'){addCustomCoin(); event.preventDefault();}">
+                            <button class="btn-mini add-coin-btn" onclick="addCustomCoin()">+ Add</button>
+                        </div>
+                        <div class="load-coins-btn">
+                            <button class="btn-mini secondary" onclick="loadAvailableCoins()">Load Top Coins (All
+                                Selected)</button>
+                        </div>
+                    </div>
+
+                    <!-- Indicators Selector -->
+                    <div class="config-group">
+                        <label>📈 Select Indicators</label>
+                        <div class="selector-controls">
+                            <button class="btn-mini" onclick="selectAllIndicators()">Select All</button>
+                            <button class="btn-mini" onclick="deselectAllIndicators()">Deselect All</button>
+                        </div>
+                        <div id="indicatorList" class="checkbox-group">
+                            <div class="indicator-category"
+                                style="grid-column: 1 / -1; font-weight: bold; color: #ff3e3e; margin-top: 10px; border-bottom: 1px solid #333;">
+                                🔥 ELITE 2026 INDICATORS</div>
+                            <label><input type="checkbox" value="CHOP" checked> Choppiness Index</label>
+                            <label><input type="checkbox" value="VI" checked> Vortex Indicator</label>
+                            <label><input type="checkbox" value="STC" checked> Schaff Trend Cycle</label>
+                            <label><input type="checkbox" value="DON" checked> Donchian Channels</label>
+                            <label><input type="checkbox" value="CHoCH" checked> SMC CHoCH</label>
+                            <label><input type="checkbox" value="KC" checked> Keltner Channels</label>
+                            <label><input type="checkbox" value="UTBOT" checked> UT Bot Alerts</label>
+                            <label><input type="checkbox" value="UO" checked> Ultimate Oscillator</label>
+                            <label><input type="checkbox" value="STDEV" checked> Standard Deviation</label>
+                            <label><input type="checkbox" value="VP" checked> Volume Profile</label>
+                            <label><input type="checkbox" value="SUPDEM" checked> Supply/Demand Zones</label>
+                            <label><input type="checkbox" value="FIB" checked> Fibonacci Retracement</label>
+                            <label><input type="checkbox" value="ICT_WD" checked> ICT Wealth Division</label>
+
+                            <div class="indicator-category"
+                                style="grid-column: 1 / -1; font-weight: bold; color: #00ff88; margin-top: 10px; border-bottom: 1px solid #333;">
+                                📈 STANDARD INDICATORS</div>
+                            <label><input type="checkbox" value="RSI" checked> RSI</label>
+                            <label><input type="checkbox" value="EMA" checked> EMA</label>
+                            <label><input type="checkbox" value="MACD" checked> MACD</label>
+                            <label><input type="checkbox" value="BB" checked> Bollinger Bands</label>
+                            <label><input type="checkbox" value="ATR" checked> ATR</label>
+                            <label><input type="checkbox" value="ADX" checked> ADX</label>
+                            <label><input type="checkbox" value="OB" checked> Order Blocks</label>
+                            <label><input type="checkbox" value="PA" checked> Price Action</label>
+                            <label><input type="checkbox" value="StochRSI" checked> StochRSI</label>
+                            <label><input type="checkbox" value="OBV" checked> OBV</label>
+                            <label><input type="checkbox" value="ST" checked> SuperTrend</label>
+                            <label><input type="checkbox" value="VWAP" checked> VWAP</label>
+                            <label><input type="checkbox" value="HMA" checked> HMA</label>
+                            <label><input type="checkbox" value="CMF" checked> CMF</label>
+                            <label><input type="checkbox" value="ICHI" checked> Ichimoku</label>
+                            <label><input type="checkbox" value="FVG" checked> Fair Value Gap</label>
+                            <label><input type="checkbox" value="DIV" checked> RSI Divergence</label>
+                            <label><input type="checkbox" value="WT" checked> WaveTrend (LazyBear)</label>
+                            <label><input type="checkbox" value="SQZ" checked> TTM Squeeze</label>
+                            <label><input type="checkbox" value="LIQ" checked> Liquidity Sweep (SMC)</label>
+                            <label><input type="checkbox" value="BOS" checked> Market Structure (BOS)</label>
+                            <label><input type="checkbox" value="MFI" checked> Money Flow Index</label>
+                            <label><input type="checkbox" value="FISH" checked> Fisher Transform</label>
+                            <label><input type="checkbox" value="ZLSMA" checked> Zero Lag SMA</label>
+                            <label><input type="checkbox" value="TSI" checked> True Strength Index</label>
+                        </div>
+                    </div>
+
+                    <!-- Timeframes Selector -->
+                    <div class="config-group">
+                        <label>⏱️ Select Timeframes</label>
+                        <div class="selector-controls">
+                            <button class="btn-mini" onclick="selectAllTimeframes()">Select All</button>
+                            <button class="btn-mini" onclick="deselectAllTimeframes()">Deselect All</button>
+                        </div>
+                        <div id="timeframeList" class="checkbox-group grid-2">
+                            <label><input type="checkbox" value="1m" checked> 1m</label>
+                            <label><input type="checkbox" value="3m" checked> 3m</label>
+                            <label><input type="checkbox" value="5m" checked> 5m</label>
+                            <label><input type="checkbox" value="15m" checked> 15m</label>
+                            <label><input type="checkbox" value="30m" checked> 30m</label>
+                            <label><input type="checkbox" value="1h" checked> 1h</label>
+                            <label><input type="checkbox" value="4h" checked> 4h</label>
+                            <label><input type="checkbox" value="1d" checked> 1d</label>
+                        </div>
+                    </div>
+
+                    <!-- Confidence Threshold -->
+                    <div class="config-group">
+                        <label>🎯 Min Confidence: <span id="confidenceValue">5</span>/10</label>
+                        <input type="range" id="confidenceSlider" min="1" max="10" value="5"
+                            onchange="updateConfidence(this.value)">
+                    </div>
+
+                    <!-- Risk Profile & Customization -->
+                    <div class="config-group">
+                        <label>🛡️ Analysis Risk Profile</label>
+                        <select id="riskProfile" onchange="updateRiskProfile()"
+                            style="width:100%; padding:8px; background:var(--bg-panel); border:1px solid var(--border); color:#fff; border-radius:4px;">
+                            <option value="conservative">Conservative (9/10+ Only)</option>
+                            <option value="moderate" selected>Moderate (7/10+ Only)</option>
+                            <option value="aggressive">Aggressive (5/10+ Only)</option>
+                        </select>
+                    </div>
+
+                    <!-- Telegram Notifications -->
+                    <div class="sidebar-section" style="margin-top: 20px; border-color: #0088cc55;">
+                        <h3 style="color: #0088cc;">📱 Mobile Alerts (Telegram)</h3>
+                        <div class="config-group">
+                            <label style="color: #0088cc;">Bot Token:</label>
+                            <input type="password" id="tgToken" placeholder="Enter Bot Token"
+                                onchange="updateTelegramConfig()"
+                                style="width:100%; padding:7px; background:var(--bg-main); border:1px solid var(--border); color:#fff; font-size:0.8em;">
+                        </div>
+                        <div class="config-group">
+                            <label style="color: #0088cc;">Chat ID:</label>
+                            <input type="text" id="tgChatId" placeholder="Enter Chat ID"
+                                onchange="updateTelegramConfig()"
+                                style="width:100%; padding:7px; background:var(--bg-main); border:1px solid var(--border); color:#fff; font-size:0.8em;">
+                        </div>
+                        <p style="font-size: 0.7em; color: #666; margin-top: 5px;">*Redirects all found signals to your
+                            Telegram.</p>
+                    </div>
+
+                    <!-- Auto-Run Settings -->
+                    <div class="config-group row" style="margin-top: 20px;">
+                        <label>🤖 Auto-Run Analysis</label>
+                        <div class="toggle-switch">
+                            <input type="checkbox" id="autoRunToggle" onchange="toggleAutoRun()">
+                            <label for="autoRunToggle" class="toggle-slider"></label>
+                        </div>
+                    </div>
+                    <div class="config-group">
+                        <div id="autoRunOptions" style="display:none;">
+                            <label>Interval:</label>
+                            <select id="autoRunInterval" onchange="updateAutoRunInterval()">
+                                <option value="10">Every 10 seconds</option>
+                                <option value="30">Every 30 seconds</option>
+                                <option value="45">Every 45 seconds</option>
+                                <option value="60">Every 1 minute</option>
+                                <option value="180">Every 3 minutes</option>
+                                <option value="300" selected>Every 5 minutes</option>
+                                <option value="600">Every 10 minutes</option>
+                                <option value="900">Every 15 minutes</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="sidebar-section">
+                    <button id="startBtn" class="btn btn-primary" onclick="startAnalysis()">
+                        ▶ START ANALYSIS
+                    </button>
+                    <button id="stopBtn" class="btn btn-secondary" onclick="stopAnalysis()" disabled>
+                        ⏹ STOP
+                    </button>
+                    <button class="btn btn-secondary" onclick="clearTerminal()">
+                        ✕ CLEAR OUTPUT
+                    </button>
+                </div>
+
+                <!-- Stats -->
+                <div class="sidebar-section stats-box">
+                    <div class="stat-row">
+                        <span>Exchanges:</span>
+                        <span id="selectedExchangesDisplay">2</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Selected Coins:</span>
+                        <span id="selectedCoinsCount">5</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Indicators:</span>
+                        <span id="selectedIndicatorsCount">8</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Output Lines:</span>
+                        <span id="lineCount">0</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Elapsed Time:</span>
+                        <span id="elapsedTime">00:00:00</span>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Main Terminal Area -->
+            <section class="main-area">
+                <div class="terminal-wrapper">
+                    <div class="terminal-header">
+                        <span class="terminal-title">💻 Live Analysis Terminal</span>
+                        <span class="terminal-info" id="terminalInfo">Ready</span>
+                    </div>
+                    <div class="terminal" id="terminal">
+                        <div class="terminal-line welcome">
+                            <span class="line-prefix">$</span>
+                            <span class="line-text">RBot Pro — Multi-Exchange Technical Analysis System</span>
+                        </div>
+                        <div class="terminal-line welcome">
+                            <span class="line-prefix">$</span>
+                            <span class="line-text">Supported: MEXC • Binance • Bitget • Bybit • OKX • KuCoin • Gate.io
+                                • HTX</span>
+                        </div>
+                        <div class="terminal-line welcome">
+                            <span class="line-prefix">$</span>
+                            <span class="line-text">Select exchanges, configure your analysis, and click START ANALYSIS
+                                to begin</span>
+                        </div>
+                        <div class="terminal-line welcome">
+                            <span class="line-prefix">$</span>
+                            <span class="line-text">---</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Signals Area -->
+                <div class="terminal-wrapper signals-wrapper" style="margin-top: 20px;">
+                    <div class="terminal-header signals-header"
+                        style="background: linear-gradient(90deg, #1a2a1a, #0d1a0d); border-bottom: 1px solid #2e4d2e;">
+                        <span class="terminal-title">💸 Detected Trade Signals</span>
+                        <span class="terminal-info" id="signalsCount">0 Found</span>
+                    </div>
+                    <div class="terminal signals-box" id="signalsBox">
+                        <div class="terminal-line" id="noSignalsMsg">
+                            <span class="line-prefix">#</span>
+                            <span class="line-text" style="color: #666;">Signals found during the current run will
+                                appear here...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Info Panels -->
+                <div class="info-section">
+                    <div class="info-panel">
+                        <h4>🏢 Exchanges</h4>
+                        <p>MEXC • Binance • Bitget • Bybit • OKX • KuCoin • Gate.io • HTX</p>
+                    </div>
+                    <div class="info-panel">
+                        <h4>📊 Timeframes</h4>
+                        <p>1m • 3m • 5m • 15m • 30m • 1h • 4h • 1d</p>
+                    </div>
+                    <div class="info-panel">
+                        <h4>🎯 Trade Rules</h4>
+                        <p>Minimum 2:1 Risk/Reward • Multi-TF Confirmation</p>
+                    </div>
+                    <div class="info-panel">
+                        <h4>🤖 Strategies</h4>
+                        <p>Swing • Scalp • Pullback • Breakout • Ichimoku • FVG • Divergence • ADX-Mom • BB-Rev •
+                            Liquidity Grab • WaveTrend • Squeeze • Z-Scalp • MFI Reversion • Fisher Pivot • Volume Spike
+                        </p>
+                    </div>
+                    <div class="info-panel">
+                        <h4>🔒 Data Source</h4>
+                        <p>RBot Pro — All Exchanges Supported (Live Chart Data)</p>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='advanced_script.js') }}?v=1739221300"></script>
+</body>
+
+</html>

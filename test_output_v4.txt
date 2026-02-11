@@ -1,0 +1,11 @@
+﻿
+========================================================================================================================
+≡ƒöÑ LIVE MEXC REAL-TIME ANALYSIS - MULTI-TIMEFRAME HIGH CONFIDENCE TRADES ONLY
+========================================================================================================================
+Timeframes: 5m | Indicators: CMF, OB, ADX, ICHI, FIB, RSI, FVG, CHOP, BOS, ST, BB, SUPDEM, VI, DIV, STC, SQZ, KC, ZLSMA, ICT_WD, EMA, MACD, PA, MFI, FISH, CHoCH, UTBOT, OBV, LIQ, DON, UO, StochRSI, VP, ATR, VWAP, HMA, WT, TSI, STDEV
+Updated: 2026-02-11 03:39:02 | Minimum Confidence: 1/10 | Strategies: Swing, Scalp, StochRSI, Breakout, ST, VWAP, Ichimoku, FVG, Divergence, ADX-Mom, BB-Rev, Liquidity, WaveTrend, Squeeze, Z-Scalp, MFI, Fisher, VolSpike, SMC-CHoCH, Donchian, STC-Mom, Vortex, ICT-Silver, UT-Bot Elite, Keltner-Rev, Vol-Cap, Mom-Confluence, ICT-Wealth
+========================================================================================================================
+
+≡ƒôí Fetching LIVE real-time data from MEXC & Binance APIs...
+
+  ≡ƒôè BTCUSDT... Γ£ô

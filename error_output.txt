@@ -1,0 +1,60 @@
+﻿
+========================================================================================================================
+≡ƒöÑ LIVE MEXC REAL-TIME ANALYSIS - MULTI-TIMEFRAME HIGH CONFIDENCE TRADES ONLY
+========================================================================================================================
+Timeframes: 5m | Indicators: VWAP, ICT_WD, MACD, FIB, FISH, FVG, ATR, UTBOT, OBV, CHOP, MFI, SQZ, StochRSI, DIV, CHoCH, OB, ICHI, STDEV, BB, TSI, LIQ, CMF, VI, UO, EMA, STC, BOS, KC, ADX, HMA, DON, PA, WT, SUPDEM, VP, RSI, ZLSMA, ST
+Updated: 2026-02-11 03:39:22 | Minimum Confidence: 1/10 | Strategies: Swing, Scalp, StochRSI, Breakout, ST, VWAP, Ichimoku, FVG, Divergence, ADX-Mom, BB-Rev, Liquidity, WaveTrend, Squeeze, Z-Scalp, MFI, Fisher, VolSpike, SMC-CHoCH, Donchian, STC-Mom, Vortex, ICT-Silver, UT-Bot Elite, Keltner-Rev, Vol-Cap, Mom-Confluence, ICT-Wealth
+========================================================================================================================
+
+≡ƒôí Fetching LIVE real-time data from MEXC & Binance APIs...
+
+  ≡ƒôè BTCUSDT... Γ£ô
+python : Traceback (most 
+recent call last):
+At line:1 char:1
++ python fast_analysis.py 
+--symbols BTCUSDT 
+--timeframes 5m --indicator 
+...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~
+    + CategoryInfo          
+    : NotSpecified: (Trace  
+  back (most recent call    
+ last)::String) [], Remo    
+teException
+    + FullyQualifiedErrorId 
+    : NativeCommandError
+ 
+  File 
+"D:\Documents\RBot-Pro 
+(2)\fast_analysis.py", line 
+3465, in <module>
+    run_analysis()
+  File 
+"D:\Documents\RBot-Pro 
+(2)\fast_analysis.py", line 
+3428, in run_analysis
+    trades = 
+run_strategies(sym, 
+analyses)
+  File 
+"D:\Documents\RBot-Pro 
+(2)\fast_analysis.py", line 
+3391, in run_strategies
+    all_trades.extend(strate
+gy_momentum_confluence(symbo
+l, analyses))
+  File 
+"D:\Documents\RBot-Pro 
+(2)\fast_analysis.py", line 
+3083, in 
+strategy_momentum_confluence
+    if a['stoch_rsi'] < 50: 
+score += 1; 
+reasons.append("StochRSI 
+Rising")
+TypeError: '<' not 
+supported between instances 
+of 'dict' and 'int'
