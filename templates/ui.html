@@ -184,6 +184,19 @@
                             onchange="updateConfidence(this.value)">
                     </div>
 
+                    <!-- Signal Quality Selector -->
+                    <div class="config-group">
+                        <label>🏅 Signal Quality</label>
+                        <div id="qualityList" class="checkbox-group">
+                            <label class="quality-label" style="color:#ffd700;"><input type="checkbox" value="ELITE"
+                                    checked onchange="filterSignalsByQuality()"> 🏆 ELITE</label>
+                            <label class="quality-label" style="color:#00ff88;"><input type="checkbox" value="STRONG"
+                                    checked onchange="filterSignalsByQuality()"> 💪 STRONG</label>
+                            <label class="quality-label" style="color:#00d4ff;"><input type="checkbox" value="STANDARD"
+                                    checked onchange="filterSignalsByQuality()"> 📊 STANDARD</label>
+                        </div>
+                    </div>
+
                     <!-- Risk Profile & Customization -->
                     <div class="config-group">
                         <label>🛡️ Analysis Risk Profile</label>

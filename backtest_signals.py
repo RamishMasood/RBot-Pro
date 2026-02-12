@@ -135,6 +135,7 @@ def run_backtest():
         return
 
     print("Loading signals...")
+    print("🏆 Filtering for ELITE quality signals only...")
     try:
         with open(SIGNALS_FILE, 'r', encoding='utf-8') as f:
             signals = json.load(f)
@@ -146,6 +147,7 @@ def run_backtest():
     backtestable_signals = []
     now = datetime.now()
     skipped_conflicts = 0
+    skipped_non_elite = 0
     
     for sig in signals:
         try:
@@ -155,7 +157,13 @@ def run_backtest():
                 skipped_conflicts += 1
                 continue
 
-            # 2. Filter Age
+            # 2. Filter Signal Quality - Only ELITE signals
+            signal_quality = sig.get('signal_quality', '').upper()
+            if signal_quality != 'ELITE':
+                skipped_non_elite += 1
+                continue
+
+            # 3. Filter Age
             ts_str = sig['timestamp']
             sig_dt = datetime.strptime(ts_str, '%Y-%m-%d %H:%M:%S')
             age = now - sig_dt
@@ -170,6 +178,7 @@ def run_backtest():
 
     print(f"Found {len(signals)} total signals.")
     print(f"Skipped {skipped_conflicts} conflicting signals.")
+    print(f"Skipped {skipped_non_elite} non-ELITE signals (filtering for ELITE only).")
     
     if not backtestable_signals:
         print("No eligible signals strictly older than 5 minutes found.")

@@ -152,7 +152,8 @@ function addTradeSignal(trade) {
         card.id = signalId;
         card.dataset.agreeingStrategies = JSON.stringify([trade.strategy]);
         signalsCount++;
-        document.getElementById('signalsCount').innerText = `${signalsCount} Found`;
+        signalsCount++;
+        // Count update is now handled by filterSignalsByQuality()
     } else {
         // Build agreement list incrementally during live scan
         let existing = JSON.parse(card.dataset.agreeingStrategies || '[]');
@@ -174,7 +175,16 @@ function addTradeSignal(trade) {
     const agreeingStrategies = JSON.parse(card.dataset.agreeingStrategies);
     const agreementCount = trade.agreement_count || agreeingStrategies.length;
 
-    card.className = `trade-card ${trade.type.toLowerCase()}`;
+    card.className = `trade-card ${trade.type.toLowerCase()} quality-${(trade.signal_quality || 'STANDARD').toLowerCase()}`;
+
+    // Check visibility against selected quality filters immediately
+    const selectedQualities = Array.from(document.querySelectorAll('#qualityList input:checked')).map(cb => cb.value);
+    const thisQuality = trade.signal_quality || 'STANDARD';
+    if (!selectedQualities.includes(thisQuality)) {
+        card.style.display = 'none';
+    } else {
+        card.style.display = ''; // Ensure it's visible if selected (important for updates)
+    }
 
     // Simplified color mapping for UI
     const typeColor = trade.type === 'LONG' ? '#00ff88' : '#ff4444';
@@ -270,6 +280,9 @@ function addTradeSignal(trade) {
         // Play alert sound only for NEW signals to avoid spam on updates
         playAlertSound('trade');
     }
+
+    // Update filtering and count display
+    filterSignalsByQuality();
 }
 
 // Global Sound Controller
@@ -744,6 +757,27 @@ document.addEventListener('DOMContentLoaded', () => {
     addTerminalLine('RBot Pro ready. Select exchanges and click START ANALYSIS or press Ctrl+Enter', 'success');
     addTerminalLine('Use Ctrl+L to clear output', 'info');
 });
+
+// ===== Signal Filtering =====
+function filterSignalsByQuality() {
+    const selectedQualities = Array.from(document.querySelectorAll('#qualityList input:checked')).map(cb => cb.value);
+    const cards = document.querySelectorAll('.trade-card');
+    let visibleCount = 0;
+
+    cards.forEach(card => {
+        let isVisible = false;
+        if (card.classList.contains('quality-elite') && selectedQualities.includes('ELITE')) isVisible = true;
+        if (card.classList.contains('quality-strong') && selectedQualities.includes('STRONG')) isVisible = true;
+        if (card.classList.contains('quality-standard') && selectedQualities.includes('STANDARD')) isVisible = true;
+
+        card.style.display = isVisible ? '' : 'none';
+        if (isVisible) visibleCount++;
+    });
+
+    // Update count display to show filtered count
+    const total = signalsCount;
+    document.getElementById('signalsCount').innerText = `${visibleCount} Visible / ${total} Found`;
+}
 
 // ===== Analysis Chart Functions =====
 

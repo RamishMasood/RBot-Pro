@@ -429,26 +429,84 @@ EXCHANGE_KLINE_FETCHERS = {
     'HTX': get_klines_htx
 }
 
+def resample_klines(klines, factor):
+    """
+    Resample klines (e.g. 1m -> 3m).
+    'factor' is the number of small candles to combine (e.g. 3).
+    """
+    if not klines or factor <= 1:
+        return klines
+    
+    resampled = []
+    # Start from an index that aligns with the timeframe (optional, but good)
+    # Most traders align with 0:00 UTC
+    for i in range(0, len(klines) - (len(klines) % factor), factor):
+        chunk = klines[i : i + factor]
+        if len(chunk) < factor:
+            break
+            
+        resampled.append({
+            'time': chunk[0]['time'],
+            'open': chunk[0]['open'],
+            'high': max(c['high'] for c in chunk),
+            'low': min(c['low'] for c in chunk),
+            'close': chunk[-1]['close'],
+            'volume': sum(c['volume'] for c in chunk)
+        })
+    return resampled
+
 def get_klines(symbol, interval, limit=200, exchange=None):
-    """Get klines from the specified exchange, with fallback chain through enabled exchanges"""
-    if exchange:
-        fetcher = EXCHANGE_KLINE_FETCHERS.get(exchange)
-        if fetcher:
-            klines = fetcher(symbol, interval, limit)
-            if klines and len(klines) >= 50:
-                return klines
-    
-    # Fallback: try all enabled exchanges in order
-    for ex_name in ENABLED_EXCHANGES:
-        fetcher = EXCHANGE_KLINE_FETCHERS.get(ex_name)
-        if fetcher:
-            klines = fetcher(symbol, interval, limit)
-            if klines and len(klines) >= 50:
-                return klines
-    
+    """
+    Get klines from the specified exchange, with fallback chain through enabled exchanges.
+    Includes an automatic resampling engine for missing timeframes (e.g. 3m on MEXC).
+    """
+    def _fetch_direct(sym, itv, lim, ex):
+        if ex:
+            fetcher = EXCHANGE_KLINE_FETCHERS.get(ex)
+            if fetcher:
+                return fetcher(sym, itv, lim)
+        for ex_name in ENABLED_EXCHANGES:
+            fetcher = EXCHANGE_KLINE_FETCHERS.get(ex_name)
+            if fetcher:
+                k = fetcher(sym, itv, lim)
+                if k and len(k) >= 50:
+                    return k
+        return None
+
+    # 1. Try direct fetch
+    result = _fetch_direct(symbol, interval, limit, exchange)
+    if result and len(result) >= 50:
+        return result
+        
+    # 2. Resampling Engine Fallback
+    # If a timeframe is missing (like 3m/5m on some MEXC pairs), build it from 1m
+    target_map = {'3m': 3, '5m': 5, '15m': 15, '30m': 30, '1h': 60}
+    if interval in target_map:
+        factor = target_map[interval]
+        # Fetch more 1m candles to satisfy the limit for the target timeframe
+        klines_1m = _fetch_direct(symbol, '1m', limit * factor, exchange)
+        if klines_1m and len(klines_1m) >= factor:
+            return resample_klines(klines_1m, factor)
+            
     return None
 
 # --- Indicators & analysis helpers ---
+
+def calculate_ema_series(data, period):
+    if not data:
+        return []
+    if len(data) < period:
+        return [data[-1]] * len(data)
+    mult = 2 / (period + 1)
+    ema = sum(data[:period]) / period
+    res = [ema]
+    for val in data[period:]:
+        ema = val * mult + ema * (1 - mult)
+        res.append(ema)
+    # Pad results to match input length if needed
+    if len(res) < len(data):
+        res = [res[0]] * (len(data) - len(res)) + res
+    return res
 
 def calculate_rsi(closes, period=14):
     if len(closes) < period + 1:
@@ -456,8 +514,16 @@ def calculate_rsi(closes, period=14):
     deltas = [closes[i] - closes[i-1] for i in range(1, len(closes))]
     gains = [d if d > 0 else 0 for d in deltas]
     losses = [-d if d < 0 else 0 for d in deltas]
-    avg_gain = sum(gains[-period:]) / period
-    avg_loss = sum(losses[-period:]) / period
+    
+    # First average
+    avg_gain = sum(gains[:period]) / period
+    avg_loss = sum(losses[:period]) / period
+    
+    # Wilder's Smoothing
+    for i in range(period, len(gains)):
+        avg_gain = (avg_gain * (period - 1) + gains[i]) / period
+        avg_loss = (avg_loss * (period - 1) + losses[i]) / period
+        
     if avg_loss == 0:
         return 100 if avg_gain > 0 else 50
     rs = avg_gain / avg_loss
@@ -475,15 +541,17 @@ def calculate_ema(closes, period):
 def calculate_macd(closes):
     if len(closes) < 26:
         return {'macd': 0, 'signal': 0, 'histogram': 0}
-    ema12 = calculate_ema(closes, 12)
-    ema26 = calculate_ema(closes, 26)
-    macd_line = ema12 - ema26
-    macd_values = []
-    for i in range(26, len(closes)):
-        ema12_val = calculate_ema(closes[:i+1], 12)
-        ema26_val = calculate_ema(closes[:i+1], 26)
-        macd_values.append(ema12_val - ema26_val)
-    signal = calculate_ema(macd_values, 9) if len(macd_values) >= 9 else macd_line
+    
+    ema12_series = calculate_ema_series(closes, 12)
+    ema26_series = calculate_ema_series(closes, 26)
+    
+    macd_series = [e1 - e2 for e1, e2 in zip(ema12_series, ema26_series)]
+    macd_line = macd_series[-1]
+    
+    # Signal line is EMA9 of MACD line
+    signal_series = calculate_ema_series(macd_series, 9)
+    signal = signal_series[-1]
+    
     return {'macd': macd_line, 'signal': signal, 'histogram': macd_line - signal}
 
 def calculate_bb(closes, period=20, std_dev=2):
@@ -495,13 +563,21 @@ def calculate_bb(closes, period=20, std_dev=2):
     return {'upper': sma + (std * std_dev), 'middle': sma, 'lower': sma - (std * std_dev), 'width': 2 * std * std_dev}
 
 def calculate_atr(highs, lows, closes, period=14):
-    if len(closes) < period:
+    if len(closes) < period + 1:
         return 0
     trs = []
     for i in range(1, len(closes)):
         tr = max(highs[i] - lows[i], abs(highs[i] - closes[i-1]), abs(lows[i] - closes[i-1]))
         trs.append(tr)
-    return sum(trs[-period:]) / period if len(trs) >= period else 0
+    
+    # First TR average
+    atr = sum(trs[:period]) / period
+    
+    # Smoothing (Standard ATR move)
+    for i in range(period, len(trs)):
+        atr = (atr * (period - 1) + trs[i]) / period
+        
+    return atr
 
 def calculate_adx(highs, lows, closes, period=14):
     """Calculate Average Directional Index"""
@@ -4171,6 +4247,50 @@ def strategy_psar_tema_scalp(symbol, analyses):
                         'rsi': a['rsi']
                     }
                 })
+                    
+    # SHORT: PSAR Bearish + Price below TEMA
+    elif psar['trend'] == 'BEARISH' and current < tema:
+        confidence = 7
+        reasons = [f"PSAR Bearish ({tf})", f"Price < TEMA ({tf})"]
+        
+        if a['rsi'] < 50:
+            confidence += 1
+            reasons.append("RSI Bearish Momentum")
+        if a['adx']['adx'] > 20:
+            confidence += 1
+            reasons.append("Trend Strength (ADX)")
+            
+        if confidence >= MIN_CONFIDENCE:
+            atr = a['atr']
+            entry = current
+            sl = psar['psar'] if psar['psar'] > current else current + (atr * 1.5)
+            tp1 = entry - (sl - entry) * 2
+            tp2 = entry - (sl - entry) * 3
+            risk = sl - entry
+            reward = entry - tp1
+            
+            if risk > 0:
+                trades.append({
+                    'strategy': 'PSAR-TEMA Scalp',
+                    'type': 'SHORT',
+                    'symbol': symbol,
+                    'entry': entry,
+                    'sl': sl, 'tp1': tp1, 'tp2': tp2,
+                    'confidence': 'HIGH',
+                    'confidence_score': confidence,
+                    'risk_reward': round(reward/risk, 1),
+                    'reason': ' + '.join(reasons),
+                    'indicators': f"PSAR: {psar['psar']:.4f}, TEMA: {tema:.4f}",
+                    'expected_time': '5-15 mins',
+                    'risk': risk, 'reward': reward,
+                    'entry_type': 'MARKET',
+                    'timeframe': tf,
+                    'analysis_data': {
+                        'psar': psar['psar'],
+                        'tema': tema,
+                        'rsi': a['rsi']
+                    }
+                })
     return trades
 
 def strategy_kama_volatility_scalp(symbol, analyses):
@@ -4224,6 +4344,47 @@ def strategy_kama_volatility_scalp(symbol, analyses):
                         'vfi': a['vfi']
                     }
                 })
+                    
+    # SHORT: Price < KAMA + Price < Chandelier Short Stop
+    elif current < kama and current < chan['short']:
+        confidence = 7
+        reasons = [f"Price below KAMA Adaptive ({tf})", "Chandelier Exit Bearish"]
+        
+        if a['vfi'] < 0:
+            confidence += 2
+            reasons.append("Volume Flow Negative (VFI)")
+            
+        if confidence >= MIN_CONFIDENCE:
+            atr = a['atr']
+            entry = current
+            sl = chan['short'] if chan['short'] > current else current + (atr * 2)
+            tp1 = entry - (sl - entry) * 2.5
+            tp2 = entry - (sl - entry) * 4
+            risk = sl - entry
+            reward = entry - tp1
+            
+            if risk > 0:
+                trades.append({
+                    'strategy': 'KAMA-Volatility Scalp',
+                    'type': 'SHORT',
+                    'symbol': symbol,
+                    'entry': entry,
+                    'sl': sl, 'tp1': tp1, 'tp2': tp2,
+                    'confidence': 'HIGH',
+                    'confidence_score': confidence,
+                    'risk_reward': round(reward/risk, 1),
+                    'reason': ' + '.join(reasons),
+                    'indicators': f"KAMA: {kama:.4f}, VFI: {a['vfi']:.2f}",
+                    'expected_time': '15-45 mins',
+                    'risk': risk, 'reward': reward,
+                    'entry_type': 'MARKET',
+                    'timeframe': tf,
+                    'analysis_data': {
+                        'kama': kama,
+                        'chandelier_short': chan['short'],
+                        'vfi': a['vfi']
+                    }
+                })
     return trades
 
 def strategy_vfi_momentum_scalp(symbol, analyses):
@@ -4260,6 +4421,48 @@ def strategy_vfi_momentum_scalp(symbol, analyses):
                 trades.append({
                     'strategy': 'VFI Perfect Scalper',
                     'type': 'LONG',
+                    'symbol': symbol,
+                    'entry': entry,
+                    'sl': sl, 'tp1': tp1, 'tp2': tp2,
+                    'confidence': 'VERY HIGH',
+                    'confidence_score': confidence,
+                    'risk_reward': round(reward/risk, 1),
+                    'reason': ' + '.join(reasons),
+                    'indicators': f"VFI: {vfi:.2f}, RSI: {rsi:.0f}, UO: {uo:.0f}",
+                    'expected_time': '10-30 mins',
+                    'risk': risk, 'reward': reward,
+                    'entry_type': 'MARKET',
+                    'timeframe': tf,
+                    'analysis_data': {
+                        'vfi': vfi,
+                        'rsi': rsi,
+                        'uo': uo,
+                        'zlsma': a['zlsma']
+                    }
+                })
+                    
+    # SHORT: VFI < 0 + RSI < 50 + UO < 50
+    elif vfi < 0 and rsi < 50 and uo < 50:
+        confidence = 6
+        reasons = ["Negative Volume Flow (VFI)", "RSI Bearish Momentum", "Ultimate Oscillator Negative"]
+        
+        if a['zlsma'] > current:
+            confidence += 2
+            reasons.append("Below ZLSMA")
+            
+        if confidence >= MIN_CONFIDENCE:
+            atr = a['atr']
+            entry = current
+            sl = entry + (atr * 2)
+            tp1 = entry - (atr * 4)
+            tp2 = entry - (atr * 6)
+            risk = sl - entry
+            reward = entry - tp1
+            
+            if risk > 0:
+                trades.append({
+                    'strategy': 'VFI Perfect Scalper',
+                    'type': 'SHORT',
                     'symbol': symbol,
                     'entry': entry,
                     'sl': sl, 'tp1': tp1, 'tp2': tp2,
