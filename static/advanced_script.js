@@ -782,13 +782,22 @@ function filterSignalsByQuality() {
 // ===== Analysis Chart Functions =====
 
 let activeChart = null;
+let activeCandleSeries = null;
+let activeUpdateInterval = null;
+let isChartUpdating = false;
 
 function closeAnalysisModal() {
     document.getElementById('analysisModal').style.display = 'none';
+    if (activeUpdateInterval) {
+        clearInterval(activeUpdateInterval);
+        activeUpdateInterval = null;
+    }
     if (activeChart) {
         activeChart.remove();
         activeChart = null;
     }
+    activeCandleSeries = null;
+    isChartUpdating = false;
 }
 
 async function openAnalysisChart(btn) {
@@ -848,7 +857,6 @@ async function openAnalysisChart(btn) {
             },
         });
         activeChart = chart;
-
         // Create Series
         const candlestickSeries = chart.addCandlestickSeries({
             upColor: '#00ff88',
@@ -862,6 +870,7 @@ async function openAnalysisChart(btn) {
                 minMove: 0.0001,
             },
         });
+        activeCandleSeries = candlestickSeries;
 
         candlestickSeries.setData(candles);
 
@@ -920,6 +929,23 @@ async function openAnalysisChart(btn) {
 
             // Plot tactical data (indicators, markers, etc)
             plotAnalysisData(chart, candlestickSeries, trade.analysis_data, candles, trade);
+
+            // Start Live Updates
+            if (activeUpdateInterval) clearInterval(activeUpdateInterval);
+            activeUpdateInterval = setInterval(async () => {
+                if (isChartUpdating || !activeChart || !activeCandleSeries) return;
+                isChartUpdating = true;
+                try {
+                    const newCandles = await fetchCandles(trade.exchange, trade.symbol, trade.timeframe);
+                    if (newCandles && newCandles.length > 0 && activeCandleSeries) {
+                        activeCandleSeries.setData(newCandles);
+                    }
+                } catch (e) {
+                    console.warn("Live update failed:", e);
+                } finally {
+                    isChartUpdating = false;
+                }
+            }, 1000);
         }, 150);
 
     } catch (err) {
