@@ -82,6 +82,7 @@ socket.on('clear', () => {
     lineCount = 0;
     signalsCount = 0;
     document.getElementById('signalsCount').innerText = '0 Found';
+    updateTradeStats();
     updateLineCount();
 });
 
@@ -132,6 +133,9 @@ function updateTrackingUI(trades) {
             </div>
         `;
     });
+
+    // Refresh stats after UI updates
+    updateTradeStats();
 }
 
 // ===== Terminal Functions =====
@@ -819,6 +823,42 @@ function filterSignalsByQuality() {
     // Update count display to show filtered count
     const total = signalsCount;
     document.getElementById('signalsCount').innerText = `${visibleCount} Visible / ${total} Found`;
+
+    updateTradeStats();
+}
+
+function updateTradeStats() {
+    const cards = document.querySelectorAll('.trade-card');
+    let tp = 0;
+    let sl = 0;
+    let running = 0;
+    let waiting = 0;
+
+    cards.forEach(card => {
+        if (card.style.display === 'none') return; // Skip hidden cards based on filter
+
+        const badge = card.querySelector('.status-badge');
+        if (badge) {
+            const text = badge.innerText.toUpperCase();
+            if (text.includes('TP HIT')) tp++;
+            else if (text.includes('SL HIT')) sl++;
+            else if (text.includes('RUNNING')) running++;
+            else if (text.includes('WAITING') || text === 'WAITING') waiting++;
+            else waiting++; // Default fallback
+        } else {
+            waiting++; // Default if badge not rendered yet
+        }
+    });
+
+    const statsEl = document.getElementById('signalStats');
+    if (statsEl) {
+        statsEl.innerHTML = `
+            <span style="color:#00ff88; margin-right:15px">TP: ${tp}</span>
+            <span style="color:#ff4444; margin-right:15px">SL: ${sl}</span>
+            <span style="color:#00d4ff; margin-right:15px">RUNNING: ${running}</span>
+            <span style="color:#aaa">WAITING: ${waiting}</span>
+        `;
+    }
 }
 
 // ===== Analysis Chart Functions =====
