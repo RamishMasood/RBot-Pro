@@ -856,6 +856,11 @@ async function openAnalysisChart(btn) {
             borderVisible: false,
             wickUpColor: '#00ff88',
             wickDownColor: '#ff4444',
+            priceFormat: {
+                type: 'price',
+                precision: 4,
+                minMove: 0.0001,
+            },
         });
 
         candlestickSeries.setData(candles);
@@ -912,6 +917,9 @@ async function openAnalysisChart(btn) {
         setTimeout(() => {
             resizeChart();
             if (chart) chart.timeScale().fitContent();
+
+            // Plot tactical data (indicators, markers, etc)
+            plotAnalysisData(chart, candlestickSeries, trade.analysis_data, candles, trade);
         }, 150);
 
     } catch (err) {
@@ -969,6 +977,26 @@ function addModalKey(label, color) {
 function plotAnalysisData(chart, series, data, candles, trade) {
     if (!data) data = {};
     const reason = (trade.reason || "").toUpperCase();
+    const isLong = trade.type === 'LONG';
+    const sigText = isLong ? 'BUY' : 'SELL';
+    const sigColor = isLong ? '#00ff88' : '#ff4444';
+
+    // Helper for adding lines (EMA, TEMA, etc)
+    const addIndicatorLine = (lineData, color, title) => {
+        if (!lineData || !Array.isArray(lineData)) return;
+        const lineSeries = chart.addLineSeries({
+            color: color,
+            lineWidth: 2,
+            title: title,
+            priceFormat: {
+                type: 'price',
+                precision: 4,
+                minMove: 0.0001,
+            },
+        });
+        lineSeries.setData(lineData);
+        addModalKey(title, color);
+    };
 
     // 1. Draw Fair Value Gaps (FVG)
     if (data.fvg) {
@@ -1005,21 +1033,7 @@ function plotAnalysisData(chart, series, data, candles, trade) {
         addModalKey('Mitigation Block', '#00d4ff');
     }
 
-    // 3. ICT Phase Visualization
-    if (data.ict_phase) {
-        const color = data.ict_phase === 'ACCUMULATION' ? '#00ff88' : '#ff4444';
-        series.createPriceLine({
-            price: data.price_level,
-            color: color,
-            lineWidth: 2,
-            lineStyle: 0, // Solid
-            axisLabelVisible: true,
-            title: `ICT ${data.ict_phase}`,
-        });
-        addModalKey(`ICT ${data.ict_phase}`, color);
-    }
-
-    // 4. UT Bot Stop Level
+    // 3. UT Bot Stop Level
     if (data.ut_stop) {
         series.createPriceLine({
             price: data.ut_stop,
@@ -1032,57 +1046,56 @@ function plotAnalysisData(chart, series, data, candles, trade) {
         addModalKey('UT Bot Stop', '#ffaa00');
     }
 
-    // 5. Harmonic Level
-    if (data.harmonic_level) {
-        series.createPriceLine({
-            price: data.fib_level,
-            color: '#ff00ff',
-            lineWidth: 1,
-            lineStyle: 1, // Dotted
-            axisLabelVisible: true,
-            title: `FIB ${data.harmonic_level}`,
-        });
-        addModalKey(`Fib ${data.harmonic_level}`, '#ff00ff');
-    }
-
-    // 6. Keltner Channels (Heuristic or Data)
-    if (data.keltner_upper) {
-        series.createPriceLine({ price: data.keltner_upper, color: 'rgba(255,255,255,0.1)', lineWidth: 1, lineStyle: 1, title: 'KC UPPER' });
-        series.createPriceLine({ price: data.keltner_lower, color: 'rgba(255,255,255,0.1)', lineWidth: 1, lineStyle: 1, title: 'KC LOWER' });
-        addModalKey('Keltner Channels', 'rgba(255,255,255,0.3)');
-    }
-
-    // 8. PSAR Scalp
-    if (data.psar) {
+    // 4. PSAR Series
+    if (data.psar_series) {
+        // PSAR is often dots, but line is okay for simplified view
+        addIndicatorLine(data.psar_series, '#ff00ff', 'PSAR');
+    } else if (data.psar) {
         series.createPriceLine({ price: data.psar, color: '#ff00ff', lineWidth: 1, lineStyle: 2, title: 'PSAR' });
         addModalKey('PSAR', '#ff00ff');
     }
 
-    // 9. TEMA Level
-    if (data.tema) {
+    // 5. TEMA Series
+    if (data.tema_series) {
+        addIndicatorLine(data.tema_series, '#00d4ff', 'TEMA');
+    } else if (data.tema) {
         series.createPriceLine({ price: data.tema, color: '#00d4ff', lineWidth: 1, lineStyle: 0, title: 'TEMA' });
         addModalKey('TEMA', '#00d4ff');
     }
 
-    // 10. KAMA Level
-    if (data.kama) {
+    // 6. KAMA Series
+    if (data.kama_series) {
+        addIndicatorLine(data.kama_series, '#ffaa00', 'KAMA');
+    } else if (data.kama) {
         series.createPriceLine({ price: data.kama, color: '#ffaa00', lineWidth: 1, lineStyle: 0, title: 'KAMA' });
         addModalKey('KAMA', '#ffaa00');
     }
 
-    // 11. Chandelier Exit
-    if (data.chandelier_long) {
+    // 7. Chandelier Exit
+    if (data.chandelier_series) {
+        addIndicatorLine(data.chandelier_series, isLong ? '#00ff88' : '#ff4444', 'CHANDELIER');
+    } else if (data.chandelier_long && isLong) {
         series.createPriceLine({ price: data.chandelier_long, color: '#00ff88', lineWidth: 1, lineStyle: 1, title: 'CHANDELIER' });
         addModalKey('Chandelier Exit', '#00ff88');
+    } else if (data.chandelier_short && !isLong) {
+        series.createPriceLine({ price: data.chandelier_short, color: '#ff4444', lineWidth: 1, lineStyle: 1, title: 'CHANDELIER' });
+        addModalKey('Chandelier Exit', '#ff4444');
     }
 
-    // 12. ZLSMA
-    if (data.zlsma) {
+    // 8. ZLSMA Series
+    if (data.zlsma_series) {
+        addIndicatorLine(data.zlsma_series, '#f0b90b', 'ZLSMA');
+    } else if (data.zlsma) {
         series.createPriceLine({ price: data.zlsma, color: '#f0b90b', lineWidth: 1, lineStyle: 0, title: 'ZLSMA' });
         addModalKey('ZLSMA', '#f0b90b');
     }
 
-    // 13. Momentum Indicators (RSI, UO, VFI labels)
+    // 9. EMA 200 (Commonly requested context)
+    if (data.ema200_series) {
+        addIndicatorLine(data.ema200_series, 'rgba(255,255,255,0.3)', 'EMA 200');
+    }
+
+    // 10. Momentum Labels
     if (data.rsi !== undefined || data.uo !== undefined || data.vfi !== undefined) {
         let label = "";
         if (data.rsi !== undefined) label += `RSI:${data.rsi.toFixed(0)} `;
@@ -1091,24 +1104,28 @@ function plotAnalysisData(chart, series, data, candles, trade) {
         addModalKey(label.trim(), '#888');
     }
 
-    // 7. Mark the Signal Candle & Confluences (Markers)
+    // 11. Mark the Signal Candle & Confluences (Markers)
     if (candles && candles.length > 0) {
         const lastCandle = candles[candles.length - 1];
+        // Use exact candle time from signal if available, else fallback to latest
+        const signalTime = trade.candle_time || lastCandle.time;
+
         const markers = [
             {
-                time: lastCandle.time,
-                position: 'aboveBar',
-                color: '#f0b90b',
-                shape: 'arrowDown',
-                text: 'SIGNAL',
+                time: signalTime,
+                position: isLong ? 'belowBar' : 'aboveBar',
+                color: sigColor,
+                shape: isLong ? 'arrowUp' : 'arrowDown',
+                text: sigText,
+                size: 2
             }
         ];
 
         // Squeeze Release
         if (data.squeeze === 'OFF' || reason.includes('SQUEEZE') || reason.includes('SQZ')) {
             markers.push({
-                time: lastCandle.time,
-                position: 'belowBar',
+                time: signalTime,
+                position: isLong ? 'belowBar' : 'aboveBar',
                 color: '#00ff88',
                 shape: 'circle',
                 text: 'SQZ BRK',
@@ -1116,28 +1133,16 @@ function plotAnalysisData(chart, series, data, candles, trade) {
             addModalKey('Squeeze Release', '#00ff88');
         }
 
-        // ADX / Momentum
-        if (reason.includes('ADX') || reason.includes('MOMENTUM') || reason.includes('MOM:')) {
-            markers.push({
-                time: lastCandle.time,
-                position: 'belowBar',
-                color: '#00d4ff',
-                shape: 'arrowUp',
-                text: 'MOM',
-            });
-            addModalKey('Momentum Confirmed', '#00d4ff');
-        }
-
         // Trend Alignment
-        if (reason.includes('TREND') || reason.includes('ALIGNMENT')) {
+        if (reason.includes('TREND') || reason.includes('ALIGNMENT') || reason.includes('CONFLUENCE')) {
             markers.push({
-                time: lastCandle.time,
-                position: trade.type === 'LONG' ? 'belowBar' : 'aboveBar',
-                color: trade.type === 'LONG' ? '#00ff88' : '#ff4444',
-                shape: trade.type === 'LONG' ? 'arrowUp' : 'arrowDown',
-                text: 'TREND',
+                time: signalTime,
+                position: isLong ? 'belowBar' : 'aboveBar',
+                color: isLong ? '#00ff88' : '#ff4444',
+                shape: isLong ? 'arrowUp' : 'arrowDown',
+                text: 'TRND',
             });
-            addModalKey('Trend Alignment', trade.type === 'LONG' ? '#00ff88' : '#ff4444');
+            addModalKey('Trend Alignment', isLong ? '#00ff88' : '#ff4444');
         }
 
         series.setMarkers(markers);

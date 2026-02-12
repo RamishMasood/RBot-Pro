@@ -492,6 +492,13 @@ def get_klines(symbol, interval, limit=200, exchange=None):
 
 # --- Indicators & analysis helpers ---
 
+def format_series_for_chart(times, values):
+    """Format series for Lightweight Charts {time, value}"""
+    if not times or not values: return []
+    # Ensure same length
+    length = min(len(times), len(values))
+    return [{'time': times[i]/1000, 'value': float(values[i])} for i in range(len(times)-length, len(times))]
+
 def calculate_ema_series(data, period):
     if not data:
         return []
@@ -1479,14 +1486,14 @@ def calculate_psar(highs, lows, closes, accent=0.02, max_accent=0.2):
                     if highs[max(0, i-2)] > psar: psar = highs[max(0, i-2)]
             psar_list.append(psar)
             
-        return {'psar': psar_list[-1], 'trend': 'BULLISH' if closes[-1] > psar_list[-1] else 'BEARISH'}
+        return {'psar': psar_list[-1], 'trend': 'BULLISH' if closes[-1] > psar_list[-1] else 'BEARISH', 'series': psar_list}
     except:
-        return {'psar': closes[-1], 'trend': 'NEUTRAL'}
+        return {'psar': closes[-1], 'trend': 'NEUTRAL', 'series': []}
 
 def calculate_tema(closes, period=9):
     """Triple Exponential Moving Average"""
     try:
-        if len(closes) < period * 3: return closes[-1]
+        if len(closes) < period: return {'value': closes[-1], 'series': [closes[-1]] * len(closes)}
         
         def ema_inner(data, p):
             m = 2 / (p + 1)
@@ -1500,45 +1507,63 @@ def calculate_tema(closes, period=9):
         ema3 = ema_inner(ema2, period)
         
         tema = [3 * e1 - 3 * e2 + e3 for e1, e2, e3 in zip(ema1, ema2, ema3)]
-        return tema[-1]
+        return {'value': tema[-1], 'series': tema}
     except:
-        return closes[-1]
+        return {'value': closes[-1], 'series': [closes[-1]] * len(closes)}
 
 def calculate_chandelier_exit(highs, lows, closes, period=22, multiplier=3):
     """Chandelier Exit for trend following"""
     try:
-        if len(closes) < period: return {'long': closes[-1], 'short': closes[-1]}
+        if len(closes) < period: return {'long': closes[-1], 'short': closes[-1], 'long_series': [], 'short_series': []}
         
-        atr = calculate_atr(highs, lows, closes, period)
-        highest_high = max(highs[-period:])
-        lowest_low = min(lows[-period:])
+        # Calculate trailing stops for each candle to build series
+        long_series = []
+        short_series = []
         
-        long_stop = highest_high - atr * multiplier
-        short_stop = lowest_low + atr * multiplier
-        
-        return {'long': long_stop, 'short': short_stop}
+        for i in range(period, len(closes)+1):
+            h_chunk = highs[i-period:i]
+            l_chunk = lows[i-period:i]
+            c_chunk = closes[:i]
+            
+            atr = calculate_atr(h_chunk, l_chunk, c_chunk, period)
+            highest_high = max(h_chunk)
+            lowest_low = min(l_chunk)
+            
+            long_series.append(highest_high - atr * multiplier)
+            short_series.append(lowest_low + atr * multiplier)
+            
+        return {
+            'long': long_series[-1], 
+            'short': short_series[-1],
+            'long_series': long_series,
+            'short_series': short_series
+        }
     except:
-        return {'long': closes[-1], 'short': closes[-1]}
+        return {'long': closes[-1], 'short': closes[-1], 'long_series': [], 'short_series': []}
 
 def calculate_kama(closes, period=10, fast=2, slow=30):
     """Kaufman's Adaptive Moving Average"""
     try:
-        if len(closes) < period + 1: return closes[-1]
+        if len(closes) < period + 1: return {'value': closes[-1], 'series': [closes[-1]] * len(closes)}
         
-        change = abs(closes[-1] - closes[-period])
-        volatility = sum(abs(closes[i] - closes[i-1]) for i in range(len(closes)-period+1, len(closes)))
-        
-        er = change / volatility if volatility != 0 else 0
-        fast_sc = 2 / (fast + 1)
-        slow_sc = 2 / (slow + 1)
-        sc = (er * (fast_sc - slow_sc) + slow_sc)**2
-        
-        kama = closes[-period]
-        for i in range(len(closes)-period+1, len(closes)):
-            kama = kama + sc * (closes[i] - kama)
-        return kama
+        # Calculate full series
+        kama_series = [closes[0]]
+        for i in range(1, len(closes)):
+            chunk = closes[max(0, i-period+1) : i+1]
+            if len(chunk) < 2: 
+                kama_series.append(kama_series[-1])
+                continue
+            change = abs(chunk[-1] - chunk[0])
+            vol = sum(abs(chunk[j] - chunk[j-1]) for j in range(1, len(chunk)))
+            er = change / vol if vol != 0 else 0
+            fast_sc = 2 / (fast + 1)
+            slow_sc = 2 / (slow + 1)
+            sc = (er * (fast_sc - slow_sc) + slow_sc)**2
+            kama_series.append(kama_series[-1] + sc * (closes[i] - kama_series[-1]))
+            
+        return {'value': kama_series[-1], 'series': kama_series}
     except:
-        return closes[-1]
+        return {'value': closes[-1], 'series': [closes[-1]] * len(closes)}
 
 def calculate_vfi(closes, volumes, period=130, coef=0.2):
     """Volume Flow Indicator"""
@@ -1632,10 +1657,25 @@ def analyze_timeframe(candles, timeframe_name):
     fib = calculate_fib_levels(max(highs[-50:]), min(lows[-50:])) if 'FIB' in ENABLED_INDICATORS else None
     
     # SUPERSCALP 2026 INDICATORS
-    psar = calculate_psar(highs, lows, closes) if 'PSAR' in ENABLED_INDICATORS else {'psar': current_price, 'trend': 'NEUTRAL'}
-    tema = calculate_tema(closes) if 'TEMA' in ENABLED_INDICATORS else current_price
-    chandelier = calculate_chandelier_exit(highs, lows, closes) if 'CHANDELIER' in ENABLED_INDICATORS else {'long': 0, 'short': 0}
-    kama = calculate_kama(closes) if 'KAMA' in ENABLED_INDICATORS else current_price
+    psar_res = calculate_psar(highs, lows, closes) if 'PSAR' in ENABLED_INDICATORS else {'psar': current_price, 'trend': 'NEUTRAL', 'series': []}
+    tema_res = calculate_tema(closes) if 'TEMA' in ENABLED_INDICATORS else {'value': current_price, 'series': []}
+    
+    psar = {'psar': psar_res['psar'], 'trend': psar_res['trend']}
+    tema = tema_res['value']
+    
+    chandelier = calculate_chandelier_exit(highs, lows, closes) if 'CHANDELIER' in ENABLED_INDICATORS else {'long': 0, 'short': 0, 'long_series': [], 'short_series': []}
+    kama_res = calculate_kama(closes) if 'KAMA' in ENABLED_INDICATORS else {'value': current_price, 'series': []}
+    kama = kama_res['value']
+    
+    # Format indicator series for the chart (last 200 bars)
+    times = [c['time'] for c in candles]
+    psar_series = format_series_for_chart(times, psar_res.get('series', []))
+    tema_series = format_series_for_chart(times, tema_res.get('series', []))
+    kama_series = format_series_for_chart(times, kama_res.get('series', []))
+    zlsma_series = format_series_for_chart(times, calculate_ema_series(closes, 32)) # ZLSMA approximation
+    ema200_series = format_series_for_chart(times, calculate_ema_series(closes, 200))
+    chandelier_series = format_series_for_chart(times, chandelier.get('long_series', [])) # Just return long as base
+    
     vfi = calculate_vfi(closes, volumes) if 'VFI' in ENABLED_INDICATORS else 0
     
     rvol = volumes[-1] / (sum(volumes[-20:])/20) if len(volumes) >= 20 else 1.0
@@ -1706,8 +1746,15 @@ def analyze_timeframe(candles, timeframe_name):
         'kama': kama,
         'vfi': vfi,
         'rvol': rvol,
+        'psar_series': psar_series,
+        'tema_series': tema_series,
+        'kama_series': kama_series,
+        'zlsma_series': zlsma_series,
+        'ema200_series': ema200_series,
+        'chandelier_series': chandelier_series,
         'volume': volumes[-1] if volumes else 0,
         'avg_volume': sum(volumes[-20:]) / 20 if len(volumes) >= 20 else 0,
+        'candle_time': candles[-1]['time'] if candles else 0,
         'candles': candles[-10:] if len(candles) >= 10 else candles
     }
 
@@ -4243,7 +4290,10 @@ def strategy_psar_tema_scalp(symbol, analyses):
                     'timeframe': tf,
                     'analysis_data': {
                         'psar': psar['psar'],
+                        'psar_series': a.get('psar_series', []),
                         'tema': tema,
+                        'tema_series': a.get('tema_series', []),
+                        'ema200_series': a.get('ema200_series', []),
                         'rsi': a['rsi']
                     }
                 })
@@ -4287,7 +4337,10 @@ def strategy_psar_tema_scalp(symbol, analyses):
                     'timeframe': tf,
                     'analysis_data': {
                         'psar': psar['psar'],
+                        'psar_series': a.get('psar_series', []),
                         'tema': tema,
+                        'tema_series': a.get('tema_series', []),
+                        'ema200_series': a.get('ema200_series', []),
                         'rsi': a['rsi']
                     }
                 })
@@ -4340,7 +4393,10 @@ def strategy_kama_volatility_scalp(symbol, analyses):
                     'timeframe': tf,
                     'analysis_data': {
                         'kama': kama,
+                        'kama_series': a.get('kama_series', []),
                         'chandelier_long': chan['long'],
+                        'chandelier_series': a.get('chandelier_series', []),
+                        'ema200_series': a.get('ema200_series', []),
                         'vfi': a['vfi']
                     }
                 })
@@ -4381,7 +4437,10 @@ def strategy_kama_volatility_scalp(symbol, analyses):
                     'timeframe': tf,
                     'analysis_data': {
                         'kama': kama,
+                        'kama_series': a.get('kama_series', []),
                         'chandelier_short': chan['short'],
+                        'chandelier_series': a.get('chandelier_series', []),
+                        'ema200_series': a.get('ema200_series', []),
                         'vfi': a['vfi']
                     }
                 })
@@ -4437,7 +4496,9 @@ def strategy_vfi_momentum_scalp(symbol, analyses):
                         'vfi': vfi,
                         'rsi': rsi,
                         'uo': uo,
-                        'zlsma': a['zlsma']
+                        'zlsma': a['zlsma'],
+                        'zlsma_series': a.get('zlsma_series', []),
+                        'ema200_series': a.get('ema200_series', [])
                     }
                 })
                     
@@ -4479,7 +4540,9 @@ def strategy_vfi_momentum_scalp(symbol, analyses):
                         'vfi': vfi,
                         'rsi': rsi,
                         'uo': uo,
-                        'zlsma': a['zlsma']
+                        'zlsma': a['zlsma'],
+                        'zlsma_series': a.get('zlsma_series', []),
+                        'ema200_series': a.get('ema200_series', [])
                     }
                 })
     return trades
@@ -4799,6 +4862,7 @@ def save_signal_history(trades, filepath='signals_history.json'):
                 'signal_quality': trade.get('signal_quality', 'STANDARD'),
                 'conflict_warning': trade.get('conflict_warning'),
                 'timeframe': trade.get('timeframe'),
+                'candle_time': trade.get('candle_time'),
                 'reason': trade.get('reason'),
                 'result': None  # To be filled in later for performance tracking
             }
@@ -4857,6 +4921,10 @@ def run_analysis():
                         with print_lock:
                             for trade in filtered_trades:
                                 trade['timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                                # Capture the exact candle time for visualization (in seconds)
+                                tf_analysis = analyses.get(trade['timeframe'])
+                                if tf_analysis:
+                                    trade['candle_time'] = tf_analysis['candle_time'] / 1000
                                 trade['exchange'] = exchange
                                 all_trades.append(trade)
                                 print(f"\n{'='*80}")
