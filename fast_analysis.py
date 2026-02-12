@@ -4846,6 +4846,49 @@ def get_signal_quality(trade):
         return 'STANDARD'
 
 
+def enforce_signal_safety_buffers(trades):
+    """
+    Final safety check: Ensures no high-quality signal has a stop loss too close
+    for its timeframe's volatility. Automatically widens stops and scales targets.
+    """
+    for trade in trades:
+        atr = trade.get('atr', 0)
+        if not atr: continue
+        
+        entry = trade['entry']
+        sl = trade['sl']
+        tp1 = trade['tp1']
+        tp2 = trade['tp2']
+        
+        current_risk = abs(entry - sl)
+        quality = trade.get('signal_quality', 'STANDARD')
+        
+        # ELITE: 3.0x ATR | STRONG: 2.5x ATR | STANDARD: 2.0x ATR
+        multiplier = 3.0 if quality == 'ELITE' else 2.5 if quality == 'STRONG' else 2.0
+        min_safe_dist = atr * multiplier
+        
+        if current_risk < min_safe_dist:
+            # Shield triggered! Widen SL and scale TPs to maintain R/R profile
+            new_risk = min_safe_dist
+            ratio = new_risk / max(0.00000001, current_risk)
+            
+            if trade['type'] == 'LONG':
+                trade['sl'] = entry - new_risk
+                trade['tp1'] = entry + (tp1 - entry) * ratio
+                trade['tp2'] = entry + (tp2 - entry) * ratio
+            else:
+                trade['sl'] = entry + new_risk
+                trade['tp1'] = entry - (entry - tp1) * ratio
+                trade['tp2'] = entry - (entry - tp2) * ratio
+            
+            trade['risk'] = new_risk
+            trade['reward'] = abs(trade['tp1'] - entry)
+            trade['risk_reward'] = round(trade['reward'] / trade['risk'], 1)
+            trade['reason'] += f" | 🛡️ SHIELDED ({multiplier}x ATR)"
+    
+    return trades
+
+
 def save_signal_history(trades, filepath='signals_history.json'):
     """Append trade signals to a JSON history file for performance tracking."""
     try:
@@ -4943,10 +4986,13 @@ def run_analysis():
                             for trade in filtered_trades:
                                 trade['timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                                 # Capture the exact candle time for visualization (in seconds)
+                                trade['exchange'] = exchange
+                                # Capture/Inject data for visualization and safety check
                                 tf_analysis = analyses.get(trade['timeframe'])
                                 if tf_analysis:
                                     trade['candle_time'] = tf_analysis['candle_time'] / 1000
-                                trade['exchange'] = exchange
+                                    trade['atr'] = tf_analysis['atr']
+                                    
                                 all_trades.append(trade)
                                 print(f"\n{'='*80}")
                                 print(f"[{trade['strategy']}] TRADE FOUND - {trade['type']} {trade['symbol']} on {exchange} (Conf: {trade['confidence_score']}/10)")
@@ -4974,6 +5020,9 @@ def run_analysis():
         # Step 4: Classify signal quality
         for trade in all_trades:
             trade['signal_quality'] = get_signal_quality(trade)
+
+        # Step 5: Enforce Global Safety Buffers (Bulletproof SLs)
+        all_trades = enforce_signal_safety_buffers(all_trades)
 
     # === PRINT FINAL RESULTS ===
     print("\n" + "="*120)
