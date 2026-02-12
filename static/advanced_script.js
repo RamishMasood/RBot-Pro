@@ -261,8 +261,14 @@ function addTradeSignal(trade) {
 
     // Conflict warning
     const conflictHtml = trade.conflict_warning
-        ? `<div style="background: #ff444422; border: 1px solid #ff444455; border-radius: 6px; padding: 6px 10px; margin-top: 8px; font-size: 0.8em; color: #ff8888;">${trade.conflict_warning}</div>`
+        ? `<div style="background: #ff444422; border: 1px solid #ff444455; border-radius: 6px; padding: 6px 10px; margin-top: 8px; font-size: 0.8em; color: #ff8888;">⚠️ <b>CONFLICT:</b> ${trade.conflict_warning}</div>`
         : '';
+
+    // Volatility/Market Warning
+    const warningHtml = trade.warning
+        ? `<div style="background: #ffaa0022; border: 1px solid #ffaa0055; border-radius: 6px; padding: 6px 10px; margin-top: 8px; font-size: 0.8em; color: #ffaa00;">🛡️ <b>RISK:</b> ${trade.warning}</div>`
+        : '';
+
 
     // Confidence boost info
     const boostHtml = (trade.original_confidence && trade.original_confidence !== trade.confidence_score)
@@ -307,7 +313,7 @@ function addTradeSignal(trade) {
                 </div>
                 <div style="font-size: 0.85em; color: #999; margin-top: 5px; font-style: italic;">
                     ${trade.indicators}
-                </div>${conflictHtml}
+                </div>${conflictHtml}${warningHtml}
                 <div class="tracking-area">
                     <div style="display: flex; align-items: center; gap: 10px;">
                         <span class="status-badge status-waiting">WAITING TO ENTER</span>

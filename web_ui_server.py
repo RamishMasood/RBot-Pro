@@ -306,13 +306,11 @@ class TradeTracker:
 # Global instances
 trade_tracker = TradeTracker()
 
-# Global state
-analysis_running = False
-analysis_thread = None
-active_process = None  # Track the running subprocess
-scheduler = BackgroundScheduler()
-output_queue = queue.Queue()
+# Session State Management
+# Format: { 'sid': { 'process': subprocess.Popen, 'thread': threading.Thread, 'active': bool } }
+client_sessions = {}
 
+# Global config (still used for defaults and auto-run)
 config = {
     'symbols': ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT'],
     'indicators': ['RSI', 'EMA', 'MACD', 'BB', 'ATR', 'ADX', 'OB', 'PA', 'StochRSI', 'OBV', 'ST', 'VWAP', 'HMA', 'CMF', 'ICHI', 'FVG', 'DIV', 'WT', 'SQZ', 'LIQ', 'BOS', 'MFI', 'FISH', 'ZLSMA', 'TSI', 'CHOP', 'VI', 'STC', 'DON', 'CHoCH', 'KC', 'UTBOT', 'UO', 'STDEV', 'VP', 'SUPDEM', 'FIB', 'ICT_WD', 'PSAR', 'TEMA', 'CHANDELIER', 'KAMA', 'VFI'],
@@ -355,40 +353,6 @@ def send_telegram_alert(trade):
     except Exception as e:
         print(f"Telegram error: {e}")
 
-def stream_output_loop():
-    """Background thread that reads from queue and broadcasts to clients"""
-    while True:
-        try:
-            line = output_queue.get(timeout=1)
-            if line:
-                # Parse trade data for global signals box & Telegram
-                if 'SIGNAL_DATA:' in line:
-                    try:
-                        trade_json = line.split('SIGNAL_DATA:')[1].strip()
-                        trade = json.loads(trade_json)
-                        
-                        # INJECT MARKET WARNING IF EXISTS
-                        status = news_manager.get_market_status()
-                        if status.get('volatility_warning'):
-                            trade['warning'] = status['volatility_warning']
-                        if status.get('news_warning'):
-                            trade['warning'] = f"{trade.get('warning', '')} {status['news_warning']}"
-                            
-                        socketio.emit('trade', trade, namespace='/')
-                        # Register with tracker
-                        trade_tracker.add_trade(trade)
-                        # Forward to Telegram
-                        thread = threading.Thread(target=send_telegram_alert, args=(trade,), daemon=True)
-                        thread.start()
-                    except:
-                        pass
-                
-                socketio.emit('output', {'data': line}, namespace='/')
-        except queue.Empty:
-            continue
-        except Exception as e:
-            print(f"Stream error: {e}")
-
 def market_monitor_loop():
     """Background thread to monitor market news and volatility"""
     last_news_time = 0
@@ -404,26 +368,19 @@ def market_monitor_loop():
                 news_manager.fetch_news()
                 last_news_time = current_time
                 
-            # Broadcast status
+            # Broadcast status to ALL clients
             status = news_manager.get_market_status()
             socketio.emit('market_status', status, namespace='/')
             
-            # If severe warning, maybe log it
-            if status.get('volatility_warning'):
-                # We don't want to spam the log, so maybe just trust the UI update
-                # or send a special alert event
-                pass
-                
             time.sleep(2)
             
         except Exception as e:
             print(f"Market Monitor Error: {e}")
             time.sleep(10)
 
-def run_analysis_subprocess(symbols, indicators, timeframes, min_conf):
-    """Run the analysis script with custom parameters"""
-    global analysis_running, active_process
-    analysis_running = True
+def run_session_analysis(sid, symbols, indicators, timeframes, min_conf, exchanges):
+    """Run analysis for a specific session"""
+    print(f"🚀 Starting analysis for session {sid}")
     
     try:
         cmd = [
@@ -432,12 +389,12 @@ def run_analysis_subprocess(symbols, indicators, timeframes, min_conf):
             '--indicators', ','.join(indicators),
             '--timeframes', ','.join(timeframes),
             '--min-confidence', str(min_conf),
-            '--exchanges', ','.join(config.get('exchanges', ['MEXC', 'Binance']))
+            '--exchanges', ','.join(exchanges)
         ]
         
-        output_queue.put(f"🚀 Running: {' '.join(cmd)}\n")
+        # Send start message to specific room (sid)
+        socketio.emit('output', {'data': f"🚀 Running: {' '.join(cmd)}\n"}, room=sid, namespace='/')
         
-        # Set UTF-8 encoding environment variables
         env = os.environ.copy()
         env['PYTHONIOENCODING'] = 'utf-8'
         env['PYTHONUNBUFFERED'] = '1'
@@ -445,16 +402,20 @@ def run_analysis_subprocess(symbols, indicators, timeframes, min_conf):
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
+            stderr=subprocess.STDOUT, # Merge stderr into stdout
             text=True,
             encoding='utf-8',
             bufsize=1,
             cwd=os.path.dirname(os.path.abspath(__file__)),
             env=env
         )
-        active_process = proc
+
+        # Store process handle
+        if sid in client_sessions:
+            client_sessions[sid]['process'] = proc
+            client_sessions[sid]['active'] = True
         
-        # Stream output to queue
+        # Stream output
         for line in iter(proc.stdout.readline, ''):
             if line:
                 if line.startswith('SIGNAL_DATA:'):
@@ -462,54 +423,110 @@ def run_analysis_subprocess(symbols, indicators, timeframes, min_conf):
                         signal_str = line.split('SIGNAL_DATA:')[1].strip()
                         signal_data = json.loads(signal_str)
                         
-                        # Register with tracker for real-time price updates
+                        # INJECT MARKET WARNING IF EXISTS
+                        status = news_manager.get_market_status()
+                        if status.get('volatility_warning'):
+                            signal_data['warning'] = status['volatility_warning']
+                        if status.get('news_warning'):
+                            signal_data['warning'] = f"{signal_data.get('warning', '')} {status['news_warning']}"
+
+                        # Register with GLOBAL tracker (all users see active trades)
                         trade_tracker.add_trade(signal_data)
                         
-                        # Emit to UI
-                        socketio.emit('trade_signal', signal_data, namespace='/')
+                        # Emit signal ONLY to this session's UI
+                        socketio.emit('trade_signal', signal_data, room=sid, namespace='/')
                         
-                        # Forward to Telegram in background
+                        # Forward to Telegram (Global config)
                         thread = threading.Thread(target=send_telegram_alert, args=(signal_data,), daemon=True)
                         thread.start()
                     except Exception as e:
                         print(f"Error processing trade signal: {e}")
-                    continue # Skip showing raw JSON data in terminal
-                output_queue.put(line)
+                    continue
+                
+                # Emit standard output line to session
+                socketio.emit('output', {'data': line}, room=sid, namespace='/')
         
-        # Process has ended — safely get return code
-        try:
-            proc.wait(timeout=5)
-            exit_code = proc.returncode
-        except Exception:
-            exit_code = -1
-        
-        # Only emit 'completed' if it wasn't already stopped by the stop handler
-        if analysis_running:
-            output_queue.put(f"\n✅ Analysis completed (exit code: {exit_code})\n")
-            socketio.emit('status', {'status': 'completed', 'code': exit_code}, namespace='/')
-        
+        # Process finished
+        if sid in client_sessions and client_sessions[sid]['active']:
+             socketio.emit('output', {'data': "\n✅ Analysis completed\n"}, room=sid, namespace='/')
+             socketio.emit('status', {'status': 'completed'}, room=sid, namespace='/')
+             client_sessions[sid]['active'] = False
+             client_sessions[sid]['process'] = None
+
     except Exception as e:
         error_msg = str(e)
-        # Don't report errors from being killed/stopped
         if 'killed' not in error_msg.lower() and 'terminated' not in error_msg.lower():
-            output_queue.put(f"❌ ERROR: {error_msg}\n")
-            socketio.emit('status', {'status': 'error'}, namespace='/')
+            socketio.emit('output', {'data': f"❌ ERROR: {error_msg}\n"}, room=sid, namespace='/')
+            socketio.emit('status', {'status': 'error'}, room=sid, namespace='/')
     finally:
-        analysis_running = False
-        active_process = None
+        if sid in client_sessions:
+            client_sessions[sid]['active'] = False
 
 
 def auto_run_analysis():
-    """Auto-run analysis on schedule"""
-    if config['auto_run'] and not analysis_running:
-        output_queue.put(f"🤖 Auto-run triggered at {datetime.now().strftime('%H:%M:%S')}\n")
-        socketio.emit('status', {'status': 'auto_triggered'}, namespace='/')
-        thread = threading.Thread(
-            target=run_analysis_subprocess,
-            args=(config['symbols'], config['indicators'], config['timeframes'], config['min_confidence']),
-            daemon=True
-        )
-        thread.start()
+    """Auto-run analysis on schedule - Runs as a background 'system' task"""
+    print(f"🤖 Auto-run triggered at {datetime.now().strftime('%H:%M:%S')}")
+    socketio.emit('status', {'status': 'auto_triggered'}, namespace='/')
+    
+    def _run_auto():
+        try:
+            cmd = [
+                sys.executable, 'fast_analysis.py',
+                '--symbols', ','.join(config['symbols']),
+                '--indicators', ','.join(config['indicators']),
+                '--timeframes', ','.join(config['timeframes']),
+                '--min-confidence', str(config['min_confidence']),
+                '--exchanges', ','.join(config.get('exchanges', ['MEXC', 'Binance']))
+            ]
+            
+            env = os.environ.copy()
+            env['PYTHONIOENCODING'] = 'utf-8'
+            env['PYTHONUNBUFFERED'] = '1'
+            
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding='utf-8',
+                bufsize=1,
+                cwd=os.path.dirname(os.path.abspath(__file__)),
+                env=env
+            )
+            
+            for line in iter(proc.stdout.readline, ''):
+                if line and line.startswith('SIGNAL_DATA:'):
+                    try:
+                        signal_str = line.split('SIGNAL_DATA:')[1].strip()
+                        signal_data = json.loads(signal_str)
+                        
+                        # INJECT MARKET WARNING IF EXISTS
+                        status = news_manager.get_market_status()
+                        if status.get('volatility_warning'):
+                            signal_data['warning'] = status['volatility_warning']
+                        if status.get('news_warning'):
+                            signal_data['warning'] = f"{signal_data.get('warning', '')} {status['news_warning']}"
+                        
+                        # Register with GLOBAL tracker
+                        trade_tracker.add_trade(signal_data)
+                        
+                        # GLOBAL BROADCAST for auto-runs
+                        socketio.emit('trade_signal', signal_data, namespace='/')
+                        
+                        # Telegram
+                        thread = threading.Thread(target=send_telegram_alert, args=(signal_data,), daemon=True)
+                        thread.start()
+                    except:
+                        pass
+                        
+            proc.wait()
+            print("✅ Auto-run completed")
+            
+        except Exception as e:
+            print(f"Auto-run error: {e}")
+
+    thread = threading.Thread(target=_run_auto, daemon=True)
+    thread.start() 
 
 @app.route('/')
 def index():
@@ -544,8 +561,8 @@ def update_config():
             # Trigger immediately for better UX
             auto_run_analysis()
         else:
-            # Stop analysis immediately if turning OFF
-            handle_stop()
+            # Stop analysis for all sessions (optional, or just stop scheduler)
+            pass
     if 'auto_run_interval' in data:
         config['auto_run_interval'] = data['auto_run_interval']
         update_scheduler()
@@ -564,7 +581,6 @@ def get_available_coins():
     """Get top 100 coins from EACH selected exchange, then merge and deduplicate"""
     default_top = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT']
     all_coins_set = set(default_top)
-    import requests
     
     selected_exchanges = config.get('exchanges', ['MEXC', 'Binance'])
     n = 100 # Top 100 per exchange
@@ -596,15 +612,13 @@ def get_available_coins():
                 all_coins_set.add(item['symbol'])
         except Exception as e:
             print(f"Error fetching Binance coins: {e}")
-    
+            
     if 'Bybit' in selected_exchanges:
         try:
             r = requests.get('https://api.bybit.com/v5/market/tickers?category=linear', timeout=10)
             data = r.json()
             if data.get('result') and data['result'].get('list'):
-                # Filter USDT pairs
                 usdt_pairs = [item for item in data['result']['list'] if item.get('symbol', '').endswith('USDT')]
-                # Sort by turnover24h
                 bybit_sorted = sorted(usdt_pairs, key=lambda x: float(x.get('turnover24h', 0)), reverse=True)
                 for item in bybit_sorted[:n]:
                     all_coins_set.add(item['symbol'])
@@ -616,7 +630,6 @@ def get_available_coins():
             r = requests.get('https://api.bitget.com/api/v2/mix/market/tickers?productType=USDT-FUTURES', timeout=10)
             data = r.json()
             if data.get('data'):
-                # Filter USDT pairs
                 usdt_pairs = [item for item in data['data'] if item.get('symbol', '').endswith('USDT')]
                 for item in usdt_pairs[:n]:
                     all_coins_set.add(item['symbol'])
@@ -628,7 +641,6 @@ def get_available_coins():
             r = requests.get('https://www.okx.com/api/v5/market/tickers?instType=SWAP', timeout=10)
             data = r.json()
             if data.get('data'):
-                # Filter USDT pairs
                 usdt_pairs = [item for item in data['data'] if '-USDT-' in item.get('instId', '')]
                 for item in usdt_pairs[:n]:
                     inst_id = item.get('instId', '')
@@ -642,9 +654,7 @@ def get_available_coins():
             r = requests.get('https://api.kucoin.com/api/v1/market/allTickers', timeout=10)
             data = r.json()
             if data.get('data') and data['data'].get('ticker'):
-                # Filter USDT pairs
                 usdt_pairs = [item for item in data['data']['ticker'] if item.get('symbol', '').endswith('-USDT')]
-                # Sort by volValue (usually USDT volume)
                 kucoin_sorted = sorted(usdt_pairs, key=lambda x: float(x.get('volValue', 0)), reverse=True)
                 for item in kucoin_sorted[:n]:
                     sym = item.get('symbol', '')
@@ -656,7 +666,6 @@ def get_available_coins():
         try:
             r = requests.get('https://api.gateio.ws/api/v4/futures/usdt/contracts', timeout=10)
             data = r.json()
-            # GateIO contracts
             for item in data[:n]:
                 name = item.get('name', '')
                 if name.endswith('_USDT'):
@@ -669,11 +678,11 @@ def get_available_coins():
             r = requests.get('https://api.huobi.pro/v2/settings/common/symbols', timeout=10)
             data = r.json()
             if data.get('data'):
-                for item in data['data'][:200]: # HTX symbols list is unordered, take more and filter
+                for item in data['data'][:200]:
                     sym = item.get('sc', '')
                     if sym.endswith('usdt'):
                         all_coins_set.add(sym.upper())
-                        if len(all_coins_set) > 1000: break # Safety cap
+                        if len(all_coins_set) > 1000: break
         except Exception as e:
             print(f"Error fetching HTX coins: {e}")
     
@@ -687,91 +696,88 @@ def get_available_coins():
 @socketio.on('connect', namespace='/')
 def handle_connect():
     """Client connected"""
-    print(f"Client connected: {request.sid}")
+    sid = request.sid
+    print(f"Client connected: {sid}")
+    client_sessions[sid] = {'active': False, 'process': None}
     emit('status', {'status': 'connected', 'config': config})
     emit('output', {'data': f'✓ Connected at {datetime.now().strftime("%H:%M:%S")}\n'})
 
 @socketio.on('disconnect', namespace='/')
 def handle_disconnect():
     """Client disconnected"""
-    print(f"Client disconnected: {request.sid}")
+    sid = request.sid
+    print(f"Client disconnected: {sid}")
+    
+    # Optional: Kill process on disconnect to save resources
+    if sid in client_sessions:
+        if client_sessions[sid]['active'] and client_sessions[sid]['process']:
+            try:
+                 client_sessions[sid]['process'].kill()
+            except: pass
+        del client_sessions[sid]
 
 @socketio.on('start_analysis', namespace='/')
 def handle_start(data):
-    """Start analysis with config"""
-    global analysis_thread, analysis_running
+    """Start analysis for THIS session"""
+    sid = request.sid
     
-    # Export previous session data to CSV before starting new analysis
-    trade_tracker.export_to_csv()
-    
-    if analysis_running:
-        emit('output', {'data': '⚠️  Analysis already running!\n'})
+    # Ensure session exists
+    if sid not in client_sessions:
+        client_sessions[sid] = {'active': False, 'process': None}
+        
+    if client_sessions[sid]['active']:
+        emit('output', {'data': '⚠️  Analysis already running in this tab!\n'})
         return
     
+    # Use config from request or global defaults
     symbols = data.get('symbols', config['symbols'])
     indicators = data.get('indicators', config['indicators'])
     timeframes = data.get('timeframes', config['timeframes'])
     min_conf = data.get('min_confidence', config['min_confidence'])
     exchanges = data.get('exchanges', config['exchanges'])
     
-    # Update current config with these values for persistence
-    config['symbols'] = symbols
-    config['indicators'] = indicators
-    config['timeframes'] = timeframes
-    config['min_confidence'] = min_conf
-    config['exchanges'] = exchanges
-    
     emit('output', {'data': f'🚀 Starting analysis at {datetime.now().strftime("%H:%M:%S")}\n'})
-    emit('output', {'data': f'📊 Symbols: {len(symbols)} | Indicators: {len(indicators)} | Timeframes: {len(timeframes)}\n'})
     emit('status', {'status': 'started'})
     
-    analysis_thread = threading.Thread(
-        target=run_analysis_subprocess,
-        args=(symbols, indicators, timeframes, min_conf),
+    # Launch session-specific thread
+    thread = threading.Thread(
+        target=run_session_analysis,
+        args=(sid, symbols, indicators, timeframes, min_conf, exchanges),
         daemon=True
     )
-    analysis_thread.start()
+    client_sessions[sid]['thread'] = thread
+    client_sessions[sid]['active'] = True
+    thread.start()
 
 @socketio.on('stop_analysis', namespace='/')
 def handle_stop():
-    """Stop analysis (if running) — kills the entire process tree on Windows"""
-    global active_process, analysis_running
-    socketio.emit('output', {'data': '⏹️  Stop requested — terminating all processes...\n'}, namespace='/')
+    """Stop analysis for THIS session"""
+    sid = request.sid
+    socketio.emit('output', {'data': '⏹️  Stop requested...\n'}, room=sid, namespace='/')
     
-    if active_process:
+    if sid in client_sessions and client_sessions[sid]['process']:
         try:
-            pid = active_process.pid
-            print(f"Terminating analysis process tree: PID {pid}")
-            # On Windows, use taskkill to kill the entire process tree
+            proc = client_sessions[sid]['process']
             import platform
             if platform.system() == 'Windows':
-                subprocess.run(
-                    ['taskkill', '/F', '/T', '/PID', str(pid)],
-                    capture_output=True, timeout=10
-                )
+                subprocess.run(['taskkill', '/F', '/T', '/PID', str(proc.pid)], capture_output=True)
             else:
-                import signal
-                os.killpg(os.getpgid(pid), signal.SIGTERM)
-            socketio.emit('output', {'data': '⏹️  All analysis processes terminated successfully\n'}, namespace='/')
+                proc.terminate()
+            
+            socketio.emit('output', {'data': '⏹️  Process terminated.\n'}, room=sid, namespace='/')
         except Exception as e:
-            socketio.emit('output', {'data': f'❌ Error stopping process: {e}\n'}, namespace='/')
-            # Force kill as last resort
-            try:
-                active_process.kill()
-            except:
-                pass
+            socketio.emit('output', {'data': f'❌ Error stopping: {e}\n'}, room=sid, namespace='/')
         finally:
-            active_process = None
-            analysis_running = False
-            socketio.emit('status', {'status': 'stopped'}, namespace='/')
+            client_sessions[sid]['process'] = None
+            client_sessions[sid]['active'] = False
+            socketio.emit('status', {'status': 'stopped'}, room=sid, namespace='/')
     else:
-        socketio.emit('output', {'data': 'ℹ️  No analysis process currently running\n'}, namespace='/')
-        analysis_running = False
-        socketio.emit('status', {'status': 'stopped'}, namespace='/')
+        socketio.emit('output', {'data': 'ℹ️  No analysis process currently running\n'}, room=sid, namespace='/')
+        socketio.emit('status', {'status': 'stopped'}, room=sid, namespace='/')
 
 @socketio.on('refresh_news', namespace='/')
 def handle_refresh_news():
-    """Manual trigger to refresh news"""
+    """Manual trigger to refresh news (Global broadcast)"""
     try:
         # socketio.emit('output', {'data': '📰 Refreshing news...'}, namespace='/')
         news_manager.fetch_news()
@@ -782,9 +788,10 @@ def handle_refresh_news():
 
 @socketio.on('clear_output', namespace='/')
 def handle_clear():
-    """Clear terminal"""
-    socketio.emit('clear', {}, namespace='/')
-    emit('output', {'data': '>>> Output cleared\n'})
+    """Clear terminal (Session specific)"""
+    sid = request.sid
+    emit('clear', room=sid)
+    emit('output', {'data': '>>> Output cleared\n'}, room=sid)
 
 def update_scheduler():
     """Update APScheduler with new interval"""
@@ -802,6 +809,7 @@ def update_scheduler():
         )
         if not scheduler.running:
             scheduler.start()
+
 
 @app.route('/api/proxy/klines')
 def proxy_klines():
@@ -832,13 +840,13 @@ def server_error(e):
     return jsonify({'error': 'Internal server error'}), 500
 
 if __name__ == '__main__':
-    # Start background output stream reader
-    reader = threading.Thread(target=stream_output_loop, daemon=True)
-    reader.start()
-
     # Start Market Monitor (News + Volatility)
     market_thread = threading.Thread(target=market_monitor_loop, daemon=True)
     market_thread.start()
+
+    # Apply initial scheduler config
+    update_scheduler()
+
     
     print("🌐 RBot Pro Multi-Exchange Analysis UI Server")
     print("📱 Open: http://localhost:5000")
