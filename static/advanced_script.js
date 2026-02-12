@@ -98,6 +98,42 @@ socket.on('market_status', (data) => {
     updateMarketStatus(data);
 });
 
+socket.on('tracking_update', (trades) => {
+    updateTrackingUI(trades);
+});
+
+function updateTrackingUI(trades) {
+    trades.forEach(trade => {
+        const cleanSymbol = trade.symbol.replace(/_/g, '').toUpperCase();
+        const signalId = `signal-${cleanSymbol}-${trade.type}`.replace(/[^a-zA-Z0-9-]/g, '');
+        const card = document.getElementById(signalId);
+        if (!card) return;
+
+        const trackingSection = card.querySelector('.tracking-area');
+        if (!trackingSection) return;
+
+        const status = trade.tracking_status || 'WAITING';
+        const pnl = trade.pnl_pct || 0;
+        const price = trade.current_price || trade.entry;
+
+        const pnlClass = pnl >= 0 ? 'pnl-pos' : 'pnl-neg';
+        const pnlSign = pnl >= 0 ? '+' : '';
+
+        trackingSection.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span class="status-badge status-${status.toLowerCase()}">${status.replace('_', ' ')}</span>
+                <div class="pnl-display ${pnlClass}">
+                    ${pnlSign}${pnl.toFixed(2)}%
+                </div>
+            </div>
+            <div class="live-price-box">
+                LIVE PRICE (${trade.exchange})
+                <span class="live-price-val">$${price.toFixed(price < 1 ? 6 : 2)}</span>
+            </div>
+        `;
+    });
+}
+
 // ===== Terminal Functions =====
 
 function addTerminalLine(text, type = 'normal') {
@@ -268,6 +304,12 @@ function addTradeSignal(trade) {
                 <div style="font-size: 0.85em; color: #999; margin-top: 5px; font-style: italic;">
                     ${trade.indicators}
                 </div>${conflictHtml}
+                <div class="tracking-area">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span class="status-badge status-waiting">WAITING TO ENTER</span>
+                        <div class="pnl-display">0.00%</div>
+                    </div>
+                </div>
                 <button class="view-analysis-btn" data-trade="${tradeDataEncoded}" onclick="openAnalysisChart(this)">
                     🔍 View Analysis Chart
                 </button>
@@ -816,6 +858,7 @@ async function openAnalysisChart(btn) {
     // Setup Modal Initial State
     modal.style.display = 'block';
     overlay.style.display = 'flex';
+    overlay.innerHTML = '<div class="loader"></div><span>Initializing Chart Data...</span>';
     document.getElementById('modalTitle').innerText = `📊 ${trade.symbol} Analysis - ${trade.exchange}`;
     document.getElementById('modalSubtitle').innerText = `${trade.strategy} | TF: ${trade.timeframe} | ${trade.type}`;
     document.getElementById('modalReason').innerText = trade.reason || "";

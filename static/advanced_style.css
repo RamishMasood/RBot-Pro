@@ -801,6 +801,92 @@ input:checked+.toggle-slider:before {
     border-color: #f0b90b;
 }
 
+/* Tracking Status Badges */
+.tracking-area {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed rgba(255, 255, 255, 0.1);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.status-badge {
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 0.75em;
+    font-weight: bold;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+
+.status-waiting {
+    background: #555;
+    color: #fff;
+    border: 1px solid #777;
+}
+
+.status-running {
+    background: rgba(0, 212, 255, 0.2);
+    color: #00d4ff;
+    border: 1px solid #00d4ff55;
+    box-shadow: 0 0 10px rgba(0, 212, 255, 0.1);
+}
+
+.status-tp_hit {
+    background: rgba(0, 255, 136, 0.2);
+    color: #00ff88;
+    border: 1px solid #00ff8855;
+    animation: glow-green 2s infinite;
+}
+
+.status-sl_hit {
+    background: rgba(255, 68, 68, 0.2);
+    color: #ff4444;
+    border: 1px solid #ff444455;
+}
+
+@keyframes glow-green {
+    0% {
+        box-shadow: 0 0 5px rgba(0, 255, 136, 0.2);
+    }
+
+    50% {
+        box-shadow: 0 0 15px rgba(0, 255, 136, 0.5);
+    }
+
+    100% {
+        box-shadow: 0 0 5px rgba(0, 255, 136, 0.2);
+    }
+}
+
+.pnl-display {
+    font-family: 'Courier New', monospace;
+    font-weight: bold;
+    font-size: 1.1em;
+}
+
+.pnl-pos {
+    color: #00ff88;
+}
+
+.pnl-neg {
+    color: #ff4444;
+}
+
+.live-price-box {
+    text-align: right;
+    font-size: 0.8em;
+    color: #888;
+}
+
+.live-price-val {
+    display: block;
+    color: #fff;
+    font-size: 1.25em;
+    font-weight: bold;
+}
+
 /* Modal Styles */
 .modal {
     display: none;

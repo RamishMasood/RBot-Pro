@@ -15,6 +15,8 @@ from datetime import datetime
 import json
 from apscheduler.schedulers.background import BackgroundScheduler
 import time
+import csv
+import requests
 
 # Import News Manager
 from news_manager import news_manager
@@ -30,6 +32,279 @@ socketio = SocketIO(
     ping_timeout=120,
     ping_interval=30
 )
+
+# --- Exchange Specific Kline Fetchers (Ported from fast_analysis.py) ---
+def get_klines_mexc(symbol, interval, limit=200):
+    try:
+        mapping = {'1m': 'Min1', '3m': 'Min3', '5m': 'Min5', '15m': 'Min15', '30m': 'Min30', '1h': 'Min60', '4h': 'Hour4', '1d': 'Day1'}
+        mexc_interval = mapping.get(interval, 'Min60')
+        futures_symbol = symbol.replace('USDT', '_USDT') if 'USDT' in symbol and '_' not in symbol else symbol
+        url = f'https://contract.mexc.com/api/v1/contract/kline/{futures_symbol}?interval={mexc_interval}&limit={limit}'
+        r = requests.get(url, timeout=5)
+        data = r.json()
+        if data.get('success') and 'data' in data:
+            d = data['data']
+            candles = []
+            for i in range(len(d['time'])):
+                candles.append([int(d['time'][i]) * 1000, float(d['open'][i]), float(d['high'][i]), float(d['low'][i]), float(d['close'][i]), float(d['vol'][i])])
+            return candles
+        return None
+    except: return None
+
+def get_klines_binance(symbol, interval, limit=200):
+    try:
+        url = f'https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}'
+        r = requests.get(url, timeout=5)
+        return r.json()
+    except: return None
+
+def get_klines_bybit(symbol, interval, limit=200):
+    try:
+        mapping = {'1m': '1', '3m': '3', '5m': '5', '15m': '15', '30m': '30', '1h': '60', '4h': '240', '1d': 'D'}
+        url = f'https://api.bybit.com/v5/market/kline?category=linear&symbol={symbol}&interval={mapping.get(interval, "60")}&limit={limit}'
+        r = requests.get(url, timeout=5)
+        data = r.json()
+        if data.get('result') and data['result'].get('list'):
+            return [[int(k[0]), float(k[1]), float(k[2]), float(k[3]), float(k[4]), float(k[5])] for k in reversed(data['result']['list'])]
+        return None
+    except: return None
+
+def get_klines_bitget(symbol, interval, limit=200):
+    try:
+        mapping = {'1m': '1m', '3m': '3m', '5m': '5m', '15m': '15m', '30m': '30m', '1h': '1H', '4h': '4H', '1d': '1D'}
+        url = f'https://api.bitget.com/api/v2/mix/market/candles?productType=USDT-FUTURES&symbol={symbol}&granularity={mapping.get(interval, "1H")}&limit={limit}'
+        r = requests.get(url, timeout=5)
+        data = r.json()
+        if data.get('data'):
+            candles = [[int(k[0]), float(k[1]), float(k[2]), float(k[3]), float(k[4]), float(k[5])] for k in data['data']]
+            if candles and candles[0][0] > candles[-1][0]: candles.reverse()
+            return candles
+        return None
+    except: return None
+
+def get_klines_okx(symbol, interval, limit=200):
+    try:
+        mapping = {'1m': '1m', '3m': '3m', '5m': '5m', '15m': '15m', '30m': '30m', '1h': '1H', '4h': '4H', '1d': '1D'}
+        okx_symbol = symbol.replace('USDT', '-USDT-SWAP') if 'USDT' in symbol and '-' not in symbol else symbol
+        url = f'https://www.okx.com/api/v5/market/candles?instId={okx_symbol}&bar={mapping.get(interval, "1H")}&limit={limit}'
+        r = requests.get(url, timeout=5)
+        data = r.json()
+        if data.get('data'):
+            return [[int(k[0]), float(k[1]), float(k[2]), float(k[3]), float(k[4]), float(k[5])] for k in reversed(data['data'])]
+        return None
+    except: return None
+
+def get_klines_kucoin(symbol, interval, limit=200):
+    try:
+        mapping = {'1m': '1min', '3m': '3min', '5m': '5min', '15m': '15min', '30m': '30min', '1h': '1hour', '4h': '4hour', '1d': '1day'}
+        kucoin_symbol = symbol.replace('USDT', '-USDT') if 'USDT' in symbol and '-' not in symbol else symbol
+        url = f'https://api.kucoin.com/api/v1/market/candles?type={mapping.get(interval, "1hour")}&symbol={kucoin_symbol}&limit={limit}'
+        r = requests.get(url, timeout=5)
+        data = r.json()
+        if data.get('data'):
+            return [[int(k[0]) * 1000, float(k[1]), float(k[3]), float(k[4]), float(k[2]), float(k[5])] for k in reversed(data['data'])]
+        return None
+    except: return None
+
+def get_klines_gateio(symbol, interval, limit=200):
+    try:
+        gate_symbol = symbol.replace('USDT', '_USDT') if 'USDT' in symbol and '_' not in symbol else symbol
+        url = f'https://api.gateio.ws/api/v4/futures/usdt/candlesticks?contract={gate_symbol}&interval={interval}&limit={limit}'
+        r = requests.get(url, timeout=5)
+        data = r.json()
+        if isinstance(data, list):
+            return [[int(k.get('t', 0)) * 1000, float(k.get('o', 0)), float(k.get('h', 0)), float(k.get('l', 0)), float(k.get('c', 0)), float(k.get('v', 0))] for k in data]
+        return None
+    except: return None
+
+def get_klines_htx(symbol, interval, limit=200):
+    try:
+        mapping = {'1m': '1min', '3m': '3min', '5m': '5min', '15m': '15min', '30m': '30min', '1h': '60min', '4h': '4hour', '1d': '1day'}
+        url = f'https://api.huobi.pro/market/history/kline?symbol={symbol.lower()}&period={mapping.get(interval, "60min")}&size={limit}'
+        r = requests.get(url, timeout=5)
+        data = r.json()
+        if data.get('data'):
+            return [[int(k.get('id', 0)) * 1000, float(k.get('open', 0)), float(k.get('high', 0)), float(k.get('low', 0)), float(k.get('close', 0)), float(k.get('vol', 0))] for k in reversed(data['data'])]
+        return None
+    except: return None
+
+EXCHANGE_FETCHERS = {
+    'MEXC': get_klines_mexc, 'BINANCE': get_klines_binance, 'BYBIT': get_klines_bybit,
+    'BITGET': get_klines_bitget, 'OKX': get_klines_okx, 'KUCOIN': get_klines_kucoin,
+    'GATEIO': get_klines_gateio, 'HTX': get_klines_htx
+}
+
+class TradeTracker:
+    def __init__(self):
+        self.active_trades = []
+        self.lock = threading.Lock()
+        self.exchange_prices = {}
+        self.tracking_active = False
+
+    def add_trade(self, trade):
+        """Register a new trade for real-time tracking"""
+        with self.lock:
+            # Check if already tracking this exact setup
+            for t in self.active_trades:
+                if t['symbol'] == trade['symbol'] and t['strategy'] == trade['strategy'] and t['type'] == trade['type']:
+                    print(f"⚠️  {trade['symbol']} already being tracked. Skipping.")
+                    return
+            
+            # Auto-set status for MARKET entries
+            entry_type = str(trade.get('entry_type', 'LIMIT')).upper()
+            if entry_type == 'MARKET':
+                trade['tracking_status'] = 'RUNNING'
+                print(f"📡 Registered {trade['symbol']} (MARKET) - Started RUNNING immediately.", flush=True)
+            else:
+                trade['tracking_status'] = 'WAITING'
+                print(f"📡 Registered {trade['symbol']} ({entry_type}) for tracking.", flush=True)
+
+            trade['current_price'] = trade['entry']
+            trade['pnl_pct'] = 0.0
+            trade['updated_at'] = datetime.now().strftime('%H:%M:%S')
+            self.active_trades.append(trade)
+            print(f"📈 Total active trades being tracked: {len(self.active_trades)}", flush=True)
+
+    def get_price(self, exchange, symbol):
+        """Fetch live price for a symbol using exchange-specific fetchers with fallback to Binance"""
+        try:
+            # Try primary exchange
+            exch = exchange.upper().replace(' ', '').replace('.', '')
+            fetcher = EXCHANGE_FETCHERS.get(exch)
+            
+            price = None
+            if fetcher:
+                klines = fetcher(symbol, '1m', limit=1)
+                if klines and len(klines) > 0:
+                    price = float(klines[-1][4])
+
+            # Fallback to Binance if primary fails or is not supported
+            if not price and exch != 'BINANCE':
+                klines = get_klines_binance(symbol, '1m', limit=1)
+                if klines and len(klines) > 0:
+                    price = float(klines[-1][4])
+            
+            # if price:
+            #     print(f"DEBUG: Price for {symbol} on {exchange}: {price}")
+            return price
+        except Exception as e:
+            print(f"Price fetch error for {symbol} on {exchange}: {e}")
+            return None
+
+    def update_loop(self):
+        """Background loop to update all active signals"""
+        self.tracking_active = True
+        print("💡 Trade Tracking Loop Started", flush=True)
+        last_heartbeat = 0
+        while self.tracking_active:
+            try:
+                current_time = time.time()
+                # 1. Snapshot of what needs updating (minimize lock time)
+                with self.lock:
+                    if not self.active_trades:
+                        if current_time - last_heartbeat > 10:
+                            print("😴 Tracking loop idle (no active trades)", flush=True)
+                            last_heartbeat = current_time
+                        time.sleep(2)
+                        continue
+                    current_trades = list(self.active_trades)
+
+                if current_time - last_heartbeat > 10:
+                    print(f"💓 Tracking heartbeat: {len(current_trades)} active trades", flush=True)
+                    last_heartbeat = current_time
+
+                # Group targets
+                targets_map = {}
+                for t in current_trades:
+                    if t['tracking_status'] in ['WAITING', 'RUNNING']:
+                        key = (t.get('exchange', 'Binance'), t['symbol'])
+                        targets_map[key] = None
+
+                # 2. Fetch prices (Slow, NO lock held)
+                for key in targets_map:
+                    targets_map[key] = self.get_price(key[0], key[1])
+
+                # 3. Apply updates (Brief lock)
+                with self.lock:
+                    for t in self.active_trades:
+                        if t['tracking_status'] in ['TP_HIT', 'SL_HIT']:
+                            continue
+
+                        price = targets_map.get((t.get('exchange', 'Binance'), t['symbol']))
+                        if not price: continue
+
+                        # Ensure numeric
+                        try:
+                            entry_price = float(t['entry'])
+                            tp_price = float(t['tp1'])
+                            sl_price = float(t['sl'])
+                        except: continue
+
+                        t['current_price'] = price
+                        t['updated_at'] = datetime.now().strftime('%H:%M:%S')
+
+                        # Calculate PnL
+                        if t['type'] == 'LONG':
+                            t['pnl_pct'] = ((price - entry_price) / entry_price) * 100
+                            if t['tracking_status'] == 'WAITING':
+                                if price >= entry_price * 0.999: # 0.1% buffer below entry
+                                    t['tracking_status'] = 'RUNNING'
+                                    print(f"✅ [RUNNING] {t['symbol']} LONG at {price}", flush=True)
+                            
+                            if price >= tp_price:
+                                t['tracking_status'] = 'TP_HIT'
+                                t['pnl_pct'] = ((tp_price - entry_price) / entry_price) * 100
+                                print(f"💰 [TP HIT] {t['symbol']} LONG at {price}", flush=True)
+                            elif price <= sl_price:
+                                t['tracking_status'] = 'SL_HIT'
+                                t['pnl_pct'] = ((sl_price - entry_price) / entry_price) * 100
+                                print(f"🛑 [SL HIT] {t['symbol']} LONG at {price}", flush=True)
+                        else:  # SHORT
+                            t['pnl_pct'] = ((entry_price - price) / entry_price) * 100
+                            if t['tracking_status'] == 'WAITING':
+                                if price <= entry_price * 1.001: # 0.1% buffer above entry
+                                    t['tracking_status'] = 'RUNNING'
+                                    print(f"✅ [RUNNING] {t['symbol']} SHORT at {price}", flush=True)
+
+                            if price <= tp_price:
+                                t['tracking_status'] = 'TP_HIT'
+                                t['pnl_pct'] = ((entry_price - tp_price) / entry_price) * 100
+                                print(f"💰 [TP HIT] {t['symbol']} SHORT at {price}", flush=True)
+                            elif price >= sl_price:
+                                t['tracking_status'] = 'SL_HIT'
+                                t['pnl_pct'] = ((entry_price - sl_price) / entry_price) * 100
+                                print(f"🛑 [SL HIT] {t['symbol']} SHORT at {price}", flush=True)
+
+                    # Broadcast
+                    socketio.emit('tracking_update', self.active_trades, namespace='/')
+
+                time.sleep(1)
+            except Exception as e:
+                print(f"Tracking error: {e}")
+                time.sleep(3)
+
+    def export_to_csv(self):
+        """Save current session trades to CSV before starting next analysis"""
+        with self.lock:
+            if not self.active_trades:
+                return
+            
+            filename = f"trade_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            keys = self.active_trades[0].keys()
+            
+            try:
+                with open(filename, 'w', newline='', encoding='utf-8') as f:
+                    dict_writer = csv.DictWriter(f, fieldnames=keys, extrasaction='ignore')
+                    dict_writer.writeheader()
+                    dict_writer.writerows(self.active_trades)
+                
+                print(f"📊 Exported {len(self.active_trades)} trades to {filename}")
+                self.active_trades = [] # Reset for next analysis
+            except Exception as e:
+                print(f"Failed to export CSV: {e}")
+
+# Global instances
+trade_tracker = TradeTracker()
 
 # Global state
 analysis_running = False
@@ -100,6 +375,8 @@ def stream_output_loop():
                             trade['warning'] = f"{trade.get('warning', '')} {status['news_warning']}"
                             
                         socketio.emit('trade', trade, namespace='/')
+                        # Register with tracker
+                        trade_tracker.add_trade(trade)
                         # Forward to Telegram
                         thread = threading.Thread(target=send_telegram_alert, args=(trade,), daemon=True)
                         thread.start()
@@ -184,10 +461,19 @@ def run_analysis_subprocess(symbols, indicators, timeframes, min_conf):
                     try:
                         signal_str = line.split('SIGNAL_DATA:')[1].strip()
                         signal_data = json.loads(signal_str)
+                        
+                        # Register with tracker for real-time price updates
+                        trade_tracker.add_trade(signal_data)
+                        
+                        # Emit to UI
                         socketio.emit('trade_signal', signal_data, namespace='/')
+                        
+                        # Forward to Telegram in background
+                        thread = threading.Thread(target=send_telegram_alert, args=(signal_data,), daemon=True)
+                        thread.start()
                     except Exception as e:
-                        print(f"Error parsing trade signal: {e}")
-                    continue # Skip showing raw JSON data in the terminal
+                        print(f"Error processing trade signal: {e}")
+                    continue # Skip showing raw JSON data in terminal
                 output_queue.put(line)
         
         # Process has ended — safely get return code
@@ -415,6 +701,9 @@ def handle_start(data):
     """Start analysis with config"""
     global analysis_thread, analysis_running
     
+    # Export previous session data to CSV before starting new analysis
+    trade_tracker.export_to_csv()
+    
     if analysis_running:
         emit('output', {'data': '⚠️  Analysis already running!\n'})
         return
@@ -516,35 +805,22 @@ def update_scheduler():
 
 @app.route('/api/proxy/klines')
 def proxy_klines():
-    """Proxy kline requests to avoid CORS"""
+    """Proxy kline requests to the specific exchange requested"""
     symbol = request.args.get('symbol', 'BTCUSDT').upper().replace('_', '')
     interval = request.args.get('interval', '1h')
     limit = request.args.get('limit', '200')
-    exchange = request.args.get('exchange', 'BINANCE').upper()
+    exchange = request.args.get('exchange', 'BINANCE').upper().replace(' ', '').replace('.', '')
     
-    import requests
-    
-    # Try Binance first
-    try:
-        url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
-        r = requests.get(url, timeout=5)
-        if r.status_code == 200:
-            return jsonify(r.json())
-    except:
-        pass
+    fetcher = EXCHANGE_FETCHERS.get(exchange)
+    if not fetcher:
+        # Fallback to Binance if exchange not supported or not found
+        fetcher = get_klines_binance
         
-    # Fallback to MEXC
-    try:
-        # MEXC uses 60m for 1h? Actually standard Binance API format is widely used.
-        # But let's check basic mapping if needed. For now assume standard.
-        url = f"https://api.mexc.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
-        r = requests.get(url, timeout=5)
-        if r.status_code == 200:
-            return jsonify(r.json())
-    except:
-        pass
+    klines = fetcher(symbol, interval, limit=int(limit))
+    if klines:
+        return jsonify(klines)
         
-    return jsonify({'error': 'Failed to fetch klines'}), 500
+    return jsonify({'error': f'Failed to fetch klines from {exchange}'}), 500
 
 @app.errorhandler(404)
 def not_found(e):
@@ -567,6 +843,10 @@ if __name__ == '__main__':
     print("🌐 RBot Pro Multi-Exchange Analysis UI Server")
     print("📱 Open: http://localhost:5000")
     print("✓ Using queue-based streaming for stability")
+    
+    # Start Trade Tracking loop
+    tracker_thread = threading.Thread(target=trade_tracker.update_loop, daemon=True)
+    tracker_thread.start()
     
     try:
         socketio.run(
