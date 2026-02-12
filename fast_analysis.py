@@ -1836,9 +1836,10 @@ def strategy_swing_trend(symbol, analyses):
 
     if bullish_confidence >= MIN_CONFIDENCE:
         atr_val = h1['atr']
-        sl = h1['support'] - atr_val * 0.5
-        tp1 = current + atr_val * 2
-        tp2 = current + atr_val * 3
+        # Use support but add 1.0x ATR buffer for safety
+        sl = (h1['support'] - atr_val * 1.0) if h1['support'] < current else current - (atr_val * 2.5)
+        tp1 = current + atr_val * 3
+        tp2 = current + atr_val * 5
         risk = current - sl
         reward = tp1 - current
         
@@ -1899,9 +1900,10 @@ def strategy_swing_trend(symbol, analyses):
 
     if bearish_confidence >= MIN_CONFIDENCE:
         atr_val = h1['atr']
-        sl = h1['resistance'] + atr_val * 0.5
-        tp1 = current - atr_val * 2
-        tp2 = current - atr_val * 3
+        # Use resistance but add 1.0x ATR buffer for safety
+        sl = (h1['resistance'] + atr_val * 1.0) if h1['resistance'] > current else current + (atr_val * 2.5)
+        tp1 = current - atr_val * 3
+        tp2 = current - atr_val * 5
         risk = sl - current
         reward = current - tp1
         
@@ -1998,9 +2000,9 @@ def strategy_trend_pullback(symbol, analyses):
                  
              if confidence >= MIN_CONFIDENCE:
                  atr = a['atr']
-                 sl = current - atr * 2
-                 tp1 = current + atr * 3
-                 tp2 = current + atr * 5
+                 sl = current - atr * 3
+                 tp1 = current + atr * 6
+                 tp2 = current + atr * 10
                  risk = current - sl
                  reward = tp1 - current
                  
@@ -2038,9 +2040,9 @@ def strategy_trend_pullback(symbol, analyses):
                  
              if confidence >= MIN_CONFIDENCE:
                  atr = a['atr']
-                 sl = current + atr * 2
-                 tp1 = current - atr * 3
-                 tp2 = current - atr * 5
+                 sl = current + atr * 3
+                 tp1 = current - atr * 6
+                 tp2 = current - atr * 10
                  risk = sl - current
                  reward = current - tp1
                  
@@ -2098,9 +2100,10 @@ def strategy_volatility_breakout(symbol, analyses):
             
         if confidence >= MIN_CONFIDENCE:
              atr = a['atr']
-             sl = a['bb']['middle'] # Stop loss at moving average
-             tp1 = current + atr * 3
-             tp2 = current + atr * 6
+             # Base SL at middle but ensure at least 2.5x ATR buffer
+             sl = min(a['bb']['middle'], current - atr * 2.5)
+             tp1 = current + atr * 5
+             tp2 = current + atr * 9
              risk = current - sl
              reward = tp1 - current
              
@@ -2141,9 +2144,10 @@ def strategy_volatility_breakout(symbol, analyses):
             
         if confidence >= MIN_CONFIDENCE:
              atr = a['atr']
-             sl = a['bb']['middle']
-             tp1 = current - atr * 3
-             tp2 = current - atr * 6
+             # Base SL at middle but ensure at least 2.5x ATR buffer
+             sl = max(a['bb']['middle'], current + atr * 2.5)
+             tp1 = current - atr * 5
+             tp2 = current - atr * 9
              risk = sl - current
              reward = current - tp1
              
@@ -2452,11 +2456,11 @@ def strategy_fvg_gap_fill(symbol, analyses):
             
         if confidence >= MIN_CONFIDENCE:
             atr = a['atr']
-            # Entry at the top of the gap, SL at the bottom
+            # Entry at the top of the gap, SL at the bottom with protective buffer
             entry = fvg['top']
-            sl = fvg['bottom'] - (atr * 0.2)
-            tp1 = entry + atr * 4
-            tp2 = entry + atr * 8
+            sl = fvg['bottom'] - (atr * 1.0)
+            tp1 = entry + atr * 5
+            tp2 = entry + atr * 10
             risk = entry - sl
             reward = tp1 - entry
             
@@ -3099,9 +3103,9 @@ def strategy_zlsma_fast_scalp(symbol, analyses):
             
         if confidence >= MIN_CONFIDENCE:
             atr = a['atr']
-            sl = current - atr * 1.5
-            tp1 = current + atr * 3
-            tp2 = current + atr * 5
+            sl = current - atr * 2.5
+            tp1 = current + atr * 5
+            tp2 = current + atr * 9
             risk = current - sl
             reward = tp1 - current
             
@@ -3134,9 +3138,9 @@ def strategy_zlsma_fast_scalp(symbol, analyses):
             
         if confidence >= MIN_CONFIDENCE:
             atr = a['atr']
-            sl = current + atr * 1.5
-            tp1 = current - atr * 3
-            tp2 = current - atr * 5
+            sl = current + atr * 2.5
+            tp1 = current - atr * 5
+            tp2 = current - atr * 9
             risk = sl - current
             reward = current - tp1
             
@@ -3675,9 +3679,10 @@ def strategy_ict_silver_bullet(symbol, analyses):
         
         atr = a['atr']
         entry = fvg['top']
-        sl = fvg['bottom'] - (atr * 0.2)
-        tp1 = entry + atr * 5
-        tp2 = entry + atr * 10
+        # SL below FVG bottom + extra ATR buffer for safety
+        sl = fvg['bottom'] - (atr * 1.5)
+        tp1 = entry + atr * 6
+        tp2 = entry + atr * 12
         risk = entry - sl
         reward = tp1 - entry
         
@@ -3709,9 +3714,10 @@ def strategy_ict_silver_bullet(symbol, analyses):
         
         atr = a['atr']
         entry = fvg['bottom']
-        sl = fvg['top'] + (atr * 0.2)
-        tp1 = entry - atr * 5
-        tp2 = entry - atr * 10
+        # SL above FVG top + extra ATR buffer for safety
+        sl = fvg['top'] + (atr * 1.5)
+        tp1 = entry - atr * 6
+        tp2 = entry - atr * 12
         risk = sl - entry
         reward = entry - tp1
         
@@ -3839,8 +3845,9 @@ def strategy_smc_elite(symbol, analyses):
                     
                 confidence = 10
                 atr = a['atr']
-                sl = entry - (atr * 1.5) if mb['type'] == 'BULLISH' else entry + (atr * 1.5)
-                tp1 = entry + (atr * 3) if mb['type'] == 'BULLISH' else entry - (atr * 3)
+                # Increase SL buffer for Elite protection
+                sl = entry - (atr * 2.5) if mb['type'] == 'BULLISH' else entry + (atr * 2.5)
+                tp1 = entry + (atr * 6.0) if mb['type'] == 'BULLISH' else entry - (atr * 6.0)
                 trades.append({
                     'strategy': 'SMC Elite (MB+FVG)',
                     'type': mb['type'],
@@ -3873,8 +3880,8 @@ def strategy_harmonic_pro(symbol, analyses):
             confidence = 9
             entry = a['current_price']
             atr = a['atr']
-            sl = entry - (atr * 2) if pattern['type'] == 'BULLISH' else entry + (atr * 2)
-            tp1 = entry + (atr * 4) if pattern['type'] == 'BULLISH' else entry - (atr * 4)
+            sl = entry - (atr * 3.5) if pattern['type'] == 'BULLISH' else entry + (atr * 3.5)
+            tp1 = entry + (atr * 7.0) if pattern['type'] == 'BULLISH' else entry - (atr * 7.0)
             trades.append({
                 'strategy': f"Harmonic-{pattern['pattern']}",
                 'type': pattern['type'],
@@ -4121,9 +4128,11 @@ def strategy_utbot_elite(symbol, analyses):
         if confidence >= MIN_CONFIDENCE:
             atr = a['atr']
             entry = current
-            sl = ut['stop'] if ut['stop'] < current else current - (atr * 2)
-            tp1 = entry + (entry - sl) * 2
-            tp2 = entry + (entry - sl) * 4
+            # Use UT Stop but ensure at least 2.5x ATR buffer
+            sl_val = ut['stop'] if ut['stop'] < current else current - (atr * 3.0)
+            sl = min(sl_val, current - (atr * 2.5))
+            tp1 = entry + (entry - sl) * 3
+            tp2 = entry + (entry - sl) * 5
             risk = entry - sl
             reward = tp1 - entry
             
@@ -4160,9 +4169,11 @@ def strategy_utbot_elite(symbol, analyses):
         if confidence >= MIN_CONFIDENCE:
             atr = a['atr']
             entry = current
-            sl = ut['stop'] if ut['stop'] > current else current + (atr * 2)
-            tp1 = entry - (sl - entry) * 2
-            tp2 = entry - (sl - entry) * 4
+            # Use UT Stop but ensure at least 2.5x ATR buffer
+            sl_val = ut['stop'] if ut['stop'] > current else current + (atr * 3.0)
+            sl = max(sl_val, current + (atr * 2.5))
+            tp1 = entry - (sl - entry) * 3
+            tp2 = entry - (sl - entry) * 5
             risk = sl - entry
             reward = entry - tp1
             
@@ -4266,9 +4277,12 @@ def strategy_psar_tema_scalp(symbol, analyses):
         if confidence >= MIN_CONFIDENCE:
             atr = a['atr']
             entry = current
-            sl = psar['psar'] if psar['psar'] < current else current - (atr * 1.5)
-            tp1 = entry + (entry - sl) * 2
-            tp2 = entry + (entry - sl) * 3
+            # Use PSAR dot or 2x ATR fallback for breathing room
+            sl_val = psar['psar'] if psar['psar'] < current else current - (atr * 2.2)
+            # Ensure SL is at least 1.5x ATR away even if PSAR is too close
+            sl = min(sl_val, current - (atr * 1.5))
+            tp1 = entry + (entry - sl) * 2.5
+            tp2 = entry + (entry - sl) * 4
             risk = entry - sl
             reward = tp1 - entry
             
@@ -4313,9 +4327,12 @@ def strategy_psar_tema_scalp(symbol, analyses):
         if confidence >= MIN_CONFIDENCE:
             atr = a['atr']
             entry = current
-            sl = psar['psar'] if psar['psar'] > current else current + (atr * 1.5)
-            tp1 = entry - (sl - entry) * 2
-            tp2 = entry - (sl - entry) * 3
+            # Use PSAR dot or 2x ATR fallback for breathing room
+            sl_val = psar['psar'] if psar['psar'] > current else current + (atr * 2.2)
+            # Ensure SL is at least 1.5x ATR away even if PSAR is too close
+            sl = max(sl_val, current + (atr * 1.5))
+            tp1 = entry - (sl - entry) * 2.5
+            tp2 = entry - (sl - entry) * 4
             risk = sl - entry
             reward = entry - tp1
             
@@ -4369,9 +4386,11 @@ def strategy_kama_volatility_scalp(symbol, analyses):
         if confidence >= MIN_CONFIDENCE:
             atr = a['atr']
             entry = current
-            sl = chan['long'] if chan['long'] < current else current - (atr * 2)
-            tp1 = entry + (entry - sl) * 2.5
-            tp2 = entry + (entry - sl) * 4
+            # Use Chandelier or 2.5x ATR buffer for safety
+            sl_val = chan['long'] if chan['long'] < current else current - (atr * 2.5)
+            sl = min(sl_val, current - (atr * 2.0))
+            tp1 = entry + (entry - sl) * 3
+            tp2 = entry + (entry - sl) * 5
             risk = entry - sl
             reward = tp1 - entry
             
@@ -4413,9 +4432,11 @@ def strategy_kama_volatility_scalp(symbol, analyses):
         if confidence >= MIN_CONFIDENCE:
             atr = a['atr']
             entry = current
-            sl = chan['short'] if chan['short'] > current else current + (atr * 2)
-            tp1 = entry - (sl - entry) * 2.5
-            tp2 = entry - (sl - entry) * 4
+            # Use Chandelier or 2.5x ATR buffer for safety
+            sl_val = chan['short'] if chan['short'] > current else current + (atr * 2.5)
+            sl = max(sl_val, current + (atr * 2.0))
+            tp1 = entry - (sl - entry) * 3
+            tp2 = entry - (sl - entry) * 5
             risk = sl - entry
             reward = entry - tp1
             
@@ -4470,9 +4491,9 @@ def strategy_vfi_momentum_scalp(symbol, analyses):
         if confidence >= MIN_CONFIDENCE:
             atr = a['atr']
             entry = current
-            sl = entry - (atr * 2)
-            tp1 = entry + (atr * 4)
-            tp2 = entry + (atr * 6)
+            sl = entry - (atr * 3)
+            tp1 = entry + (atr * 6)
+            tp2 = entry + (atr * 10)
             risk = entry - sl
             reward = tp1 - entry
             
@@ -4514,9 +4535,9 @@ def strategy_vfi_momentum_scalp(symbol, analyses):
         if confidence >= MIN_CONFIDENCE:
             atr = a['atr']
             entry = current
-            sl = entry + (atr * 2)
-            tp1 = entry - (atr * 4)
-            tp2 = entry - (atr * 6)
+            sl = entry + (atr * 3)
+            tp1 = entry - (atr * 6)
+            tp2 = entry - (atr * 10)
             risk = sl - entry
             reward = entry - tp1
             
