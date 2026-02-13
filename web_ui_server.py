@@ -12,6 +12,7 @@ import sys
 import os
 import queue
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 from apscheduler.schedulers.background import BackgroundScheduler
 import time
@@ -45,13 +46,15 @@ def safe_request(url, method='GET', params=None, json_data=None, timeout=15, ret
     import time
     import random
     
-    # 1. Institutional Cache-Busting (Only if requested or not restricted)
-    is_binance = 'binance' in url.lower()
+    # 1. Institutional Cache-Busting (Suppressed for strict exchanges)
+    strict_exchanges = ['binance', 'mexc', 'bybit', 'okx', 'bitget', 'kucoin', 'gate.io', 'huobi', 'gateio']
+    is_strict = any(ex in url.lower() for ex in strict_exchanges)
+    
     ts = str(int(time.time() * 1000))
     if params is None: params = {}
     
-    # Binance is strict about query params; skip _t for it
-    if not is_binance:
+    # Disable _t for modern APIs that reject unknown params
+    if not is_strict:
         params['_t'] = ts
     
     headers = HEADERS.copy()
@@ -423,18 +426,109 @@ class TradeTracker:
             print(f"📈 Total active trades being tracked: {len(self.active_trades)}", flush=True)
             return 'NEW'
 
-    def get_price(self, exchange, symbol):
-        """Fetch real-time ticker price for tracking. Uses Mark/Fair Price for Futures accuracy."""
+    def _fetch_bulk_mexc(self):
         try:
-            exch = exchange.upper().replace(' ', '').replace('.', '')
+            url = "https://contract.mexc.com/api/v1/contract/ticker"
+            data = safe_request(url, timeout=5)
+            if data and data.get('success'):
+                return {t['symbol'].replace('_', ''): {'last': float(t['lastPrice']), 'fair': float(t.get('fairPrice', t['lastPrice']))} for t in data['data']}
+        except: pass
+        return {}
+
+    def _fetch_bulk_binance(self):
+        try:
+            # Futures prices (Mark price for SL accuracy)
+            url_m = "https://fapi.binance.com/fapi/v1/premiumIndex"
+            m_data = safe_request(url_m, timeout=5)
+            # Spot prices (Fallback)
+            url_s = "https://api.binance.com/api/v3/ticker/price"
+            s_data = safe_request(url_s, timeout=5)
             
+            prices = {}
+            if isinstance(s_data, list):
+                for p in s_data: prices[p['symbol']] = {'last': float(p['price']), 'fair': float(p['price'])}
+            if isinstance(m_data, list):
+                for p in m_data: 
+                    sym = p['symbol']
+                    fair = float(p['markPrice'])
+                    last = prices.get(sym, {}).get('last', fair)
+                    prices[sym] = {'last': last, 'fair': fair}
+            return prices
+        except: pass
+        return {}
+
+    def _fetch_bulk_bybit(self):
+        try:
+            url = "https://api.bybit.com/v5/market/tickers?category=linear"
+            data = safe_request(url, timeout=5)
+            if data and data.get('result'):
+                return {t['symbol']: {'last': float(t['lastPrice']), 'fair': float(t.get('markPrice', t['lastPrice']))} for t in data['result']['list']}
+        except: pass
+        return {}
+
+    def _fetch_bulk_bitget(self):
+        try:
+            url = "https://api.bitget.com/api/v2/mix/market/ticker?productType=USDT-FUTURES"
+            data = safe_request(url, timeout=5)
+            if data and data.get('data'):
+                return {t['symbol']: {'last': float(t['lastPr']), 'fair': float(t.get('bidPr', t['lastPr']))} for t in data['data']}
+        except: pass
+        return {}
+
+    def _fetch_bulk_okx(self):
+        try:
+            url = "https://www.okx.com/api/v5/market/tickers?instType=SWAP"
+            data = safe_request(url, timeout=5)
+            if data and data.get('data'):
+                return {t['instId'].replace('-', '').replace('SWAP', ''): {'last': float(t['last']), 'fair': float(t['last'])} for t in data['data']}
+        except: pass
+        return {}
+
+    def _fetch_bulk_htx(self):
+        try:
+            url = "https://api.huobi.pro/market/tickers"
+            data = safe_request(url, timeout=5)
+            if data and data.get('data'):
+                return {t['symbol'].upper(): {'last': float(t['close']), 'fair': float(t['close'])} for t in data['data']}
+        except: pass
+        return {}
+
+    def _fetch_bulk_kucoin(self):
+        try:
+            url = "https://api.kucoin.com/api/v1/market/allTickers"
+            data = safe_request(url, timeout=5)
+            if data and data.get('data') and data['data'].get('ticker'):
+                return {t['symbol'].replace('-', '').upper(): {'last': float(t['last']), 'fair': float(t['last'])} for t in data['data']['ticker']}
+        except: pass
+        return {}
+
+    def _fetch_bulk_gateio(self):
+        try:
+            url = "https://api.gateio.ws/api/v4/futures/usdt/tickers"
+            data = safe_request(url, timeout=5)
+            if isinstance(data, list):
+                return {t['contract'].replace('_', '').upper(): {'last': float(t['last']), 'fair': float(t.get('mark_price', t['last']))} for t in data}
+        except: pass
+        return {}
+
+    def get_price(self, exchange, symbol, bulk_cache=None):
+        """Fetch real-time ticker price. Uses bulk_cache if available for unmatched performance."""
+        clean_symbol = symbol.replace('_', '').replace('-', '').upper()
+        exch = exchange.upper().replace(' ', '').replace('.', '')
+        
+        # 1. Use Global Bulk Cache if provided
+        if bulk_cache and exch in bulk_cache and clean_symbol in bulk_cache[exch]:
+            p = bulk_cache[exch][clean_symbol]
+            return {'close': p['last'], 'fair': p['fair'], 'high': p['last'], 'low': p['last'], 'is_ticker': True}
+
+        try:
             ticker_func = TICKER_FETCHERS.get(exch)
             if ticker_func:
                 ticker = ticker_func(symbol)
                 if ticker:
                     return {
                         'close': ticker['last'],
-                        'fair': ticker.get('fair', ticker['last']), # The "Real" price for SL
+                        'fair': ticker.get('fair', ticker['last']), 
                         'high': ticker.get('high', ticker['last']),
                         'low': ticker.get('low', ticker['last']),
                         'is_ticker': True
@@ -447,22 +541,22 @@ class TradeTracker:
                 k = klines[-1]
                 return {
                     'close': float(k[4]),
-                    'fair': float(k[4]), # No mark price in klines
+                    'fair': float(k[4]), 
                     'high': float(k[2]),
                     'low': float(k[3]),
                     'is_ticker': False
                 }
             return None
         except: return None
-
     def update_loop(self):
         """Background loop to update all active signals"""
         self.tracking_active = True
         print("💡 Trade Tracking Loop Started", flush=True)
         last_heartbeat = 0
         while self.tracking_active:
+            loop_start = time.time()
             try:
-                current_time = time.time()
+                current_time = loop_start
                 # 1. Snapshot of what needs updating (minimize lock time)
                 with self.lock:
                     if not self.active_trades:
@@ -477,18 +571,43 @@ class TradeTracker:
                     print(f"💓 Tracking heartbeat: {len(current_trades)} active trades", flush=True)
                     last_heartbeat = current_time
 
-                # Group targets
+                # 1. Institutional Bulk Sync
+                bulk_cache = {}
+                active_exchanges = set(t.get('exchange', 'BINANCE').upper() for t in current_trades if t['tracking_status'] in ['WAITING', 'RUNNING'])
+                
+                def fetch_bulk(exch):
+                    if exch == 'BINANCE': return exch, self._fetch_bulk_binance()
+                    if exch == 'MEXC': return exch, self._fetch_bulk_mexc()
+                    if exch == 'BYBIT': return exch, self._fetch_bulk_bybit()
+                    if exch == 'BITGET': return exch, self._fetch_bulk_bitget()
+                    if exch == 'OKX': return exch, self._fetch_bulk_okx()
+                    if exch == 'HTX': return exch, self._fetch_bulk_htx()
+                    if exch == 'KUCOIN': return exch, self._fetch_bulk_kucoin()
+                    if exch == 'GATEIO': return exch, self._fetch_bulk_gateio()
+                    return exch, {}
+
+                with ThreadPoolExecutor(max_workers=max(1, len(active_exchanges))) as executor:
+                    futures = [executor.submit(fetch_bulk, exch) for exch in active_exchanges]
+                    for future in as_completed(futures):
+                        exch, data = future.result()
+                        if data: bulk_cache[exch.replace('.', '').replace(' ', '')] = data
+
+                # 2. Map trades to pricing
                 targets_map = {}
                 for t in current_trades:
                     if t['tracking_status'] in ['WAITING', 'RUNNING']:
-                        # STRICT: Use the trade's own exchange, default to BINANCE only if genuinely missing
-                        exch = str(t.get('exchange', 'BINANCE')).upper()
+                        exch = str(t.get('exchange', 'BINANCE')).upper().replace(' ', '').replace('.', '')
                         key = (exch, t['symbol'])
                         targets_map[key] = None
 
-                # 2. Fetch prices (Slow, NO lock held)
-                for key in targets_map:
-                    targets_map[key] = self.get_price(key[0], key[1])
+                # 3. Resolve prices (Cache-first then parallel single fallback)
+                with ThreadPoolExecutor(max_workers=60) as executor:
+                    future_to_key = {executor.submit(self.get_price, key[0], key[1], bulk_cache): key for key in targets_map}
+                    try:
+                        for future in as_completed(future_to_key, timeout=4.0):
+                            key = future_to_key[future]
+                            targets_map[key] = future.result()
+                    except: pass
 
                 # 3. Apply updates (Brief lock)
                 with self.lock:
@@ -571,7 +690,8 @@ class TradeTracker:
                                     t['is_frozen'] = True 
                                     t['pnl_pct'] = ((sl_price - entry_price) / entry_price) * 100
                                     t['reason'] = f"{t.get('reason', '')} | [🛑 DOUBLE-LOCK SL HIT AT {trigger_price}]"
-                                    self.completed_trades.add((t['symbol'], t['strategy'], t['type']))
+                                    exch = str(t.get('exchange', 'BINANCE')).upper()
+                                    self.completed_trades.add((exch, t['symbol'], t['strategy'], t['type']))
                                     print(f"🛑 [SL HIT] {t['symbol']} LONG at {trigger_price} (Shielded SL: {shielded_sl:.6f})", flush=True)
                                 
                                 # TP Check (Use HIGH for Longs)
@@ -580,7 +700,8 @@ class TradeTracker:
                                     t['is_frozen'] = True
                                     t['pnl_pct'] = ((tp_price - entry_price) / entry_price) * 100
                                     t['reason'] = f"{t.get('reason', '')} | [💰 TP HIT AT {high}]"
-                                    self.completed_trades.add((t['symbol'], t['strategy'], t['type']))
+                                    exch = str(t.get('exchange', 'BINANCE')).upper()
+                                    self.completed_trades.add((exch, t['symbol'], t['strategy'], t['type']))
                                     print(f"💰 [TP HIT] {t['symbol']} LONG at {high}", flush=True)
                         
                         else:  # SHORT
@@ -610,7 +731,8 @@ class TradeTracker:
                                     t['is_frozen'] = True
                                     t['pnl_pct'] = ((entry_price - sl_price) / entry_price) * 100
                                     t['reason'] = f"{t.get('reason', '')} | [🛑 DOUBLE-LOCK SL HIT AT {trigger_price}]"
-                                    self.completed_trades.add((t['symbol'], t['strategy'], t['type']))
+                                    exch = str(t.get('exchange', 'BINANCE')).upper()
+                                    self.completed_trades.add((exch, t['symbol'], t['strategy'], t['type']))
                                     print(f"🛑 [SL HIT] {t['symbol']} SHORT at {trigger_price} (Shielded SL: {shielded_sl:.6f})", flush=True)
                                 
                                 # TP Check (Use LOW for Shorts)
@@ -619,13 +741,17 @@ class TradeTracker:
                                     t['is_frozen'] = True
                                     t['pnl_pct'] = ((entry_price - tp_price) / entry_price) * 100
                                     t['reason'] = f"{t.get('reason', '')} | [💰 TP HIT AT {low}]"
-                                    self.completed_trades.add((t['symbol'], t['strategy'], t['type']))
+                                    exch = str(t.get('exchange', 'BINANCE')).upper()
+                                    self.completed_trades.add((exch, t['symbol'], t['strategy'], t['type']))
                                     print(f"💰 [TP HIT] {t['symbol']} SHORT at {low}", flush=True)
 
                     # Broadcast
                     socketio.emit('tracking_update', self.active_trades, namespace='/')
 
-                time.sleep(1)
+                # 4. Drift-Corrected Sleep to maintain 1s frequency
+                elapsed = time.time() - loop_start
+                sleep_time = max(0.1, 1.0 - elapsed)
+                time.sleep(sleep_time)
             except Exception as e:
                 print(f"Tracking error: {e}")
                 time.sleep(3)
