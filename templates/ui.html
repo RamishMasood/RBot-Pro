@@ -165,6 +165,75 @@
                         </div>
                     </div>
 
+                    <!-- Strategies Selector -->
+                    <div class="config-group">
+                        <label>🎯 Select Strategies</label>
+                        <div class="selector-controls">
+                            <button class="btn-mini" onclick="selectAllStrategies()">Select All</button>
+                            <button class="btn-mini" onclick="deselectAllStrategies()">Deselect All</button>
+                        </div>
+                        <div id="strategyList" class="checkbox-group">
+                            <div class="indicator-category"
+                                style="grid-column: 1 / -1; font-weight: bold; color: #ffd700; margin-top: 10px; border-bottom: 1px solid #333;">
+                                🏆 ELITE 2026 STRATEGIES</div>
+                            <label><input type="checkbox" value="QUANTUM_CONFLUENCE" checked> Quantum Confluence</label>
+                            <label><input type="checkbox" value="SMC_ELITE" checked> SMC Elite</label>
+                            <label><input type="checkbox" value="HARMONIC_PRO" checked> Harmonic Pro</label>
+                            <label><input type="checkbox" value="SMC_CHOCH" checked> SMC CHoCH</label>
+                            <label><input type="checkbox" value="ICT_SILVER_BULLET" checked> ICT Silver Bullet</label>
+                            <label><input type="checkbox" value="UTBOT_ELITE" checked> UTBot Elite</label>
+
+                            <div class="indicator-category"
+                                style="grid-column: 1 / -1; font-weight: bold; color: #ff00ff; margin-top: 10px; border-bottom: 1px solid #333;">
+                                🚀 ADVANCED / SMC</div>
+                            <label><input type="checkbox" value="FVG_GAP_FILL" checked> FVG Gap Fill</label>
+                            <label><input type="checkbox" value="DIVERGENCE_PRO" checked> Divergence Pro</label>
+                            <label><input type="checkbox" value="LIQUIDITY_GRAB" checked> Liquidity Grab</label>
+                            <label><input type="checkbox" value="WAVETREND_EXTREME" checked> WaveTrend Extreme</label>
+                            <label><input type="checkbox" value="SQUEEZE_BREAKOUT" checked> Squeeze Breakout</label>
+                            <label><input type="checkbox" value="MFI_REVERSION" checked> MFI Reversion</label>
+                            <label><input type="checkbox" value="ZLSMA_FAST_SCALP" checked> ZLSMA Fast Scalp</label>
+                            <label><input type="checkbox" value="VOLUME_SPIKE" checked> Volume Spike</label>
+                            <label><input type="checkbox" value="REGIME_ADAPTIVE" checked> Regime Adaptive</label>
+                            <label><input type="checkbox" value="WYCKOFF_SPRING" checked> Wyckoff Spring</label>
+                            <label><input type="checkbox" value="SMART_MONEY_TRAP" checked> Smart Money Trap</label>
+
+                            <div class="indicator-category"
+                                style="grid-column: 1 / -1; font-weight: bold; color: #00ff88; margin-top: 10px; border-bottom: 1px solid #333;">
+                                📈 STANDARD / PERFORMANCE</div>
+                            <label><input type="checkbox" value="SWING" checked> Swing Trend</label>
+                            <label><input type="checkbox" value="SCALP" checked> Scalp Momentum</label>
+                            <label><input type="checkbox" value="STOCH_PULLBACK" checked> StochRSI Pullback</label>
+                            <label><input type="checkbox" value="BB_BREAKOUT" checked> Volatility Breakout</label>
+                            <label><input type="checkbox" value="SUPERTREND_FOLLOW" checked> SuperTrend Follow</label>
+                            <label><input type="checkbox" value="VWAP_REVERSION" checked> VWAP Reversion</label>
+                            <label><input type="checkbox" value="ICHIMOKU_TK" checked> Ichimoku TK</label>
+                            <label><input type="checkbox" value="ADX_MOMENTUM" checked> ADX Momentum</label>
+                            <label><input type="checkbox" value="BOLLINGER_REVERSION" checked> Bollinger
+                                Reversion</label>
+                            <label><input type="checkbox" value="FISHER_TRANSFORM" checked> Fisher Transform</label>
+                            <label><input type="checkbox" value="DONCHIAN_BREAKOUT" checked> Donchian Breakout</label>
+                            <label><input type="checkbox" value="STC_MOMENTUM" checked> STC Momentum</label>
+                            <label><input type="checkbox" value="VORTEX_TREND" checked> Vortex Trend</label>
+                            <label><input type="checkbox" value="KELTNER_REVERSION" checked> Keltner Reversion</label>
+                            <label><input type="checkbox" value="VOLATILITY_CAPITULATION" checked> Volatility
+                                Capitulation</label>
+                            <label><input type="checkbox" value="MOMENTUM_CONFLUENCE" checked> Momentum
+                                Confluence</label>
+                            <label><input type="checkbox" value="ICT_WEALTH_DIVISION" checked> ICT Wealth
+                                Division</label>
+                            <label><input type="checkbox" value="HARMONIC_GARTLEY" checked> Harmonic Gartley</label>
+                            <label><input type="checkbox" value="PSAR_TEMA_SCALP" checked> PSAR TEMA Scalp</label>
+                            <label><input type="checkbox" value="KAMA_VOLATILITY_SCALP" checked> KAMA Vol Scalp</label>
+                            <label><input type="checkbox" value="VFI_MOMENTUM_SCALP" checked> VFI Momentum Scalp</label>
+                            <label><input type="checkbox" value="TRIPLE_CONFLUENCE" checked> Triple Confluence</label>
+                            <label><input type="checkbox" value="ZSCORE_REVERSION" checked> Z-Score Reversion</label>
+                            <label><input type="checkbox" value="MTF_TREND_RIDER" checked> MTF Trend Rider</label>
+                            <label><input type="checkbox" value="MOMENTUM_EXHAUSTION" checked> Momentum
+                                Exhaustion</label>
+                        </div>
+                    </div>
+
                     <!-- Timeframes Selector -->
                     <div class="config-group">
                         <label>⏱️ Select Timeframes</label>
@@ -285,6 +354,10 @@
                     <div class="stat-row">
                         <span>Indicators:</span>
                         <span id="selectedIndicatorsCount">8</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Strategies:</span>
+                        <span id="selectedStrategiesCount">42</span>
                     </div>
                     <div class="stat-row">
                         <span>Output Lines:</span>

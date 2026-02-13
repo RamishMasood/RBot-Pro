@@ -491,6 +491,7 @@ function startAnalysis() {
     const exchanges = getSelectedExchanges();
     const symbols = getSelectedSymbols();
     const indicators = getSelectedIndicators();
+    const strategies = getSelectedStrategies();
     const timeframes = getSelectedTimeframes();
     const confidence = parseInt(document.getElementById('confidenceSlider').value);
 
@@ -509,12 +510,17 @@ function startAnalysis() {
         return;
     }
 
+    if (strategies.length === 0) {
+        alert('Please select at least one strategy');
+        return;
+    }
+
     if (timeframes.length === 0) {
         alert('Please select at least one timeframe');
         return;
     }
 
-    addTerminalLine(`🚀 Starting analysis on ${exchanges.join(', ')} with ${symbols.length} coins, ${indicators.length} indicators, and ${timeframes.length} timeframes`, 'success');
+    addTerminalLine(`🚀 Starting analysis on ${exchanges.join(', ')} with ${symbols.length} coins, ${indicators.length} indicators, ${strategies.length} strategies, and ${timeframes.length} timeframes`, 'success');
 
     // Clear previous signals for new run
     document.getElementById('signalsCount').innerText = '0 Found';
@@ -532,6 +538,7 @@ function startAnalysis() {
     socket.emit('start_analysis', {
         symbols: symbols,
         indicators: indicators,
+        strategies: strategies,
         timeframes: timeframes,
         min_confidence: confidence,
         exchanges: exchanges
@@ -666,12 +673,40 @@ function updateSymbolCount() {
 
 function updateIndicatorCount() {
     const count = getSelectedIndicators().length;
-    document.getElementById('selectedIndicatorsCount').textContent = count;
+    const countEl = document.getElementById('selectedIndicatorsCount');
+    if (countEl) countEl.textContent = count;
     // Also save to server config
     fetch('/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ indicators: getSelectedIndicators() })
+    });
+}
+
+function getSelectedStrategies() {
+    return Array.from(document.querySelectorAll('#strategyList input:checked'))
+        .map(cb => cb.value);
+}
+
+function selectAllStrategies() {
+    document.querySelectorAll('#strategyList input').forEach(cb => cb.checked = true);
+    updateStrategyCount();
+}
+
+function deselectAllStrategies() {
+    document.querySelectorAll('#strategyList input').forEach(cb => cb.checked = false);
+    updateStrategyCount();
+}
+
+function updateStrategyCount() {
+    const count = getSelectedStrategies().length;
+    const countEl = document.getElementById('selectedStrategiesCount');
+    if (countEl) countEl.textContent = count;
+    // Also save to server config
+    fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ strategies: getSelectedStrategies() })
     });
 }
 
@@ -744,6 +779,7 @@ function toggleAutoRun() {
             auto_run: enabled,
             symbols: getSelectedSymbols(),
             indicators: getSelectedIndicators(),
+            strategies: getSelectedStrategies(),
             timeframes: getSelectedTimeframes(),
             exchanges: getSelectedExchanges(),
             min_confidence: parseInt(document.getElementById('confidenceSlider').value)
@@ -1533,3 +1569,12 @@ window.refreshNews = function () {
         }
     }, 2000);
 }
+
+// Global Event Delegation for Config Updates
+document.addEventListener('change', (e) => {
+    if (e.target.closest('#exchangeList')) updateExchangeCount();
+    if (e.target.closest('#symbolList')) updateSymbolCount();
+    if (e.target.closest('#indicatorList')) updateIndicatorCount();
+    if (e.target.closest('#strategyList')) updateStrategyCount();
+    if (e.target.closest('#timeframeList')) updateTimeframeCount();
+});

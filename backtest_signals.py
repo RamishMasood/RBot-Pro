@@ -90,22 +90,15 @@ def fetch_candles_mexc(symbol, start_time_ms, limit=1000):
 
 def fetch_candles_mexc_spot(symbol, start_time_ms, limit=1000):
     """Fetch 1m candles from MEXC Spot if Contract API fails"""
-    # Align start time to 1m candle (floor to nearest minute)
     start_time_ms = (start_time_ms // 60000) * 60000
-    
     url = f"https://api.mexc.com/api/v3/klines?symbol={symbol}&interval=1m&startTime={start_time_ms}&limit={limit}"
-    
     try:
         r = requests.get(url, timeout=10)
         if r.status_code == 200:
             data = r.json()
-            # Consistent format: [time, open, high, low, close, vol]
-            # MEXC Spot API returns list of mix types but usually numbers as strings or floats
-            # We need to ensure floats for OHLCV
             candles = []
             if isinstance(data, list):
                 for row in data:
-                    # [time, open, high, low, close, volume, ...]
                     ts = int(row[0]) 
                     o = float(row[1])
                     h = float(row[2])
@@ -115,18 +108,141 @@ def fetch_candles_mexc_spot(symbol, start_time_ms, limit=1000):
                     candles.append([ts, o, h, l, c, v])
             return candles
         return []
-    except Exception as e:
+    except Exception:
+        return []
+
+def fetch_candles_bybit(symbol, start_time_ms, limit=1000):
+    """Fetch 1m candles from Bybit"""
+    # Bybit uses 'start' in ms
+    url = f"https://api.bybit.com/v5/market/kline?category=linear&symbol={symbol}&interval=1&start={start_time_ms}&limit={limit}"
+    try:
+        r = requests.get(url, timeout=10)
+        data = r.json()
+        if data.get('result') and data['result'].get('list'):
+            candles = []
+            # Bybit returns newest first
+            for k in reversed(data['result']['list']):
+                candles.append([int(k[0]), float(k[1]), float(k[2]), float(k[3]), float(k[4]), float(k[5])])
+            return candles
+        return []
+    except Exception:
+        return []
+
+def fetch_candles_bitget(symbol, start_time_ms, limit=1000):
+    """Fetch 1m candles from Bitget"""
+    # Bitget uses 'startTime' in ms
+    url = f"https://api.bitget.com/api/v2/mix/market/candles?productType=USDT-FUTURES&symbol={symbol}&granularity=1m&startTime={start_time_ms}&limit={limit}"
+    try:
+        r = requests.get(url, timeout=10)
+        data = r.json()
+        if data.get('data'):
+            candles = []
+            for k in data['data']:
+                candles.append([int(k[0]), float(k[1]), float(k[2]), float(k[3]), float(k[4]), float(k[5])])
+            # Ensure chronological
+            if candles and candles[0][0] > candles[-1][0]:
+                candles.reverse()
+            return candles
+        return []
+    except Exception:
+        return []
+
+def fetch_candles_okx(symbol, start_time_ms, limit=100):
+    """Fetch 1m candles from OKX"""
+    # OKX uses 'before' in ms to get data newer than that time
+    okx_symbol = symbol.replace('USDT', '-USDT-SWAP') if 'USDT' in symbol and '-' not in symbol else symbol
+    url = f"https://www.okx.com/api/v5/market/candles?instId={okx_symbol}&bar=1m&before={start_time_ms + 1}&limit={limit}"
+    try:
+        r = requests.get(url, timeout=10)
+        data = r.json()
+        if data.get('data'):
+            candles = []
+            # OKX returns newest first
+            for k in reversed(data['data']):
+                candles.append([int(k[0]), float(k[1]), float(k[2]), float(k[3]), float(k[4]), float(k[5])])
+            return candles
+        return []
+    except Exception:
+        return []
+
+def fetch_candles_kucoin(symbol, start_time_ms, limit=1000):
+    """Fetch 1m candles from KuCoin"""
+    # KuCoin uses 'start' in seconds
+    start_sec = start_time_ms // 1000
+    kucoin_symbol = symbol.replace('USDT', '-USDT') if 'USDT' in symbol and '-' not in symbol else symbol
+    url = f"https://api.kucoin.com/api/v1/market/candles?type=1min&symbol={kucoin_symbol}&startAt={start_sec}&limit={limit}"
+    try:
+        r = requests.get(url, timeout=10)
+        data = r.json()
+        if data.get('data'):
+            candles = []
+            # KuCoin returns newest first
+            for k in reversed(data['data']):
+                candles.append([int(k[0]) * 1000, float(k[1]), float(k[3]), float(k[4]), float(k[2]), float(k[5])])
+            return candles
+        return []
+    except Exception:
+        return []
+
+def fetch_candles_gateio(symbol, start_time_ms, limit=1000):
+    """Fetch 1m candles from Gate.io"""
+    # Gate.io uses 'from' in seconds
+    start_sec = start_time_ms // 1000
+    gate_symbol = symbol.replace('USDT', '_USDT') if 'USDT' in symbol and '_' not in symbol else symbol
+    url = f"https://api.gateio.ws/api/v4/futures/usdt/candlesticks?contract={gate_symbol}&interval=1m&from={start_sec}&limit={limit}"
+    try:
+        r = requests.get(url, timeout=10)
+        data = r.json()
+        if data and isinstance(data, list):
+            candles = []
+            for k in data:
+                candles.append([int(k.get('t', 0)) * 1000, float(k.get('o', 0)), float(k.get('h', 0)), float(k.get('l', 0)), float(k.get('c', 0)), float(k.get('v', 0))])
+            return candles
+        return []
+    except Exception:
+        return []
+
+def fetch_candles_htx(symbol, start_time_ms, limit=1000):
+    """Fetch 1m candles from HTX"""
+    # HTX uses 'from' in seconds
+    start_sec = start_time_ms // 1000
+    htx_symbol = symbol.lower()
+    url = f"https://api.huobi.pro/market/history/kline?symbol={htx_symbol}&period=1min&size={limit}&from={start_sec}"
+    try:
+        r = requests.get(url, timeout=10)
+        data = r.json()
+        if data.get('data'):
+            candles = []
+            for k in reversed(data['data']):
+                candles.append([int(k.get('id', 0)) * 1000, float(k.get('open', 0)), float(k.get('high', 0)), float(k.get('low', 0)), float(k.get('close', 0)), float(k.get('vol', 0))])
+            return candles
+        return []
+    except Exception:
         return []
 
 def fetch_candles(symbol, start_time_ms, exchange, limit=1000):
+    exchange = str(exchange).upper()
     if exchange == 'MEXC':
         candles = fetch_candles_mexc(symbol, start_time_ms, limit)
         if not candles:
-             # Fallback to Spot
              candles = fetch_candles_mexc_spot(symbol, start_time_ms, limit)
         return candles
+    elif exchange == 'BINANCE':
+        return fetch_candles_binance(symbol, start_time_ms, limit)
+    elif exchange == 'BYBIT':
+        return fetch_candles_bybit(symbol, start_time_ms, limit)
+    elif exchange == 'BITGET':
+        return fetch_candles_bitget(symbol, start_time_ms, limit)
+    elif exchange == 'OKX':
+        return fetch_candles_okx(symbol, start_time_ms, limit)
+    elif exchange == 'KUCOIN':
+        return fetch_candles_kucoin(symbol, start_time_ms, limit)
+    elif exchange == 'GATEIO' or exchange == 'GATE':
+        return fetch_candles_gateio(symbol, start_time_ms, limit)
+    elif exchange == 'HTX' or exchange == 'HUOBI':
+        return fetch_candles_htx(symbol, start_time_ms, limit)
     else:
-        # Default to Binance for "Binance" or any other fallback
+        # Final fallback
         return fetch_candles_binance(symbol, start_time_ms, limit)
 
 def run_backtest():

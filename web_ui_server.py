@@ -813,6 +813,7 @@ config = {
     'min_confidence': 5,
     'timeframes': ['1m', '3m', '5m', '15m', '30m', '1h', '4h', '1d'],
     'exchanges': ['MEXC', 'BINANCE', 'BYBIT', 'OKX', 'BITGET', 'KUCOIN', 'GATEIO', 'HTX'],
+    'strategies': ['SWING', 'SCALP', 'STOCH_PULLBACK', 'BB_BREAKOUT', 'SUPERTREND_FOLLOW', 'VWAP_REVERSION', 'ICHIMOKU_TK', 'FVG_GAP_FILL', 'DIVERGENCE_PRO', 'ADX_MOMENTUM', 'BOLLINGER_REVERSION', 'LIQUIDITY_GRAB', 'WAVETREND_EXTREME', 'SQUEEZE_BREAKOUT', 'ZLSMA_FAST_SCALP', 'MFI_REVERSION', 'FISHER_TRANSFORM', 'VOLUME_SPIKE', 'QUANTUM_CONFLUENCE', 'SMC_ELITE', 'HARMONIC_PRO', 'SMC_CHOCH', 'DONCHIAN_BREAKOUT', 'STC_MOMENTUM', 'VORTEX_TREND', 'ICT_SILVER_BULLET', 'UTBOT_ELITE', 'KELTNER_REVERSION', 'VOLATILITY_CAPITULATION', 'MOMENTUM_CONFLUENCE', 'ICT_WEALTH_DIVISION', 'HARMONIC_GARTLEY', 'PSAR_TEMA_SCALP', 'KAMA_VOLATILITY_SCALP', 'VFI_MOMENTUM_SCALP', 'REGIME_ADAPTIVE', 'WYCKOFF_SPRING', 'TRIPLE_CONFLUENCE', 'ZSCORE_REVERSION', 'MTF_TREND_RIDER', 'SMART_MONEY_TRAP', 'MOMENTUM_EXHAUSTION'],
     'auto_run': False,
     'auto_run_interval': 300,
     'risk_profile': 'moderate',
@@ -874,7 +875,7 @@ def market_monitor_loop():
             print(f"Market Monitor Error: {e}")
             time.sleep(10)
 
-def run_session_analysis(sid, symbols, indicators, timeframes, min_conf, exchanges):
+def run_session_analysis(sid, symbols, indicators, timeframes, min_conf, exchanges, strategies):
     """Run analysis for a specific session"""
     print(f"🚀 Starting analysis for session {sid}")
     
@@ -885,7 +886,8 @@ def run_session_analysis(sid, symbols, indicators, timeframes, min_conf, exchang
             '--indicators', ','.join(indicators),
             '--timeframes', ','.join(timeframes),
             '--min-confidence', str(min_conf),
-            '--exchanges', ','.join([e.upper() for e in exchanges])
+            '--exchanges', ','.join([e.upper() for e in exchanges]),
+            '--strategies', ','.join(strategies)
         ]
         
         # Send start message to specific room (sid)
@@ -975,7 +977,8 @@ def auto_run_analysis():
                 '--indicators', ','.join(config['indicators']),
                 '--timeframes', ','.join(config['timeframes']),
                 '--min-confidence', str(config['min_confidence']),
-                '--exchanges', ','.join(config.get('exchanges', ['MEXC', 'BINANCE', 'BYBIT', 'OKX', 'BITGET', 'KUCOIN', 'GATEIO', 'HTX']))
+                '--exchanges', ','.join(config.get('exchanges', ['MEXC', 'BINANCE', 'BYBIT', 'OKX', 'BITGET', 'KUCOIN', 'GATEIO', 'HTX'])),
+                '--strategies', ','.join(config.get('strategies', []))
             ]
             
             env = os.environ.copy()
@@ -1055,6 +1058,8 @@ def update_config():
         config['min_confidence'] = data['min_confidence']
     if 'exchanges' in data:
         config['exchanges'] = data['exchanges']
+    if 'strategies' in data:
+        config['strategies'] = data['strategies']
     if 'auto_run' in data:
         config['auto_run'] = data['auto_run']
         update_scheduler()
@@ -1235,6 +1240,7 @@ def handle_start(data):
     timeframes = data.get('timeframes', config['timeframes'])
     min_conf = data.get('min_confidence', config['min_confidence'])
     exchanges = data.get('exchanges', config['exchanges'])
+    strategies = data.get('strategies', config['strategies'])
     
     emit('output', {'data': f'🚀 Starting analysis at {datetime.now().strftime("%H:%M:%S")}\n'})
     emit('status', {'status': 'started'})
@@ -1242,7 +1248,7 @@ def handle_start(data):
     # Launch session-specific thread
     thread = threading.Thread(
         target=run_session_analysis,
-        args=(sid, symbols, indicators, timeframes, min_conf, exchanges),
+        args=(sid, symbols, indicators, timeframes, min_conf, exchanges, strategies),
         daemon=True
     )
     client_sessions[sid]['thread'] = thread

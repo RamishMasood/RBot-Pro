@@ -29,6 +29,7 @@ parser.add_argument('--indicators', type=str, default='', help='Comma-separated 
 parser.add_argument('--timeframes', type=str, default='1m,5m,15m,1h,4h', help='Comma-separated timeframes to analyze')
 parser.add_argument('--min-confidence', type=int, default=5, help='Minimum confidence threshold')
 parser.add_argument('--exchanges', type=str, default='MEXC,BINANCE,BYBIT,OKX,BITGET,KUCOIN,GATEIO,HTX', help='Comma-separated exchanges to analyze')
+parser.add_argument('--strategies', type=str, default='', help='Comma-separated strategies to use')
 args = parser.parse_args()
 
 # Thread-safe print lock for concurrent analysis
@@ -65,6 +66,19 @@ DEFAULT_INDICATOR_LIST = {
 }
 ENABLED_INDICATORS = set(args.indicators.split(',')) if args.indicators else DEFAULT_INDICATOR_LIST
 ENABLED_TIMEFRAMES = args.timeframes.split(',') if args.timeframes else ['1m', '3m', '5m', '15m', '30m', '1h', '4h', '1d']
+
+# --- Strategy Configuration ---
+DEFAULT_STRATEGY_LIST = {
+    'SWING', 'SCALP', 'STOCH_PULLBACK', 'BB_BREAKOUT', 'SUPERTREND_FOLLOW', 'VWAP_REVERSION', 'ICHIMOKU_TK',
+    'FVG_GAP_FILL', 'DIVERGENCE_PRO', 'ADX_MOMENTUM', 'BOLLINGER_REVERSION', 'LIQUIDITY_GRAB', 'WAVETREND_EXTREME',
+    'SQUEEZE_BREAKOUT', 'ZLSMA_FAST_SCALP', 'MFI_REVERSION', 'FISHER_TRANSFORM', 'VOLUME_SPIKE',
+    'QUANTUM_CONFLUENCE', 'SMC_ELITE', 'HARMONIC_PRO', 'SMC_CHOCH', 'DONCHIAN_BREAKOUT', 'STC_MOMENTUM',
+    'VORTEX_TREND', 'ICT_SILVER_BULLET', 'UTBOT_ELITE', 'KELTNER_REVERSION', 'VOLATILITY_CAPITULATION',
+    'MOMENTUM_CONFLUENCE', 'ICT_WEALTH_DIVISION', 'HARMONIC_GARTLEY', 'PSAR_TEMA_SCALP', 'KAMA_VOLATILITY_SCALP',
+    'VFI_MOMENTUM_SCALP', 'REGIME_ADAPTIVE', 'WYCKOFF_SPRING', 'TRIPLE_CONFLUENCE', 'ZSCORE_REVERSION',
+    'MTF_TREND_RIDER', 'SMART_MONEY_TRAP', 'MOMENTUM_EXHAUSTION'
+}
+ENABLED_STRATEGIES = set(args.strategies.upper().split(',')) if args.strategies else DEFAULT_STRATEGY_LIST
 
 # --- GLOBAL REQUEST CONFIGURATION ---
 COMMON_HEADERS = {
@@ -5707,59 +5721,58 @@ def run_strategies(symbol, analyses):
     all_trades = []
     
     # Standard Strategies
-    all_trades.extend(strategy_swing_trend(symbol, analyses))
-    all_trades.extend(strategy_scalp_momentum(symbol, analyses))
-    all_trades.extend(strategy_trend_pullback(symbol, analyses))
-    all_trades.extend(strategy_volatility_breakout(symbol, analyses))
-    all_trades.extend(strategy_supertrend_follow(symbol, analyses))
-    all_trades.extend(strategy_vwap_reversion(symbol, analyses))
-    all_trades.extend(strategy_ichimoku_tk(symbol, analyses))
+    if 'SWING' in ENABLED_STRATEGIES: all_trades.extend(strategy_swing_trend(symbol, analyses))
+    if 'SCALP' in ENABLED_STRATEGIES: all_trades.extend(strategy_scalp_momentum(symbol, analyses))
+    if 'STOCH_PULLBACK' in ENABLED_STRATEGIES: all_trades.extend(strategy_trend_pullback(symbol, analyses))
+    if 'BB_BREAKOUT' in ENABLED_STRATEGIES: all_trades.extend(strategy_volatility_breakout(symbol, analyses))
+    if 'SUPERTREND_FOLLOW' in ENABLED_STRATEGIES: all_trades.extend(strategy_supertrend_follow(symbol, analyses))
+    if 'VWAP_REVERSION' in ENABLED_STRATEGIES: all_trades.extend(strategy_vwap_reversion(symbol, analyses))
+    if 'ICHIMOKU_TK' in ENABLED_STRATEGIES: all_trades.extend(strategy_ichimoku_tk(symbol, analyses))
     
     # Advanced / SMC Strategies
-    all_trades.extend(strategy_fvg_gap_fill(symbol, analyses))
-    all_trades.extend(strategy_divergence_pro(symbol, analyses))
-    all_trades.extend(strategy_adx_momentum(symbol, analyses))
-    all_trades.extend(strategy_bollinger_reversion(symbol, analyses))
-    all_trades.extend(strategy_liquidity_grab_reversal(symbol, analyses))
-    all_trades.extend(strategy_wavetrend_extreme(symbol, analyses))
-    all_trades.extend(strategy_squeeze_breakout(symbol, analyses))
-    all_trades.extend(strategy_zlsma_fast_scalp(symbol, analyses))
-    all_trades.extend(strategy_mfi_reversion(symbol, analyses))
-    all_trades.extend(strategy_fisher_transform_pivot(symbol, analyses))
-    all_trades.extend(strategy_volume_spike_breakout(symbol, analyses))
+    if 'FVG_GAP_FILL' in ENABLED_STRATEGIES: all_trades.extend(strategy_fvg_gap_fill(symbol, analyses))
+    if 'DIVERGENCE_PRO' in ENABLED_STRATEGIES: all_trades.extend(strategy_divergence_pro(symbol, analyses))
+    if 'ADX_MOMENTUM' in ENABLED_STRATEGIES: all_trades.extend(strategy_adx_momentum(symbol, analyses))
+    if 'BOLLINGER_REVERSION' in ENABLED_STRATEGIES: all_trades.extend(strategy_bollinger_reversion(symbol, analyses))
+    if 'LIQUIDITY_GRAB' in ENABLED_STRATEGIES: all_trades.extend(strategy_liquidity_grab_reversal(symbol, analyses))
+    if 'WAVETREND_EXTREME' in ENABLED_STRATEGIES: all_trades.extend(strategy_wavetrend_extreme(symbol, analyses))
+    if 'SQUEEZE_BREAKOUT' in ENABLED_STRATEGIES: all_trades.extend(strategy_squeeze_breakout(symbol, analyses))
+    if 'ZLSMA_FAST_SCALP' in ENABLED_STRATEGIES: all_trades.extend(strategy_zlsma_fast_scalp(symbol, analyses))
+    if 'MFI_REVERSION' in ENABLED_STRATEGIES: all_trades.extend(strategy_mfi_reversion(symbol, analyses))
+    if 'FISHER_TRANSFORM' in ENABLED_STRATEGIES: all_trades.extend(strategy_fisher_transform_pivot(symbol, analyses))
+    if 'VOLUME_SPIKE' in ENABLED_STRATEGIES: all_trades.extend(strategy_volume_spike_breakout(symbol, analyses))
     
     # ELITE 2026 STRATEGIES (High Confidence)
-    all_trades.extend(strategy_quantum_confluence_2026(symbol, analyses))
-    all_trades.extend(strategy_smc_elite(symbol, analyses))
-    all_trades.extend(strategy_harmonic_pro(symbol, analyses))
+    if 'QUANTUM_CONFLUENCE' in ENABLED_STRATEGIES: all_trades.extend(strategy_quantum_confluence_2026(symbol, analyses))
+    if 'SMC_ELITE' in ENABLED_STRATEGIES: all_trades.extend(strategy_smc_elite(symbol, analyses))
+    if 'HARMONIC_PRO' in ENABLED_STRATEGIES: all_trades.extend(strategy_harmonic_pro(symbol, analyses))
 
     # NEW BEST OF BEST Strategies 2026
-
-    all_trades.extend(strategy_smc_choch(symbol, analyses))
-    all_trades.extend(strategy_donchian_breakout(symbol, analyses))
-    all_trades.extend(strategy_stc_momentum(symbol, analyses))
-    all_trades.extend(strategy_vortex_trend(symbol, analyses))
-    all_trades.extend(strategy_ict_silver_bullet(symbol, analyses))
-    all_trades.extend(strategy_utbot_elite(symbol, analyses))
-    all_trades.extend(strategy_keltner_reversion(symbol, analyses))
-    all_trades.extend(strategy_volatility_capitulation(symbol, analyses))
-    all_trades.extend(strategy_momentum_confluence(symbol, analyses))
-    all_trades.extend(strategy_ict_wealth_division(symbol, analyses))
-    all_trades.extend(strategy_harmonic_gartley(symbol, analyses))
+    if 'SMC_CHOCH' in ENABLED_STRATEGIES: all_trades.extend(strategy_smc_choch(symbol, analyses))
+    if 'DONCHIAN_BREAKOUT' in ENABLED_STRATEGIES: all_trades.extend(strategy_donchian_breakout(symbol, analyses))
+    if 'STC_MOMENTUM' in ENABLED_STRATEGIES: all_trades.extend(strategy_stc_momentum(symbol, analyses))
+    if 'VORTEX_TREND' in ENABLED_STRATEGIES: all_trades.extend(strategy_vortex_trend(symbol, analyses))
+    if 'ICT_SILVER_BULLET' in ENABLED_STRATEGIES: all_trades.extend(strategy_ict_silver_bullet(symbol, analyses))
+    if 'UTBOT_ELITE' in ENABLED_STRATEGIES: all_trades.extend(strategy_utbot_elite(symbol, analyses))
+    if 'KELTNER_REVERSION' in ENABLED_STRATEGIES: all_trades.extend(strategy_keltner_reversion(symbol, analyses))
+    if 'VOLATILITY_CAPITULATION' in ENABLED_STRATEGIES: all_trades.extend(strategy_volatility_capitulation(symbol, analyses))
+    if 'MOMENTUM_CONFLUENCE' in ENABLED_STRATEGIES: all_trades.extend(strategy_momentum_confluence(symbol, analyses))
+    if 'ICT_WEALTH_DIVISION' in ENABLED_STRATEGIES: all_trades.extend(strategy_ict_wealth_division(symbol, analyses))
+    if 'HARMONIC_GARTLEY' in ENABLED_STRATEGIES: all_trades.extend(strategy_harmonic_gartley(symbol, analyses))
     
     # SUPERSCALP 2026 UPGRADES
-    all_trades.extend(strategy_psar_tema_scalp(symbol, analyses))
-    all_trades.extend(strategy_kama_volatility_scalp(symbol, analyses))
-    all_trades.extend(strategy_vfi_momentum_scalp(symbol, analyses))
+    if 'PSAR_TEMA_SCALP' in ENABLED_STRATEGIES: all_trades.extend(strategy_psar_tema_scalp(symbol, analyses))
+    if 'KAMA_VOLATILITY_SCALP' in ENABLED_STRATEGIES: all_trades.extend(strategy_kama_volatility_scalp(symbol, analyses))
+    if 'VFI_MOMENTUM_SCALP' in ENABLED_STRATEGIES: all_trades.extend(strategy_vfi_momentum_scalp(symbol, analyses))
     
     # 🧠 ULTIMATE 2025 STRATEGIES (Research-Backed)
-    all_trades.extend(strategy_regime_adaptive(symbol, analyses))
-    all_trades.extend(strategy_wyckoff_spring(symbol, analyses))
-    all_trades.extend(strategy_triple_confluence(symbol, analyses))
-    all_trades.extend(strategy_zscore_reversion(symbol, analyses))
-    all_trades.extend(strategy_mtf_trend_rider(symbol, analyses))
-    all_trades.extend(strategy_smart_money_trap(symbol, analyses))
-    all_trades.extend(strategy_momentum_exhaustion(symbol, analyses))
+    if 'REGIME_ADAPTIVE' in ENABLED_STRATEGIES: all_trades.extend(strategy_regime_adaptive(symbol, analyses))
+    if 'WYCKOFF_SPRING' in ENABLED_STRATEGIES: all_trades.extend(strategy_wyckoff_spring(symbol, analyses))
+    if 'TRIPLE_CONFLUENCE' in ENABLED_STRATEGIES: all_trades.extend(strategy_triple_confluence(symbol, analyses))
+    if 'ZSCORE_REVERSION' in ENABLED_STRATEGIES: all_trades.extend(strategy_zscore_reversion(symbol, analyses))
+    if 'MTF_TREND_RIDER' in ENABLED_STRATEGIES: all_trades.extend(strategy_mtf_trend_rider(symbol, analyses))
+    if 'SMART_MONEY_TRAP' in ENABLED_STRATEGIES: all_trades.extend(strategy_smart_money_trap(symbol, analyses))
+    if 'MOMENTUM_EXHAUSTION' in ENABLED_STRATEGIES: all_trades.extend(strategy_momentum_exhaustion(symbol, analyses))
     
     return all_trades
 
@@ -6156,6 +6169,23 @@ def enforce_signal_safety_buffers(trades, symbol_analyses_map):
             else:
                 trade['sl'] = entry + min_sl_distance
             trade['reason'] += f" | 🛡️ SL WIDENED ({min_atr_mult}x ATR floor)"
+
+        # Part 3: User-Requested Global SL Distancing (RR Reduction)
+        # Request: 2.5:1 -> 2.0:1, 3.0:1 -> 2.5:1 (Reduce RR by 0.5 by moving SL further)
+        # This makes Stop Losses safer while keeping Take Profits at original locations.
+        reward_val = abs(tp1 - entry)
+        risk_val = abs(entry - trade['sl'])
+        if risk_val > 0:
+            current_rr = reward_val / risk_val
+            target_rr = max(1.1, current_rr - 0.5) # Maintain at least 1.1 RR for trade quality
+            
+            if target_rr < current_rr:
+                new_risk = reward_val / target_rr
+                if trade['type'] == 'LONG':
+                    trade['sl'] = entry - new_risk
+                else:
+                    trade['sl'] = entry + new_risk
+                trade['reason'] += f" | 🛡️ SL DISTANCED (-0.5 RR)"
 
         # Step 3: Final Meta Sync
         trade['risk'] = abs(trade['entry'] - trade['sl'])
