@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>RBot Pro — Backtest UI</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    body {
+      background-color: #050608;
+      color: #d7ffd7;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px 16px 40px;
+    }
+    h1 {
+      text-align: center;
+      color: #00ff88;
+      margin-bottom: 8px;
+      font-size: 26px;
+    }
+    h2 {
+      color: #00d4ff;
+      font-size: 18px;
+      margin-top: 24px;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      text-align: center;
+      color: #9be7ff;
+      margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .panel {
+      background: #0c1015;
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin-bottom: 16px;
+      border: 1px solid #1c2833;
+    }
+    .flex-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .flex-col {
+      flex: 1;
+      min-width: 220px;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      margin-bottom: 4px;
+      color: #9be7ff;
+    }
+    select,
+    input[type="number"] {
+      width: 100%;
+      background: #050608;
+      border-radius: 4px;
+      border: 1px solid #283747;
+      color: #e8f6f3;
+      padding: 6px 8px;
+      font-size: 13px;
+      box-sizing: border-box;
+    }
+    select[multiple] {
+      min-height: 80px;
+    }
+    .field-inline {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .field-inline input[type="number"] {
+      max-width: 120px;
+    }
+    .btn-primary {
+      background: #00ff88;
+      color: #000;
+      border: none;
+      border-radius: 4px;
+      padding: 8px 16px;
+      font-weight: 600;
+      font-size: 14px;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+    .btn-primary:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-right: 6px;
+    }
+    .badge-win { background: #00c853; color: #000; }
+    .badge-loss { background: #ff5252; color: #000; }
+    .badge-pending { background: #ffca28; color: #000; }
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 8px;
+      margin-top: 6px;
+    }
+    .summary-item {
+      background: #050608;
+      border-radius: 6px;
+      padding: 8px 10px;
+      border: 1px solid #16213e;
+      font-size: 12px;
+    }
+    .summary-label {
+      color: #9be7ff;
+      margin-bottom: 2px;
+    }
+    .summary-value {
+      font-weight: 600;
+      font-size: 13px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      margin-top: 8px;
+    }
+    th, td {
+      border-bottom: 1px solid #161b22;
+      padding: 4px 6px;
+      text-align: left;
+      white-space: nowrap;
+    }
+    th {
+      background: #0b1118;
+      color: #9be7ff;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+    .table-wrapper {
+      max-height: 360px;
+      overflow: auto;
+      border-radius: 6px;
+      border: 1px solid #1c2833;
+      margin-top: 6px;
+    }
+    .text-green { color: #00e676; }
+    .text-red { color: #ff5252; }
+    .text-muted { color: #7f8c8d; }
+    .small {
+      font-size: 11px;
+      color: #7f8c8d;
+    }
+    .error {
+      color: #ff5252;
+      font-size: 13px;
+      margin-top: 4px;
+    }
+    @media (max-width: 600px) {
+      .panel { padding: 10px 10px; }
+      h1 { font-size: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>RBot Pro — Backtest Studio</h1>
+    <div class="subtitle">
+      Backtest <b>signals_history.json</b> with full control over exchanges, strategies, timeframes, and risk.
+    </div>
+
+    <div class="panel">
+      <h2>Backtest Configuration</h2>
+      <div id="config-error" class="error" style="display:none;"></div>
+      <div class="flex-row">
+        <div class="flex-col">
+          <label for="exchanges">Exchanges (from signals)</label>
+          <div class="field-inline" style="justify-content:space-between;align-items:center;">
+            <select id="exchanges" multiple></select>
+            <div class="small">
+              <button type="button" class="btn-primary" style="padding:3px 8px;font-size:11px;" onclick="toggleSelectAll('exchanges', true)">All</button>
+              <button type="button" class="btn-primary" style="padding:3px 8px;font-size:11px;background:#263238;color:#fff;" onclick="toggleSelectAll('exchanges', false)">None</button>
+            </div>
+          </div>
+          <div class="small">Hold Ctrl/Cmd to multi-select. Leave empty = all exchanges.</div>
+        </div>
+        <div class="flex-col">
+          <label for="strategies">Strategies</label>
+          <div class="field-inline" style="justify-content:space-between;align-items:center;">
+            <select id="strategies" multiple></select>
+            <div class="small">
+              <button type="button" class="btn-primary" style="padding:3px 8px;font-size:11px;" onclick="toggleSelectAll('strategies', true)">All</button>
+              <button type="button" class="btn-primary" style="padding:3px 8px;font-size:11px;background:#263238;color:#fff;" onclick="toggleSelectAll('strategies', false)">None</button>
+            </div>
+          </div>
+          <div class="small">Leave empty = all strategies.</div>
+        </div>
+        <div class="flex-col">
+          <label for="timeframes">Timeframes</label>
+          <div class="field-inline" style="justify-content:space-between;align-items:center;">
+            <select id="timeframes" multiple></select>
+            <div class="small">
+              <button type="button" class="btn-primary" style="padding:3px 8px;font-size:11px;" onclick="toggleSelectAll('timeframes', true)">All</button>
+              <button type="button" class="btn-primary" style="padding:3px 8px;font-size:11px;background:#263238;color:#fff;" onclick="toggleSelectAll('timeframes', false)">None</button>
+            </div>
+          </div>
+          <div class="small">Leave empty = all timeframes.</div>
+        </div>
+      </div>
+
+      <div class="flex-row" style="margin-top: 12px;">
+        <div class="flex-col">
+          <label>Account &amp; Risk</label>
+          <div class="field-inline">
+            <input id="initial-capital" type="number" step="0.01" min="0" />
+            <span class="small">Initial Capital</span>
+          </div>
+          <div class="field-inline" style="margin-top: 4px;">
+            <input id="risk-percent" type="number" step="0.1" min="0" max="100" />
+            <span class="small">% Risk per Trade</span>
+          </div>
+        </div>
+        <div class="flex-col">
+          <label>Signal Filters</label>
+          <div class="field-inline">
+            <input id="min-age" type="number" step="1" min="1" />
+            <span class="small">Min Age (minutes) from timestamp</span>
+          </div>
+          <div style="margin-top: 4px;">
+            <label style="display:flex;align-items:center;gap:6px;">
+              <input id="only-elite" type="checkbox" checked />
+              <span class="small">Only 🏆 ELITE signals</span>
+            </label>
+          </div>
+        </div>
+        <div class="flex-col" style="display:flex;align-items:flex-end;justify-content:flex-end;">
+          <button id="run-btn" class="btn-primary">Run Backtest</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Summary</h2>
+      <div id="summary-empty" class="small text-muted">
+        Configure options above and click <b>Run Backtest</b> to see results.
+      </div>
+      <div id="summary-grid" class="summary-grid" style="display:none;">
+        <div class="summary-item">
+          <div class="summary-label">Signals (Total / Closed)</div>
+          <div class="summary-value" id="sum-total"></div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">Wins / Losses</div>
+          <div class="summary-value" id="sum-wl"></div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">Win Rate</div>
+          <div class="summary-value" id="sum-winrate"></div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">Initial Capital → Final</div>
+          <div class="summary-value" id="sum-capital"></div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">Realized PnL (Account)</div>
+          <div class="summary-value" id="sum-account-pnl"></div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">Sum of Price PnL % (diagnostic)</div>
+          <div class="summary-value" id="sum-price-pnl"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Per-Trade Details</h2>
+      <div class="small text-muted">
+        Ordered by signal timestamp. Risk per trade is based on current equity &amp; your risk%.
+      </div>
+      <div class="table-wrapper">
+        <table id="trades-table">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Symbol</th>
+              <th>Exch</th>
+              <th>Side</th>
+              <th>Strat</th>
+              <th>TF</th>
+              <th>Status</th>
+              <th>Price PnL%</th>
+              <th>RR</th>
+              <th>Risk</th>
+              <th>PnL</th>
+              <th>Equity After</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const runBtn = document.getElementById('run-btn');
+    const exchangesSelect = document.getElementById('exchanges');
+    const strategiesSelect = document.getElementById('strategies');
+    const tfsSelect = document.getElementById('timeframes');
+    const initCapInput = document.getElementById('initial-capital');
+    const riskPctInput = document.getElementById('risk-percent');
+    const minAgeInput = document.getElementById('min-age');
+    const onlyEliteInput = document.getElementById('only-elite');
+    const configError = document.getElementById('config-error');
+
+    const summaryEmpty = document.getElementById('summary-empty');
+    const summaryGrid = document.getElementById('summary-grid');
+    const sumTotal = document.getElementById('sum-total');
+    const sumWL = document.getElementById('sum-wl');
+    const sumWinrate = document.getElementById('sum-winrate');
+    const sumCapital = document.getElementById('sum-capital');
+    const sumAccountPnl = document.getElementById('sum-account-pnl');
+    const sumPricePnl = document.getElementById('sum-price-pnl');
+
+    const tradesTableBody = document.querySelector('#trades-table tbody');
+
+    function setLoading(isLoading) {
+      runBtn.disabled = isLoading;
+      runBtn.textContent = isLoading ? 'Running…' : 'Run Backtest';
+    }
+
+    function fillMultiSelect(selectEl, values) {
+      selectEl.innerHTML = '';
+      values.forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v;
+        opt.textContent = v;
+        selectEl.appendChild(opt);
+      });
+    }
+
+    function getSelectedValues(selectEl) {
+      return Array.from(selectEl.selectedOptions).map(o => o.value);
+    }
+
+    function toggleSelectAll(selectId, selectAll) {
+      const el = document.getElementById(selectId);
+      if (!el) return;
+      Array.from(el.options).forEach(opt => {
+        opt.selected = !!selectAll;
+      });
+    }
+
+    async function loadOptions() {
+      try {
+        const res = await fetch('/api/backtest/options');
+        if (!res.ok) throw new Error('Failed to load options');
+        const data = await res.json();
+        fillMultiSelect(exchangesSelect, data.exchanges || []);
+        fillMultiSelect(strategiesSelect, data.strategies || []);
+        fillMultiSelect(tfsSelect, data.timeframes || []);
+
+        if (data.defaults) {
+          initCapInput.value = data.defaults.initial_capital ?? 10000;
+          riskPctInput.value = data.defaults.risk_percent ?? 1.0;
+          minAgeInput.value = data.defaults.min_age_minutes ?? 5;
+          onlyEliteInput.checked = data.defaults.only_elite ?? true;
+        }
+      } catch (err) {
+        configError.style.display = 'block';
+        configError.textContent = 'Error loading options: ' + err.message;
+      }
+    }
+
+    async function runBacktest() {
+      configError.style.display = 'none';
+      setLoading(true);
+      tradesTableBody.innerHTML = '';
+      summaryEmpty.style.display = 'block';
+      summaryGrid.style.display = 'none';
+
+      const payload = {
+        exchanges: getSelectedValues(exchangesSelect),
+        strategies: getSelectedValues(strategiesSelect),
+        timeframes: getSelectedValues(tfsSelect),
+        initial_capital: parseFloat(initCapInput.value || '10000'),
+        risk_percent: parseFloat(riskPctInput.value || '1'),
+        min_age_minutes: parseInt(minAgeInput.value || '5', 10),
+        only_elite: !!onlyEliteInput.checked,
+      };
+
+      try {
+        const res = await fetch('/api/backtest/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || 'Backtest failed');
+        }
+
+        renderSummary(data);
+        renderTrades(data.trades || []);
+      } catch (err) {
+        configError.style.display = 'block';
+        configError.textContent = 'Backtest error: ' + err.message;
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    function renderSummary(data) {
+      const s = data.summary || {};
+      const pricePnl = data.price_pnl || {};
+
+      summaryEmpty.style.display = 'none';
+      summaryGrid.style.display = 'grid';
+
+      const total = s.total_signals ?? 0;
+      const closed = (s.wins ?? 0) + (s.losses ?? 0);
+      sumTotal.textContent = `${total} total / ${closed} closed`;
+
+      sumWL.textContent = `${s.wins ?? 0} W / ${s.losses ?? 0} L (Pending: ${s.pending ?? 0}, NoData: ${s.no_data ?? 0})`;
+
+      sumWinrate.textContent = `${(s.win_rate_percent ?? 0).toFixed(2)}%`;
+
+      const initCap = s.initial_capital ?? 0;
+      const finalCap = s.final_capital ?? 0;
+      sumCapital.innerHTML = `<span>${initCap.toFixed(2)}</span> → <span class="${finalCap >= initCap ? 'text-green' : 'text-red'}">${finalCap.toFixed(2)}</span>`;
+
+      const pnlAmt = s.realized_pnl_amount ?? 0;
+      const pnlPct = s.realized_pnl_percent ?? 0;
+      const pnlClass = pnlAmt >= 0 ? 'text-green' : 'text-red';
+      sumAccountPnl.innerHTML = `<span class="${pnlClass}">${pnlAmt.toFixed(2)} (${pnlPct.toFixed(2)}%)</span>`;
+
+      const pricePnlSum = pricePnl.total_pnl_percent_sum ?? 0;
+      const pricePnlClass = pricePnlSum >= 0 ? 'text-green' : 'text-red';
+      sumPricePnl.innerHTML = `<span class="${pricePnlClass}">${pricePnlSum.toFixed(2)}%</span>`;
+    }
+
+    function renderTrades(trades) {
+      tradesTableBody.innerHTML = '';
+      if (!trades || !trades.length) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 12;
+        td.className = 'text-muted';
+        td.textContent = 'No trades to display for these filters.';
+        tr.appendChild(td);
+        tradesTableBody.appendChild(tr);
+        return;
+      }
+
+      for (const t of trades) {
+        const sig = t.signal || {};
+        const tr = document.createElement('tr');
+
+        const outcome = t.outcome || 'PENDING';
+        let badgeHtml = '';
+        if (outcome === 'WIN') badgeHtml = '<span class="badge badge-win">WIN</span>';
+        else if (outcome === 'LOSS') badgeHtml = '<span class="badge badge-loss">LOSS</span>';
+        else if (outcome === 'PENDING') badgeHtml = '<span class="badge badge-pending">PEND</span>';
+        else badgeHtml = '<span class="badge badge-pending">' + outcome + '</span>';
+
+        const cells = [
+          sig.timestamp || '',
+          sig.symbol || '',
+          (sig.exchange || '').toString().toUpperCase(),
+          sig.type || '',
+          sig.strategy || '',
+          sig.timeframe || '',
+          badgeHtml,
+          (t.pnl_price_pct ?? 0).toFixed(2) + '%',
+          (t.rr ?? 0).toFixed(2),
+          (t.risk_amount ?? 0).toFixed(2),
+          (t.pnl_amount ?? 0).toFixed(2),
+          (t.capital_after ?? t.capital_before ?? 0).toFixed(2),
+        ];
+
+        cells.forEach((val, idx) => {
+          const td = document.createElement('td');
+          if (idx === 6) {
+            td.innerHTML = val;
+          } else {
+            if (idx === 7 || idx === 10 || idx === 11) {
+              const num = parseFloat(String(val).replace('%', ''));
+              if (!isNaN(num)) {
+                td.className = num > 0 ? 'text-green' : (num < 0 ? 'text-red' : '');
+              }
+            }
+            td.innerHTML = val;
+          }
+          tr.appendChild(td);
+        });
+
+        tradesTableBody.appendChild(tr);
+      }
+    }
+
+    runBtn.addEventListener('click', runBacktest);
+    window.addEventListener('load', loadOptions);
+  </script>
+</body>
+</html>
+

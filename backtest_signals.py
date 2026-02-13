@@ -194,6 +194,9 @@ def run_backtest():
         'total_pnl': 0.0,
         'no_data': 0
     }
+    # Per-strategy / timeframe performance (for deeper audit)
+    # Keys: (strategy_name, timeframe)
+    combo_stats = {}
     
     print(f"{'TIME':<20} {'SYMBOL':<10} {'EXCH':<8} {'TYPE':<6} {'STATUS':<10} {'PnL %':<10} {'AGE':<10}")
     print("-" * 90)
@@ -298,6 +301,32 @@ def run_backtest():
         # TIME (20) | SYMBOL (10) | EXCH (8) | TYPE (6) | STATUS (4) | OUTCOME (8) | PNL (8) | AGE
         print(f"{sig['timestamp']:<20} {symbol:<10} {exchange:<8} {direction:<6} {color:<2} {outcome:<8} {pnl_str:>8}    {sig['_age_str']}")
 
+        # --- Aggregate per-strategy / timeframe stats ---
+        strategy = sig.get('strategy', 'UNKNOWN')
+        timeframe = sig.get('timeframe', 'N/A')
+        key = (strategy, timeframe)
+        if key not in combo_stats:
+            combo_stats[key] = {
+                'total': 0,
+                'wins': 0,
+                'losses': 0,
+                'pending': 0,
+                'no_data': 0,
+                'pnl': 0.0
+            }
+        stats = combo_stats[key]
+        stats['total'] += 1
+        if outcome == 'WIN':
+            stats['wins'] += 1
+            stats['pnl'] += pnl
+        elif outcome == 'LOSS':
+            stats['losses'] += 1
+            stats['pnl'] += pnl
+        elif outcome == 'PENDING':
+            stats['pending'] += 1
+        else:
+            stats['no_data'] += 1
+
     print("-" * 90)
     print("SUMMARY")
     print(f"Total Signals: {results['total']}")
@@ -305,6 +334,29 @@ def run_backtest():
     print(f"Wins: {results['wins']}  Losses: {results['losses']}  Pending: {results['pending']}  NoData: {results['no_data']}")
     print(f"Realized Win Rate (excluding pending): {win_rate:.1f}%")
     print(f"Total Realized PnL (sum %): {results['total_pnl']:.2f}%")
+
+    # Detailed per-strategy/timeframe breakdown (ELITE signals only)
+    if combo_stats:
+        print("\nPER-STRATEGY/TIMEFRAME PERFORMANCE (ELITE signals)")
+        print(f"{'STRATEGY':<28} {'TF':<6} {'TOTAL':<6} {'W':<4} {'L':<4} {'PEND':<5} {'NO':<4} {'WIN%':<7} {'PnL%':<9}")
+        print("-" * 90)
+        # Sort by total signals desc, then win-rate desc
+        def _sort_key(item):
+            (strategy, tf), s = item
+            wins = s['wins']
+            losses = s['losses']
+            wr = (wins / (wins + losses) * 100) if (wins + losses) > 0 else 0.0
+            return (-s['total'], -wr)
+
+        for (strategy, tf), s in sorted(combo_stats.items(), key=_sort_key):
+            total = s['total']
+            wins = s['wins']
+            losses = s['losses']
+            pending = s['pending']
+            no_data = s['no_data']
+            wr = (wins / (wins + losses) * 100) if (wins + losses) > 0 else 0.0
+            pnl_sum = s['pnl']
+            print(f"{strategy[:26]:<28} {tf:<6} {total:<6} {wins:<4} {losses:<4} {pending:<5} {no_data:<4} {wr:>6.1f}% {pnl_sum:>8.2f}%")
 
 if __name__ == "__main__":
     run_backtest()

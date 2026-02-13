@@ -51,7 +51,18 @@ ENABLED_EXCHANGES = [e.strip().upper() for e in args.exchanges.split(',')] if ar
 ALL_EXCHANGES = ['MEXC', 'BINANCE', 'BITGET', 'BYBIT', 'OKX', 'KUCOIN', 'GATEIO', 'HTX']
 
 # Enabled indicators and timeframes
-DEFAULT_INDICATOR_LIST = {'RSI', 'EMA', 'MACD', 'BB', 'ATR', 'ADX', 'OB', 'PA', 'ST', 'VWAP', 'CMF', 'ICHI', 'FVG', 'DIV', 'WT', 'KC', 'LIQ', 'BOS', 'MFI', 'FISH', 'ZLSMA', 'TSI', 'CHOP', 'VI', 'STC', 'DON', 'CHoCH', 'UTBOT', 'UO', 'STDEV', 'VP', 'SUPDEM', 'FIB', 'ICT_WD', 'SQZ', 'StochRSI', 'OBV', 'HMA', 'REGIME', 'DELTA', 'ZSCORE', 'WYCKOFF', 'RVOL'}
+# NOTE: Includes the full 43-core indicator suite plus the 5 SuperScalp
+# components (PSAR, TEMA, CHANDELIER, KAMA, VFI) so scalping strategies
+# always receive real indicator values by default.
+DEFAULT_INDICATOR_LIST = {
+    'RSI', 'EMA', 'MACD', 'BB', 'ATR', 'ADX', 'OB', 'PA', 'ST', 'VWAP',
+    'CMF', 'ICHI', 'FVG', 'DIV', 'WT', 'KC', 'LIQ', 'BOS', 'MFI', 'FISH',
+    'ZLSMA', 'TSI', 'CHOP', 'VI', 'STC', 'DON', 'CHoCH', 'UTBOT', 'UO',
+    'STDEV', 'VP', 'SUPDEM', 'FIB', 'ICT_WD', 'SQZ', 'StochRSI', 'OBV',
+    'HMA', 'REGIME', 'DELTA', 'ZSCORE', 'WYCKOFF', 'RVOL',
+    # SuperScalp 2026 suite
+    'PSAR', 'TEMA', 'CHANDELIER', 'KAMA', 'VFI'
+}
 ENABLED_INDICATORS = set(args.indicators.split(',')) if args.indicators else DEFAULT_INDICATOR_LIST
 ENABLED_TIMEFRAMES = args.timeframes.split(',') if args.timeframes else ['1m', '3m', '5m', '15m', '30m', '1h', '4h', '1d']
 
@@ -2520,7 +2531,21 @@ def strategy_scalp_momentum(symbol, analyses):
     reasons = []
     
     # LONG Scalp
-    if m5['trend'] == 'BULLISH' and m1['rsi'] < 40 and m1['macd']['histogram'] > m1['macd']['histogram']*0.5:
+    if m5['trend'] == 'BULLISH' and m1['rsi'] < 40 and m1['macd']['histogram'] > 0:
+        # Extra safety: only trade when 5m trend is strong and volume is elevated,
+        # and 1m is not in extreme chop. This sharply reduces low‑quality scalps.
+        adx_5m = m5['adx']['adx'] if isinstance(m5.get('adx'), dict) else m5.get('adx', 0)
+        rvol_5m = m5.get('rvol', 1.0)
+        chop_1m = m1.get('chop', 50)
+
+        if adx_5m < 25 or rvol_5m < 1.2 or chop_1m > 61.8:
+            return []
+
+        # Avoid counter‑trend scalps against 15m if available
+        h15 = analyses.get('15m')
+        if h15 and h15.get('trend') == 'BEARISH':
+            return []
+
         confidence = 5 + (2 if m1['rsi'] < 30 else 0)
         reasons.append('1m Dip in 5m Uptrend')
         
@@ -2548,9 +2573,6 @@ def strategy_scalp_momentum(symbol, analyses):
                 'entry_type': 'MARKET',
                 'timeframe': '1m'
             })
-            
-    return trades
-
     return trades
 
 def strategy_trend_pullback(symbol, analyses):
@@ -5856,24 +5878,27 @@ def resolve_conflicts(trades):
             # Conflict detected on this specific exchange
             conflicts_found += 1
 
-            best_long_conf = max(t.get('confidence_score', 0) for t in longs)
-            best_short_conf = max(t.get('confidence_score', 0) for t in shorts)
+            best_long = max(longs, key=lambda x: x.get('confidence_score', 0))
+            best_short = max(shorts, key=lambda x: x.get('confidence_score', 0))
+            
+            long_score = best_long.get('confidence_score', 0)
+            short_score = best_short.get('confidence_score', 0)
 
-            if best_long_conf >= best_short_conf + 3:
-                # Long is dominant — keep longs, suppress shorts
-                for t in longs:
-                    t['conflict_warning'] = f"⚠️ Conflicting SHORT signals suppressed on {exch} (LONG {best_long_conf}/10 vs SHORT {best_short_conf}/10)"
-                    resolved.append(t)
-            elif best_short_conf >= best_long_conf + 3:
-                # Short is dominant — keep shorts, suppress longs
-                for t in shorts:
-                    t['conflict_warning'] = f"⚠️ Conflicting LONG signals suppressed on {exch} (SHORT {best_short_conf}/10 vs LONG {best_long_conf}/10)"
-                    resolved.append(t)
+            if long_score > short_score:
+                best_long['conflict_warning'] = f"⚠️ Conflicting SHORT suppressed (LONG {long_score} > SHORT {short_score})"
+                resolved.append(best_long)
+            elif short_score > long_score:
+                best_short['conflict_warning'] = f"⚠️ Conflicting LONG suppressed (SHORT {short_score} > LONG {long_score})"
+                resolved.append(best_short)
             else:
-                # Both sides similar — VOID BOTH (Sign of indecision/chop)
-                for t in longs + shorts:
-                    pass
-                conflicts_found += 1 # Report as resolved but removed
+                # Absolute tie — keep the one with higher TF weight
+                long_tf_w = TF_WEIGHTS.get(best_long.get('timeframe'), 0)
+                short_tf_w = TF_WEIGHTS.get(best_short.get('timeframe'), 0)
+                if long_tf_w >= short_tf_w:
+                    resolved.append(best_long)
+                else:
+                    resolved.append(best_short)
+
 
         else:
             # No conflict — pass through
@@ -6118,19 +6143,18 @@ def enforce_signal_safety_buffers(trades, symbol_analyses_map):
             # Apply Safety Buffer (0.8x ATR) above structure
             trade['sl'] = max(trade['sl'], structural_sl + (atr * 0.8))
 
-        # Part 2: Smart RR Rebalancing (Maximum Breathing Room)
-        current_risk = abs(entry - trade['sl'])
-        current_reward = abs(tp1 - entry)
-        rr = current_reward / max(0.00000001, current_risk)
-        
-        if rr > 2.5:
-            target_rr = 2.0
-            new_risk = current_reward / target_rr
+        # Part 2: Minimum SL Distance Floor (Prevents Micro-SL Wipeouts)
+        # A wide RR is a FEATURE — it means a genuinely good setup with distant structural SL.
+        # Instead of shrinking it, we enforce a FLOOR so SL never gets too tight.
+        min_atr_mult = 2.5 if tf in ['1m', '3m'] else 1.8 if tf in ['5m'] else 1.5
+        min_sl_distance = atr * min_atr_mult
+        current_sl_distance = abs(entry - trade['sl'])
+        if current_sl_distance < min_sl_distance:
             if trade['type'] == 'LONG':
-                trade['sl'] = entry - new_risk
+                trade['sl'] = entry - min_sl_distance
             else:
-                trade['sl'] = entry + new_risk
-            trade['reason'] += f" | 🛡️ BREATHING ROOM (RR {target_rr}:1)"
+                trade['sl'] = entry + min_sl_distance
+            trade['reason'] += f" | 🛡️ SL WIDENED ({min_atr_mult}x ATR floor)"
 
         # Step 3: Final Meta Sync
         trade['risk'] = abs(trade['entry'] - trade['sl'])

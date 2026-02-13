@@ -431,8 +431,16 @@ class TradeTracker:
             url = "https://contract.mexc.com/api/v1/contract/ticker"
             data = safe_request(url, timeout=5)
             if data and data.get('success'):
-                return {t['symbol'].replace('_', ''): {'last': float(t['lastPrice']), 'fair': float(t.get('fairPrice', t['lastPrice']))} for t in data['data']}
-        except: pass
+                prices = {}
+                for t in data['data']:
+                    raw_sym = t['symbol']  # e.g. BTC_USDT
+                    clean_sym = raw_sym.replace('_', '')  # BTCUSDT
+                    price_entry = {'last': float(t['lastPrice']), 'fair': float(t.get('fairPrice', t['lastPrice']))}
+                    prices[clean_sym] = price_entry
+                    prices[raw_sym] = price_entry  # Store both formats
+                return prices
+        except Exception as e:
+            print(f"  ⚠ Bulk MEXC ticker error: {e}")
         return {}
 
     def _fetch_bulk_binance(self):
@@ -454,7 +462,8 @@ class TradeTracker:
                     last = prices.get(sym, {}).get('last', fair)
                     prices[sym] = {'last': last, 'fair': fair}
             return prices
-        except: pass
+        except Exception as e:
+            print(f"  ⚠ Bulk Binance ticker error: {e}")
         return {}
 
     def _fetch_bulk_bybit(self):
@@ -463,7 +472,8 @@ class TradeTracker:
             data = safe_request(url, timeout=5)
             if data and data.get('result'):
                 return {t['symbol']: {'last': float(t['lastPrice']), 'fair': float(t.get('markPrice', t['lastPrice']))} for t in data['result']['list']}
-        except: pass
+        except Exception as e:
+            print(f"  ⚠ Bulk Bybit ticker error: {e}")
         return {}
 
     def _fetch_bulk_bitget(self):
@@ -472,7 +482,8 @@ class TradeTracker:
             data = safe_request(url, timeout=5)
             if data and data.get('data'):
                 return {t['symbol']: {'last': float(t['lastPr']), 'fair': float(t.get('bidPr', t['lastPr']))} for t in data['data']}
-        except: pass
+        except Exception as e:
+            print(f"  ⚠ Bulk Bitget ticker error: {e}")
         return {}
 
     def _fetch_bulk_okx(self):
@@ -481,7 +492,8 @@ class TradeTracker:
             data = safe_request(url, timeout=5)
             if data and data.get('data'):
                 return {t['instId'].replace('-', '').replace('SWAP', ''): {'last': float(t['last']), 'fair': float(t['last'])} for t in data['data']}
-        except: pass
+        except Exception as e:
+            print(f"  ⚠ Bulk OKX ticker error: {e}")
         return {}
 
     def _fetch_bulk_htx(self):
@@ -490,7 +502,8 @@ class TradeTracker:
             data = safe_request(url, timeout=5)
             if data and data.get('data'):
                 return {t['symbol'].upper(): {'last': float(t['close']), 'fair': float(t['close'])} for t in data['data']}
-        except: pass
+        except Exception as e:
+            print(f"  ⚠ Bulk HTX ticker error: {e}")
         return {}
 
     def _fetch_bulk_kucoin(self):
@@ -499,7 +512,8 @@ class TradeTracker:
             data = safe_request(url, timeout=5)
             if data and data.get('data') and data['data'].get('ticker'):
                 return {t['symbol'].replace('-', '').upper(): {'last': float(t['last']), 'fair': float(t['last'])} for t in data['data']['ticker']}
-        except: pass
+        except Exception as e:
+            print(f"  ⚠ Bulk KuCoin ticker error: {e}")
         return {}
 
     def _fetch_bulk_gateio(self):
@@ -508,7 +522,8 @@ class TradeTracker:
             data = safe_request(url, timeout=5)
             if isinstance(data, list):
                 return {t['contract'].replace('_', '').upper(): {'last': float(t['last']), 'fair': float(t.get('mark_price', t['last']))} for t in data}
-        except: pass
+        except Exception as e:
+            print(f"  ⚠ Bulk Gate.io ticker error: {e}")
         return {}
 
     def get_price(self, exchange, symbol, bulk_cache=None):
@@ -516,10 +531,14 @@ class TradeTracker:
         clean_symbol = symbol.replace('_', '').replace('-', '').upper()
         exch = exchange.upper().replace(' ', '').replace('.', '')
         
-        # 1. Use Global Bulk Cache if provided
-        if bulk_cache and exch in bulk_cache and clean_symbol in bulk_cache[exch]:
-            p = bulk_cache[exch][clean_symbol]
-            return {'close': p['last'], 'fair': p['fair'], 'high': p['last'], 'low': p['last'], 'is_ticker': True}
+        # 1. Use Global Bulk Cache if provided (with fallback key attempts)
+        if bulk_cache and exch in bulk_cache:
+            exch_cache = bulk_cache[exch]
+            # Try multiple key formats to handle exchange-specific symbol formats
+            for key_attempt in [clean_symbol, symbol, symbol.replace('USDT', '_USDT'), symbol.replace('-', '')]:
+                if key_attempt in exch_cache:
+                    p = exch_cache[key_attempt]
+                    return {'close': p['last'], 'fair': p['fair'], 'high': p['last'], 'low': p['last'], 'is_ticker': True}
 
         try:
             ticker_func = TICKER_FETCHERS.get(exch)
@@ -685,7 +704,9 @@ class TradeTracker:
                                 else:
                                     t['sl_hit_count'] = 0
                                     
-                                if hits >= 2: # Reduced from 3 to 2 for better sensitivity
+                                # Adaptive threshold: scalp TFs need 3 ticks to avoid wick noise
+                                sl_threshold = 3 if t.get('timeframe', '1h') in ['1m', '3m', '5m'] else 2
+                                if hits >= sl_threshold:
                                     t['tracking_status'] = 'SL_HIT'
                                     t['is_frozen'] = True 
                                     t['pnl_pct'] = ((sl_price - entry_price) / entry_price) * 100
@@ -726,7 +747,9 @@ class TradeTracker:
                                 else:
                                     t['sl_hit_count'] = 0 
                                 
-                                if hits >= 2: 
+                                # Adaptive threshold: scalp TFs need 3 ticks to avoid wick noise
+                                sl_threshold = 3 if t.get('timeframe', '1h') in ['1m', '3m', '5m'] else 2
+                                if hits >= sl_threshold:
                                     t['tracking_status'] = 'SL_HIT'
                                     t['is_frozen'] = True
                                     t['pnl_pct'] = ((entry_price - sl_price) / entry_price) * 100
