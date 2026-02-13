@@ -34,36 +34,89 @@ socketio = SocketIO(
 )
 
 # --- Exchange Specific Kline Fetchers (Ported from fast_analysis.py) ---
+# --- Global Request Headers ---
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/93.0.4577.82 Safari/537.36',
+    'Accept': 'application/json'
+}
+
+def safe_request(url, method='GET', params=None, json_data=None, timeout=15, retries=3):
+    """Fetch with retries, exponential backoff, cache-busting, and institutional headers."""
+    import time
+    import random
+    
+    # 1. Institutional Cache-Busting (Only if requested or not restricted)
+    is_binance = 'binance' in url.lower()
+    ts = str(int(time.time() * 1000))
+    if params is None: params = {}
+    
+    # Binance is strict about query params; skip _t for it
+    if not is_binance:
+        params['_t'] = ts
+    
+    headers = HEADERS.copy()
+    headers['X-Requested-With'] = 'XMLHttpRequest'
+    
+    last_err = None
+    for attempt in range(retries):
+        try:
+            r = requests.request(method, url, params=params, json=json_data, headers=headers, timeout=timeout)
+            r.raise_for_status()
+            return r.json()
+        except Exception as e:
+            last_err = e
+            time.sleep(2 + attempt * 2) 
+    raise last_err
+
+# --- Exchange Specific Kline Fetchers (Enriched with Fallbacks) ---
 def get_klines_mexc(symbol, interval, limit=200):
     try:
         mapping = {'1m': 'Min1', '3m': 'Min3', '5m': 'Min5', '15m': 'Min15', '30m': 'Min30', '1h': 'Min60', '4h': 'Hour4', '1d': 'Day1'}
-        mexc_interval = mapping.get(interval, 'Min60')
+        mexc_interval_fut = mapping.get(interval, 'Min60')
+        
+        # 1. Try FUTURES Endpoint first
         futures_symbol = symbol.replace('USDT', '_USDT') if 'USDT' in symbol and '_' not in symbol else symbol
-        url = f'https://contract.mexc.com/api/v1/contract/kline/{futures_symbol}?interval={mexc_interval}&limit={limit}'
-        r = requests.get(url, timeout=5)
-        data = r.json()
-        if data.get('success') and 'data' in data:
+        url_fut = f'https://contract.mexc.com/api/v1/contract/kline/{futures_symbol}?interval={mexc_interval_fut}&limit={limit}'
+        data = safe_request(url_fut)
+        if data.get('success') and 'data' in data and len(data['data'].get('time', [])) > 0:
             d = data['data']
-            candles = []
-            for i in range(len(d['time'])):
-                candles.append([int(d['time'][i]) * 1000, float(d['open'][i]), float(d['high'][i]), float(d['low'][i]), float(d['close'][i]), float(d['vol'][i])])
-            return candles
+            return [[int(d['time'][i]) * 1000, float(d['open'][i]), float(d['high'][i]), float(d['low'][i]), float(d['close'][i]), float(d['vol'][i])] for i in range(len(d['time']))]
+        
+        # 2. Try SPOT Fallback if Futures fails
+        clean_symbol = symbol.replace('_', '').upper()
+        url_spot = f'https://api.mexc.com/api/v3/klines?symbol={clean_symbol}&interval={interval}&limit={limit}'
+        data = safe_request(url_spot)
+        if isinstance(data, list) and len(data) > 0:
+            return [[int(k[0]), float(k[1]), float(k[2]), float(k[3]), float(k[4]), float(k[5])] for k in data]
+            
         return None
-    except: return None
+    except Exception as e: 
+        print(f"  ⚠ MEXC Fetch Error ({symbol}): {e}")
+        return None
 
 def get_klines_binance(symbol, interval, limit=200):
     try:
-        url = f'https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}'
-        r = requests.get(url, timeout=5)
-        return r.json()
+        clean_symbol = symbol.replace('_', '').replace('-', '').upper()
+        # 1. Try Futures
+        url_fut = f'https://fapi.binance.com/fapi/v1/klines?symbol={clean_symbol}&interval={interval}&limit={limit}'
+        data = safe_request(url_fut)
+        if isinstance(data, list) and len(data) > 0:
+            return [[int(k[0]), float(k[1]), float(k[2]), float(k[3]), float(k[4]), float(k[5])] for k in data]
+        
+        # 2. Try Spot Fallback
+        url_spot = f'https://api.binance.com/api/v3/klines?symbol={clean_symbol}&interval={interval}&limit={limit}'
+        data = safe_request(url_spot)
+        if isinstance(data, list) and len(data) > 0:
+            return [[int(k[0]), float(k[1]), float(k[2]), float(k[3]), float(k[4]), float(k[5])] for k in data]
+        return None
     except: return None
 
 def get_klines_bybit(symbol, interval, limit=200):
     try:
         mapping = {'1m': '1', '3m': '3', '5m': '5', '15m': '15', '30m': '30', '1h': '60', '4h': '240', '1d': 'D'}
-        url = f'https://api.bybit.com/v5/market/kline?category=linear&symbol={symbol}&interval={mapping.get(interval, "60")}&limit={limit}'
-        r = requests.get(url, timeout=5)
-        data = r.json()
+        clean_symbol = symbol.replace('_', '').replace('-', '').upper()
+        url = f'https://api.bybit.com/v5/market/kline?category=linear&symbol={clean_symbol}&interval={mapping.get(interval, "60")}&limit={limit}'
+        data = safe_request(url)
         if data.get('result') and data['result'].get('list'):
             return [[int(k[0]), float(k[1]), float(k[2]), float(k[3]), float(k[4]), float(k[5])] for k in reversed(data['result']['list'])]
         return None
@@ -72,9 +125,9 @@ def get_klines_bybit(symbol, interval, limit=200):
 def get_klines_bitget(symbol, interval, limit=200):
     try:
         mapping = {'1m': '1m', '3m': '3m', '5m': '5m', '15m': '15m', '30m': '30m', '1h': '1H', '4h': '4H', '1d': '1D'}
-        url = f'https://api.bitget.com/api/v2/mix/market/candles?productType=USDT-FUTURES&symbol={symbol}&granularity={mapping.get(interval, "1H")}&limit={limit}'
-        r = requests.get(url, timeout=5)
-        data = r.json()
+        clean_symbol = symbol.replace('_', '').replace('-', '').upper()
+        url = f'https://api.bitget.com/api/v2/mix/market/candles?productType=USDT-FUTURES&symbol={clean_symbol}&granularity={mapping.get(interval, "1H")}&limit={limit}'
+        data = safe_request(url)
         if data.get('data'):
             candles = [[int(k[0]), float(k[1]), float(k[2]), float(k[3]), float(k[4]), float(k[5])] for k in data['data']]
             if candles and candles[0][0] > candles[-1][0]: candles.reverse()
@@ -83,24 +136,32 @@ def get_klines_bitget(symbol, interval, limit=200):
     except: return None
 
 def get_klines_okx(symbol, interval, limit=200):
+    """Get klines from OKX API with domain fallbacks"""
     try:
         mapping = {'1m': '1m', '3m': '3m', '5m': '5m', '15m': '15m', '30m': '30m', '1h': '1H', '4h': '4H', '1d': '1D'}
-        okx_symbol = symbol.replace('USDT', '-USDT-SWAP') if 'USDT' in symbol and '-' not in symbol else symbol
-        url = f'https://www.okx.com/api/v5/market/candles?instId={okx_symbol}&bar={mapping.get(interval, "1H")}&limit={limit}'
-        r = requests.get(url, timeout=5)
-        data = r.json()
-        if data.get('data'):
-            return [[int(k[0]), float(k[1]), float(k[2]), float(k[3]), float(k[4]), float(k[5])] for k in reversed(data['data'])]
+        okx_symbol = symbol.replace('_', '').replace('-', '')
+        if 'USDT' in okx_symbol and '-' not in okx_symbol:
+            okx_symbol = okx_symbol.replace('USDT', '-USDT-SWAP')
+        
+        domains = ['https://www.okx.com', 'https://www.okx.net', 'https://okx.com']
+        for base in domains:
+            try:
+                url = f'{base}/api/v5/market/candles?instId={okx_symbol}&bar={mapping.get(interval, "1H")}&limit={limit}'
+                data = safe_request(url)
+                if data.get('data'):
+                    return [[int(k[0]), float(k[1]), float(k[2]), float(k[3]), float(k[4]), float(k[5])] for k in reversed(data['data'])]
+            except: continue
         return None
     except: return None
 
 def get_klines_kucoin(symbol, interval, limit=200):
     try:
         mapping = {'1m': '1min', '3m': '3min', '5m': '5min', '15m': '15min', '30m': '30min', '1h': '1hour', '4h': '4hour', '1d': '1day'}
-        kucoin_symbol = symbol.replace('USDT', '-USDT') if 'USDT' in symbol and '-' not in symbol else symbol
+        kucoin_symbol = symbol.replace('_', '').replace('-', '')
+        if 'USDT' in kucoin_symbol and '-' not in kucoin_symbol:
+            kucoin_symbol = kucoin_symbol.replace('USDT', '-USDT')
         url = f'https://api.kucoin.com/api/v1/market/candles?type={mapping.get(interval, "1hour")}&symbol={kucoin_symbol}&limit={limit}'
-        r = requests.get(url, timeout=5)
-        data = r.json()
+        data = safe_request(url)
         if data.get('data'):
             return [[int(k[0]) * 1000, float(k[1]), float(k[3]), float(k[4]), float(k[2]), float(k[5])] for k in reversed(data['data'])]
         return None
@@ -110,8 +171,7 @@ def get_klines_gateio(symbol, interval, limit=200):
     try:
         gate_symbol = symbol.replace('USDT', '_USDT') if 'USDT' in symbol and '_' not in symbol else symbol
         url = f'https://api.gateio.ws/api/v4/futures/usdt/candlesticks?contract={gate_symbol}&interval={interval}&limit={limit}'
-        r = requests.get(url, timeout=5)
-        data = r.json()
+        data = safe_request(url)
         if isinstance(data, list):
             return [[int(k.get('t', 0)) * 1000, float(k.get('o', 0)), float(k.get('h', 0)), float(k.get('l', 0)), float(k.get('c', 0)), float(k.get('v', 0))] for k in data]
         return None
@@ -120,11 +180,160 @@ def get_klines_gateio(symbol, interval, limit=200):
 def get_klines_htx(symbol, interval, limit=200):
     try:
         mapping = {'1m': '1min', '3m': '3min', '5m': '5min', '15m': '15min', '30m': '30min', '1h': '60min', '4h': '4hour', '1d': '1day'}
-        url = f'https://api.huobi.pro/market/history/kline?symbol={symbol.lower()}&period={mapping.get(interval, "60min")}&size={limit}'
-        r = requests.get(url, timeout=5)
-        data = r.json()
+        url = f'https://api.huobi.pro/market/history/kline?symbol={symbol.lower().replace("_","").replace("-","")}&period={mapping.get(interval, "60min")}&size={limit}'
+        data = safe_request(url)
         if data.get('data'):
             return [[int(k.get('id', 0)) * 1000, float(k.get('open', 0)), float(k.get('high', 0)), float(k.get('low', 0)), float(k.get('close', 0)), float(k.get('vol', 0))] for k in reversed(data['data'])]
+        return None
+    except: return None
+
+# --- Real-Time Ticker Fetchers (Highest Accuracy for Tracking) ---
+# --- Optimized MEXC Cache ---
+_mexc_detail_cache = {"data": None, "last_fetch": 0}
+
+def get_ticker_mexc(symbol):
+    global _mexc_detail_cache
+    try:
+        current_time = time.time()
+        if not _mexc_detail_cache["data"] or current_time - _mexc_detail_cache["last_fetch"] > 10:
+            d_data = safe_request('https://contract.mexc.com/api/v1/contract/detail')
+            if d_data.get('success'):
+                _mexc_detail_cache["data"] = {d['symbol']: d for d in d_data['data']}
+                _mexc_detail_cache["last_fetch"] = current_time
+
+        futures_symbol = symbol.replace('USDT', '_USDT') if 'USDT' in symbol and '_' not in symbol else symbol
+        url_ticker = f'https://contract.mexc.com/api/v1/contract/ticker?symbol={futures_symbol}'
+        t_data = safe_request(url_ticker)
+        
+        if t_data.get('success') and 'data' in t_data:
+            last = float(t_data['data']['lastPrice'])
+            fair = last
+            if _mexc_detail_cache["data"] and futures_symbol in _mexc_detail_cache["data"]:
+                fair = float(_mexc_detail_cache["data"][futures_symbol].get('fairPrice', last))
+            return {'last': last, 'fair': fair, 'high': float(t_data['data']['high24h']), 'low': float(t_data['data']['low24h'])}
+        
+        clean_symbol = symbol.replace('_', '').upper()
+        url_spot = f'https://api.mexc.com/api/v3/ticker/price?symbol={clean_symbol}'
+        data = safe_request(url_spot)
+        if 'price' in data:
+            price = float(data['price'])
+            return {'last': price, 'fair': price, 'high': price, 'low': price}
+        return None
+    except: return None
+
+def get_ticker_binance(symbol):
+    try:
+        clean_symbol = symbol.replace('_', '').replace('-', '').upper()
+        # 1. Futures Mark Price
+        url = f'https://fapi.binance.com/fapi/v1/premiumIndex?symbol={clean_symbol}'
+        data = safe_request(url)
+        if 'markPrice' in data:
+            # We also need LAST price to show in UI
+            url_p = f'https://fapi.binance.com/fapi/v1/ticker/price?symbol={clean_symbol}'
+            p_data = safe_request(url_p)
+            last = float(p_data['price']) if 'price' in p_data else float(data['markPrice'])
+            return {'last': last, 'fair': float(data['markPrice'])}
+        
+        url_spot = f'https://api.binance.com/api/v3/ticker/price?symbol={clean_symbol}'
+        data = safe_request(url_spot)
+        if 'price' in data:
+            p = float(data['price'])
+            return {'last': p, 'fair': p}
+        return None
+    except: return None
+
+def get_ticker_bybit(symbol):
+    try:
+        clean_symbol = symbol.replace('_', '').replace('-', '').upper()
+        url = f'https://api.bybit.com/v5/market/tickers?category=linear&symbol={clean_symbol}'
+        data = safe_request(url)
+        if data.get('result') and data['result'].get('list'):
+            t = data['result']['list'][0]
+            return {
+                'last': float(t['lastPrice']),
+                'fair': float(t.get('markPrice', t['lastPrice'])),
+                'high': float(t['highPrice24h']),
+                'low': float(t['lowPrice24h'])
+            }
+        return None
+    except: return None
+
+def get_ticker_okx(symbol):
+    """Get ticker from OKX API with domain fallbacks"""
+    try:
+        okx_symbol = symbol.replace('_', '').replace('-', '')
+        if 'USDT' in okx_symbol and '-' not in okx_symbol:
+            okx_symbol = okx_symbol.replace('USDT', '-USDT-SWAP')
+        
+        domains = ['https://www.okx.com', 'https://www.okx.net', 'https://okx.com']
+        for base in domains:
+            try:
+                url_t = f'{base}/api/v5/market/ticker?instId={okx_symbol}'
+                url_m = f'{base}/api/v5/public/mark-price?instId={okx_symbol}'
+                t_data = safe_request(url_t)
+                m_data = safe_request(url_m)
+                if t_data.get('data'):
+                    t = t_data['data'][0]
+                    fair = float(t['last'])
+                    if m_data.get('data'):
+                        fair = float(m_data['data'][0].get('markPrice', fair))
+                    return {'last': float(t['last']), 'fair': fair, 'high': float(t['high24h']), 'low': float(t['low24h'])}
+            except: continue
+        return None
+    except: return None
+
+def get_ticker_bitget(symbol):
+    try:
+        clean_symbol = symbol.replace('_', '').replace('-', '').upper()
+        url = f'https://api.bitget.com/api/v2/mix/market/ticker?productType=USDT-FUTURES&symbol={clean_symbol}'
+        data = safe_request(url)
+        if data.get('data'):
+            t = data['data'][0]
+            return {
+                'last': float(t['lastPr']),
+                'fair': float(t.get('bidPr', t['lastPr'])), # Bitget ticker lacks mark, usage of bid/ask common
+                'high': float(t['high24h']),
+                'low': float(t['low24h'])
+            }
+        return None
+    except: return None
+
+def get_ticker_kucoin(symbol):
+    try:
+        ku_symbol = symbol.replace('_', '').replace('-', '')
+        if 'USDT' in ku_symbol and '-' not in ku_symbol:
+            ku_symbol = ku_symbol.replace('USDT', '-USDT')
+        url = f'https://api.kucoin.com/api/v1/market/orderbook/level1?symbol={ku_symbol}'
+        data = safe_request(url)
+        if data.get('data'):
+            p = float(data['data']['price'])
+            return {'last': p, 'fair': p}
+        return None
+    except: return None
+
+def get_ticker_gateio(symbol):
+    try:
+        gate_symbol = symbol.replace('USDT', '_USDT') if 'USDT' in symbol and '_' not in symbol else symbol
+        url = f'https://api.gateio.ws/api/v4/futures/usdt/tickers?contract={gate_symbol}'
+        data = safe_request(url)
+        if isinstance(data, list) and len(data) > 0:
+            t = data[0]
+            return {
+                'last': float(t['last']),
+                'fair': float(t.get('mark_price', t['last'])),
+                'high': float(t['high_24h']),
+                'low': float(t['low_24h'])
+            }
+        return None
+    except: return None
+
+def get_ticker_htx(symbol):
+    try:
+        url = f'https://api.huobi.pro/market/detail/merged?symbol={symbol.lower().replace("_","").replace("-","")}'
+        data = safe_request(url)
+        if data.get('tick'):
+            p = float(data['tick']['close'])
+            return {'last': p, 'fair': p, 'high': float(data['tick']['high']), 'low': float(data['tick']['low'])}
         return None
     except: return None
 
@@ -134,21 +343,69 @@ EXCHANGE_FETCHERS = {
     'GATEIO': get_klines_gateio, 'HTX': get_klines_htx
 }
 
+TICKER_FETCHERS = {
+    'MEXC': get_ticker_mexc, 
+    'BINANCE': get_ticker_binance,
+    'BYBIT': get_ticker_bybit,
+    'OKX': get_ticker_okx,
+    'BITGET': get_ticker_bitget,
+    'KUCOIN': get_ticker_kucoin,
+    'GATEIO': get_ticker_gateio,
+    'HTX': get_ticker_htx
+}
+
 class TradeTracker:
     def __init__(self):
         self.active_trades = []
+        self.completed_trades = set() # Store (symbol, strategy, type) to prevent re-tracking
         self.lock = threading.Lock()
         self.exchange_prices = {}
         self.tracking_active = False
 
     def add_trade(self, trade):
-        """Register a new trade for real-time tracking"""
+        """Register a new trade for real-time tracking. Returns status: 'NEW', 'TRACKING', or 'COMPLETED'"""
         with self.lock:
-            # Check if already tracking this exact setup
+            # unique_key for strict tracking (Isolated by Exchange)
+            exch = str(trade.get('exchange', 'BINANCE')).upper()
+            unique_key = (exch, trade['symbol'], trade['strategy'], trade['type'])
+            
+            # 1. Check if already completed in this session
+            if unique_key in self.completed_trades:
+                return 'COMPLETED'
+
+            # 2. Check if already tracking this exact setup
             for t in self.active_trades:
-                if t['symbol'] == trade['symbol'] and t['strategy'] == trade['strategy'] and t['type'] == trade['type']:
-                    print(f"⚠️  {trade['symbol']} already being tracked. Skipping.")
-                    return
+                t_exch = str(t.get('exchange', 'BINANCE')).upper()
+                if (t_exch, t['symbol'], t['strategy'], t['type']) == unique_key:
+                    # NEW SCAN DATA RECEIVED...
+                    old_sl = float(t.get('sl', 0))
+                    new_sl = float(trade.get('sl', old_sl))
+                    
+                    # SELF-HEALING: Only resurrect if it was an SL_HIT and the new scan provides a SAFER (further) SL.
+                    # CRITICAL: We NEVER resurrect a TP_HIT. Once target is hit, it's a win.
+                    if t['tracking_status'] == 'SL_HIT' and abs(new_sl - old_sl) > 1e-9:
+                        is_long = t['type'] == 'LONG'
+                        is_safer = (new_sl < old_sl) if is_long else (new_sl > old_sl)
+                        
+                        if is_safer:
+                            t['tracking_status'] = 'RUNNING'
+                            t['is_frozen'] = False 
+                            t['pnl_pct'] = 0.0 
+                            if unique_key in self.completed_trades:
+                                self.completed_trades.discard(unique_key)
+                            print(f"🔄 RESURRECTION: {trade['symbol']} brought back to life! New Shielded SL is safer: {new_sl}")
+                        else:
+                            # If new SL is actually closer/worse, keep it hit.
+                            pass
+
+                    # SYNC LATEST VALUES
+                    try:
+                        t['sl'] = new_sl
+                        t['tp1'] = float(trade.get('tp1', t['tp1']))
+                        t['tp2'] = float(trade.get('tp2', t['tp2']))
+                        t['entry'] = float(trade.get('entry', t['entry']))
+                    except: pass
+                    return 'TRACKING'
             
             # Auto-set status for MARKET entries
             entry_type = str(trade.get('entry_type', 'LIMIT')).upper()
@@ -164,32 +421,39 @@ class TradeTracker:
             trade['updated_at'] = datetime.now().strftime('%H:%M:%S')
             self.active_trades.append(trade)
             print(f"📈 Total active trades being tracked: {len(self.active_trades)}", flush=True)
+            return 'NEW'
 
     def get_price(self, exchange, symbol):
-        """Fetch live price for a symbol using exchange-specific fetchers with fallback to Binance"""
+        """Fetch real-time ticker price for tracking. Uses Mark/Fair Price for Futures accuracy."""
         try:
-            # Try primary exchange
             exch = exchange.upper().replace(' ', '').replace('.', '')
+            
+            ticker_func = TICKER_FETCHERS.get(exch)
+            if ticker_func:
+                ticker = ticker_func(symbol)
+                if ticker:
+                    return {
+                        'close': ticker['last'],
+                        'fair': ticker.get('fair', ticker['last']), # The "Real" price for SL
+                        'high': ticker.get('high', ticker['last']),
+                        'low': ticker.get('low', ticker['last']),
+                        'is_ticker': True
+                    }
+            # Fallback...
             fetcher = EXCHANGE_FETCHERS.get(exch)
-            
-            price = None
-            if fetcher:
-                klines = fetcher(symbol, '1m', limit=1)
-                if klines and len(klines) > 0:
-                    price = float(klines[-1][4])
-
-            # Fallback to Binance if primary fails or is not supported
-            if not price and exch != 'BINANCE':
-                klines = get_klines_binance(symbol, '1m', limit=1)
-                if klines and len(klines) > 0:
-                    price = float(klines[-1][4])
-            
-            # if price:
-            #     print(f"DEBUG: Price for {symbol} on {exchange}: {price}")
-            return price
-        except Exception as e:
-            print(f"Price fetch error for {symbol} on {exchange}: {e}")
+            if not fetcher: return None
+            klines = fetcher(symbol, '1m', limit=1)
+            if klines and len(klines) > 0:
+                k = klines[-1]
+                return {
+                    'close': float(k[4]),
+                    'fair': float(k[4]), # No mark price in klines
+                    'high': float(k[2]),
+                    'low': float(k[3]),
+                    'is_ticker': False
+                }
             return None
+        except: return None
 
     def update_loop(self):
         """Background loop to update all active signals"""
@@ -217,7 +481,9 @@ class TradeTracker:
                 targets_map = {}
                 for t in current_trades:
                     if t['tracking_status'] in ['WAITING', 'RUNNING']:
-                        key = (t.get('exchange', 'Binance'), t['symbol'])
+                        # STRICT: Use the trade's own exchange, default to BINANCE only if genuinely missing
+                        exch = str(t.get('exchange', 'BINANCE')).upper()
+                        key = (exch, t['symbol'])
                         targets_map[key] = None
 
                 # 2. Fetch prices (Slow, NO lock held)
@@ -227,11 +493,43 @@ class TradeTracker:
                 # 3. Apply updates (Brief lock)
                 with self.lock:
                     for t in self.active_trades:
-                        if t['tracking_status'] in ['TP_HIT', 'SL_HIT']:
-                            continue
+                        # STRICT EXCHANGE MATCH
+                        exch = str(t.get('exchange', 'BINANCE')).upper()
+                        price_data = targets_map.get((exch, t['symbol']))
+                        if not price_data or not isinstance(price_data, dict): continue
 
-                        price = targets_map.get((t.get('exchange', 'Binance'), t['symbol']))
-                        if not price: continue
+                        price = price_data['close']
+                        fair_price = price_data.get('fair', price) # Mark/Fair price for stop verification
+                        
+                        # --- Arbiter 2.0: Instant Recovery for False Hits ---
+                        # STRICT: Only recover if price is SIGNIFICANTLY far from SL now (0.5% buffer)
+                        if t['tracking_status'] == 'SL_HIT' and not t.get('resurrected'):
+                            sl_p = float(t['sl'])
+                            is_long = t['type'] == 'LONG'
+                            recovery_margin = 0.005 # 0.5% safety zone
+                            
+                            recovered = False
+                            if is_long and fair_price > sl_p * (1 + recovery_margin):
+                                recovered = True
+                            elif not is_long and fair_price < sl_p * (1 - recovery_margin):
+                                recovered = True
+                                
+                            if recovered:
+                                t['tracking_status'] = 'RUNNING'
+                                t['is_frozen'] = False
+                                t['sl_hit_count'] = 0
+                                t['resurrected'] = True # Only allow auto-recovery once per trade
+                                print(f"🪄 [RECOVERY] {t['symbol']} recovered from False SL! Current Price: {fair_price}")
+
+                        if t.get('is_frozen'): 
+                            t_exch = str(t.get('exchange', 'BINANCE')).upper()
+                            unique_key = (t_exch, t['symbol'], t['strategy'], t['type'])
+                            self.completed_trades.add(unique_key)
+                            continue
+                        
+                        t['current_price'] = price
+                        high = price_data['high']
+                        low = price_data['low']
 
                         # Ensure numeric
                         try:
@@ -246,34 +544,83 @@ class TradeTracker:
                         # Calculate PnL
                         if t['type'] == 'LONG':
                             t['pnl_pct'] = ((price - entry_price) / entry_price) * 100
+                            
                             if t['tracking_status'] == 'WAITING':
-                                if price >= entry_price * 0.999: # 0.1% buffer below entry
+                                if price >= entry_price * 0.9995: # Very tight 0.05% buffer
                                     t['tracking_status'] = 'RUNNING'
                                     print(f"✅ [RUNNING] {t['symbol']} LONG at {price}", flush=True)
                             
-                            if price >= tp_price:
-                                t['tracking_status'] = 'TP_HIT'
-                                t['pnl_pct'] = ((tp_price - entry_price) / entry_price) * 100
-                                print(f"💰 [TP HIT] {t['symbol']} LONG at {price}", flush=True)
-                            elif price <= sl_price:
-                                t['tracking_status'] = 'SL_HIT'
-                                t['pnl_pct'] = ((sl_price - entry_price) / entry_price) * 100
-                                print(f"🛑 [SL HIT] {t['symbol']} LONG at {price}", flush=True)
+                            if t['tracking_status'] == 'RUNNING':
+                                # SHIELDED SL CHECK: Use a small 'Noise Buffer' (0.2x ATR)
+                                noise_buffer = (t.get('atr', 0) * 0.2)
+                                shielded_sl = sl_price - noise_buffer
+                                
+                                # DOUBLE-LOCK: Check BOTH Last Price and Mark Price
+                                # If either breaches SL for 2 consecutive ticks, it's a hit.
+                                trigger_price = min(price, fair_price) if price_data.get('is_ticker') else low
+                                
+                                hits = t.get('sl_hit_count', 0)
+                                if trigger_price <= shielded_sl:
+                                    hits += 1
+                                    t['sl_hit_count'] = hits
+                                else:
+                                    t['sl_hit_count'] = 0
+                                    
+                                if hits >= 2: # Reduced from 3 to 2 for better sensitivity
+                                    t['tracking_status'] = 'SL_HIT'
+                                    t['is_frozen'] = True 
+                                    t['pnl_pct'] = ((sl_price - entry_price) / entry_price) * 100
+                                    t['reason'] = f"{t.get('reason', '')} | [🛑 DOUBLE-LOCK SL HIT AT {trigger_price}]"
+                                    self.completed_trades.add((t['symbol'], t['strategy'], t['type']))
+                                    print(f"🛑 [SL HIT] {t['symbol']} LONG at {trigger_price} (Shielded SL: {shielded_sl:.6f})", flush=True)
+                                
+                                # TP Check (Use HIGH for Longs)
+                                elif high >= tp_price:
+                                    t['tracking_status'] = 'TP_HIT'
+                                    t['is_frozen'] = True
+                                    t['pnl_pct'] = ((tp_price - entry_price) / entry_price) * 100
+                                    t['reason'] = f"{t.get('reason', '')} | [💰 TP HIT AT {high}]"
+                                    self.completed_trades.add((t['symbol'], t['strategy'], t['type']))
+                                    print(f"💰 [TP HIT] {t['symbol']} LONG at {high}", flush=True)
+                        
                         else:  # SHORT
                             t['pnl_pct'] = ((entry_price - price) / entry_price) * 100
+                            
                             if t['tracking_status'] == 'WAITING':
-                                if price <= entry_price * 1.001: # 0.1% buffer above entry
+                                if price <= entry_price * 1.0005: # Very tight 0.05% buffer
                                     t['tracking_status'] = 'RUNNING'
                                     print(f"✅ [RUNNING] {t['symbol']} SHORT at {price}", flush=True)
 
-                            if price <= tp_price:
-                                t['tracking_status'] = 'TP_HIT'
-                                t['pnl_pct'] = ((entry_price - tp_price) / entry_price) * 100
-                                print(f"💰 [TP HIT] {t['symbol']} SHORT at {price}", flush=True)
-                            elif price >= sl_price:
-                                t['tracking_status'] = 'SL_HIT'
-                                t['pnl_pct'] = ((entry_price - sl_price) / entry_price) * 100
-                                print(f"🛑 [SL HIT] {t['symbol']} SHORT at {price}", flush=True)
+                            if t['tracking_status'] == 'RUNNING':
+                                noise_buffer = (t.get('atr', 0) * 0.2)
+                                shielded_sl = sl_price + noise_buffer
+                                
+                                # DOUBLE-LOCK: Use max() for shorts
+                                trigger_price = max(price, fair_price) if price_data.get('is_ticker') else high
+                                
+                                hits = t.get('sl_hit_count', 0)
+                                if trigger_price >= shielded_sl:
+                                    hits += 1
+                                    t['sl_hit_count'] = hits
+                                else:
+                                    t['sl_hit_count'] = 0 
+                                
+                                if hits >= 2: 
+                                    t['tracking_status'] = 'SL_HIT'
+                                    t['is_frozen'] = True
+                                    t['pnl_pct'] = ((entry_price - sl_price) / entry_price) * 100
+                                    t['reason'] = f"{t.get('reason', '')} | [🛑 DOUBLE-LOCK SL HIT AT {trigger_price}]"
+                                    self.completed_trades.add((t['symbol'], t['strategy'], t['type']))
+                                    print(f"🛑 [SL HIT] {t['symbol']} SHORT at {trigger_price} (Shielded SL: {shielded_sl:.6f})", flush=True)
+                                
+                                # TP Check (Use LOW for Shorts)
+                                elif low <= tp_price:
+                                    t['tracking_status'] = 'TP_HIT'
+                                    t['is_frozen'] = True
+                                    t['pnl_pct'] = ((entry_price - tp_price) / entry_price) * 100
+                                    t['reason'] = f"{t.get('reason', '')} | [💰 TP HIT AT {low}]"
+                                    self.completed_trades.add((t['symbol'], t['strategy'], t['type']))
+                                    print(f"💰 [TP HIT] {t['symbol']} SHORT at {low}", flush=True)
 
                     # Broadcast
                     socketio.emit('tracking_update', self.active_trades, namespace='/')
@@ -313,10 +660,10 @@ client_sessions = {}
 # Global config (still used for defaults and auto-run)
 config = {
     'symbols': ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT'],
-    'indicators': ['RSI', 'EMA', 'MACD', 'BB', 'ATR', 'ADX', 'OB', 'PA', 'StochRSI', 'OBV', 'ST', 'VWAP', 'HMA', 'CMF', 'ICHI', 'FVG', 'DIV', 'WT', 'SQZ', 'LIQ', 'BOS', 'MFI', 'FISH', 'ZLSMA', 'TSI', 'CHOP', 'VI', 'STC', 'DON', 'CHoCH', 'KC', 'UTBOT', 'UO', 'STDEV', 'VP', 'SUPDEM', 'FIB', 'ICT_WD', 'PSAR', 'TEMA', 'CHANDELIER', 'KAMA', 'VFI'],
+    'indicators': ['RSI', 'EMA', 'MACD', 'BB', 'ATR', 'ADX', 'OB', 'PA', 'StochRSI', 'OBV', 'ST', 'VWAP', 'HMA', 'CMF', 'ICHI', 'FVG', 'DIV', 'WT', 'SQZ', 'LIQ', 'BOS', 'MFI', 'FISH', 'ZLSMA', 'TSI', 'CHOP', 'VI', 'STC', 'DON', 'CHoCH', 'KC', 'UTBOT', 'UO', 'STDEV', 'VP', 'SUPDEM', 'FIB', 'ICT_WD', 'PSAR', 'TEMA', 'CHANDELIER', 'KAMA', 'VFI', 'REGIME', 'DELTA', 'ZSCORE', 'WYCKOFF', 'RVOL'],
     'min_confidence': 5,
     'timeframes': ['1m', '3m', '5m', '15m', '30m', '1h', '4h', '1d'],
-    'exchanges': ['MEXC', 'Binance'],
+    'exchanges': ['MEXC', 'BINANCE', 'BYBIT', 'OKX', 'BITGET', 'KUCOIN', 'GATEIO', 'HTX'],
     'auto_run': False,
     'auto_run_interval': 300,
     'risk_profile': 'moderate',
@@ -389,7 +736,7 @@ def run_session_analysis(sid, symbols, indicators, timeframes, min_conf, exchang
             '--indicators', ','.join(indicators),
             '--timeframes', ','.join(timeframes),
             '--min-confidence', str(min_conf),
-            '--exchanges', ','.join(exchanges)
+            '--exchanges', ','.join([e.upper() for e in exchanges])
         ]
         
         # Send start message to specific room (sid)
@@ -431,14 +778,17 @@ def run_session_analysis(sid, symbols, indicators, timeframes, min_conf, exchang
                             signal_data['warning'] = f"{signal_data.get('warning', '')} {status['news_warning']}"
 
                         # Register with GLOBAL tracker (all users see active trades)
-                        trade_tracker.add_trade(signal_data)
+                        track_status = trade_tracker.add_trade(signal_data)
                         
-                        # Emit signal ONLY to this session's UI
-                        socketio.emit('trade_signal', signal_data, room=sid, namespace='/')
+                        # Only emit signal if it's NEW or we want to allow updates (but NOT for completed)
+                        if track_status != 'COMPLETED':
+                            # Emit signal ONLY to this session's UI
+                            socketio.emit('trade_signal', signal_data, room=sid, namespace='/')
                         
-                        # Forward to Telegram (Global config)
-                        thread = threading.Thread(target=send_telegram_alert, args=(signal_data,), daemon=True)
-                        thread.start()
+                        # Forward to Telegram (Global config) - Only for NEW ones
+                        if track_status == 'NEW':
+                            thread = threading.Thread(target=send_telegram_alert, args=(signal_data,), daemon=True)
+                            thread.start()
                     except Exception as e:
                         print(f"Error processing trade signal: {e}")
                     continue
@@ -476,7 +826,7 @@ def auto_run_analysis():
                 '--indicators', ','.join(config['indicators']),
                 '--timeframes', ','.join(config['timeframes']),
                 '--min-confidence', str(config['min_confidence']),
-                '--exchanges', ','.join(config.get('exchanges', ['MEXC', 'Binance']))
+                '--exchanges', ','.join(config.get('exchanges', ['MEXC', 'BINANCE', 'BYBIT', 'OKX', 'BITGET', 'KUCOIN', 'GATEIO', 'HTX']))
             ]
             
             env = os.environ.copy()
@@ -508,14 +858,16 @@ def auto_run_analysis():
                             signal_data['warning'] = f"{signal_data.get('warning', '')} {status['news_warning']}"
                         
                         # Register with GLOBAL tracker
-                        trade_tracker.add_trade(signal_data)
+                        track_status = trade_tracker.add_trade(signal_data)
                         
-                        # GLOBAL BROADCAST for auto-runs
-                        socketio.emit('trade_signal', signal_data, namespace='/')
+                        if track_status != 'COMPLETED':
+                            # GLOBAL BROADCAST for auto-runs
+                            socketio.emit('trade_signal', signal_data, namespace='/')
                         
-                        # Telegram
-                        thread = threading.Thread(target=send_telegram_alert, args=(signal_data,), daemon=True)
-                        thread.start()
+                        # Telegram if NEW
+                        if track_status == 'NEW':
+                            thread = threading.Thread(target=send_telegram_alert, args=(signal_data,), daemon=True)
+                            thread.start()
                     except:
                         pass
                         
@@ -582,17 +934,17 @@ def get_available_coins():
     default_top = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT']
     all_coins_set = set(default_top)
     
-    selected_exchanges = config.get('exchanges', ['MEXC', 'Binance'])
+    selected_exchanges = [e.upper() for e in config.get('exchanges', [])]
+    if not selected_exchanges:
+        selected_exchanges = ['MEXC', 'BINANCE', 'BYBIT', 'OKX', 'BITGET', 'KUCOIN', 'GATEIO', 'HTX']
     n = 100 # Top 100 per exchange
     
     # Try fetching from each selected exchange
     if 'MEXC' in selected_exchanges:
         try:
-            r = requests.get('https://contract.mexc.com/api/v1/contract/detail', timeout=10)
-            data = r.json()
+            data = safe_request('https://contract.mexc.com/api/v1/contract/detail')
             if data.get('success') and isinstance(data.get('data'), list):
                 contracts = [c for c in data['data'] if c.get('symbol', '').endswith('_USDT')]
-                # Sort by volume and take top 100
                 contracts_sorted = sorted(contracts, key=lambda x: float(x.get('last24hVol', 0)), reverse=True)
                 for item in contracts_sorted[:n]:
                     sym = item.get('symbol', '')
@@ -600,23 +952,19 @@ def get_available_coins():
         except Exception as e:
             print(f"Error fetching MEXC coins: {e}")
     
-    if 'Binance' in selected_exchanges:
+    if 'BINANCE' in selected_exchanges:
         try:
-            r = requests.get('https://api.binance.com/api/v3/ticker/24hr', timeout=10)
-            data = r.json()
-            # Filter for USDT pairs FIRST
+            data = safe_request('https://api.binance.com/api/v3/ticker/24hr')
             usdt_pairs = [item for item in data if item.get('symbol', '').endswith('USDT')]
-            # Sort by quoteVolume (USDT volume)
             binance_sorted = sorted(usdt_pairs, key=lambda x: float(x.get('quoteVolume', 0)), reverse=True)
             for item in binance_sorted[:n]:
                 all_coins_set.add(item['symbol'])
         except Exception as e:
             print(f"Error fetching Binance coins: {e}")
             
-    if 'Bybit' in selected_exchanges:
+    if 'BYBIT' in selected_exchanges:
         try:
-            r = requests.get('https://api.bybit.com/v5/market/tickers?category=linear', timeout=10)
-            data = r.json()
+            data = safe_request('https://api.bybit.com/v5/market/tickers?category=linear')
             if data.get('result') and data['result'].get('list'):
                 usdt_pairs = [item for item in data['result']['list'] if item.get('symbol', '').endswith('USDT')]
                 bybit_sorted = sorted(usdt_pairs, key=lambda x: float(x.get('turnover24h', 0)), reverse=True)
@@ -625,34 +973,39 @@ def get_available_coins():
         except Exception as e:
             print(f"Error fetching Bybit coins: {e}")
     
-    if 'Bitget' in selected_exchanges:
+    if 'BITGET' in selected_exchanges:
         try:
-            r = requests.get('https://api.bitget.com/api/v2/mix/market/tickers?productType=USDT-FUTURES', timeout=10)
-            data = r.json()
+            data = safe_request('https://api.bitget.com/api/v2/mix/market/tickers?productType=USDT-FUTURES')
             if data.get('data'):
                 usdt_pairs = [item for item in data['data'] if item.get('symbol', '').endswith('USDT')]
-                for item in usdt_pairs[:n]:
+                # Sort by USDT volume if available
+                bitget_sorted = sorted(usdt_pairs, key=lambda x: float(x.get('usdtVolume', 0)), reverse=True)
+                for item in bitget_sorted[:n]:
                     all_coins_set.add(item['symbol'])
         except Exception as e:
             print(f"Error fetching Bitget coins: {e}")
     
     if 'OKX' in selected_exchanges:
         try:
-            r = requests.get('https://www.okx.com/api/v5/market/tickers?instType=SWAP', timeout=10)
-            data = r.json()
-            if data.get('data'):
-                usdt_pairs = [item for item in data['data'] if '-USDT-' in item.get('instId', '')]
-                for item in usdt_pairs[:n]:
-                    inst_id = item.get('instId', '')
-                    sym = inst_id.replace('-', '').replace('SWAP', '').strip()
-                    all_coins_set.add(sym)
+            # Fallback domains for OKX
+            domains = ['https://www.okx.com', 'https://www.okx.net']
+            for base in domains:
+                try:
+                    data = safe_request(f'{base}/api/v5/market/tickers?instType=SWAP')
+                    if data.get('data'):
+                        usdt_pairs = [item for item in data['data'] if '-USDT-' in item.get('instId', '')]
+                        for item in usdt_pairs[:n]:
+                            inst_id = item.get('instId', '')
+                            sym = inst_id.replace('-', '').replace('SWAP', '').strip()
+                            all_coins_set.add(sym)
+                        break
+                except: continue
         except Exception as e:
             print(f"Error fetching OKX coins: {e}")
     
-    if 'KuCoin' in selected_exchanges:
+    if 'KUCOIN' in selected_exchanges:
         try:
-            r = requests.get('https://api.kucoin.com/api/v1/market/allTickers', timeout=10)
-            data = r.json()
+            data = safe_request('https://api.kucoin.com/api/v1/market/allTickers')
             if data.get('data') and data['data'].get('ticker'):
                 usdt_pairs = [item for item in data['data']['ticker'] if item.get('symbol', '').endswith('-USDT')]
                 kucoin_sorted = sorted(usdt_pairs, key=lambda x: float(x.get('volValue', 0)), reverse=True)
@@ -662,10 +1015,9 @@ def get_available_coins():
         except Exception as e:
             print(f"Error fetching KuCoin coins: {e}")
     
-    if 'GateIO' in selected_exchanges:
+    if 'GATEIO' in selected_exchanges:
         try:
-            r = requests.get('https://api.gateio.ws/api/v4/futures/usdt/contracts', timeout=10)
-            data = r.json()
+            data = safe_request('https://api.gateio.ws/api/v4/futures/usdt/contracts')
             for item in data[:n]:
                 name = item.get('name', '')
                 if name.endswith('_USDT'):
@@ -675,8 +1027,7 @@ def get_available_coins():
     
     if 'HTX' in selected_exchanges:
         try:
-            r = requests.get('https://api.huobi.pro/v2/settings/common/symbols', timeout=10)
-            data = r.json()
+            data = safe_request('https://api.huobi.pro/v2/settings/common/symbols')
             if data.get('data'):
                 for item in data['data'][:200]:
                     sym = item.get('sc', '')

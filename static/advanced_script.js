@@ -104,19 +104,42 @@ socket.on('tracking_update', (trades) => {
 });
 
 function updateTrackingUI(trades) {
+    // Map to aggregate best status per signalId
+    const aggregated = {};
+
     trades.forEach(trade => {
         const cleanSymbol = trade.symbol.replace(/_/g, '').toUpperCase();
-        const signalId = `signal-${cleanSymbol}-${trade.type}`.replace(/[^a-zA-Z0-9-]/g, '');
+        const exch = trade.exchange ? trade.exchange.toUpperCase().replace(/\./g, '') : 'BINANCE';
+        const signalId = `signal-${exch}-${cleanSymbol}-${trade.type}`.replace(/[^a-zA-Z0-9-]/g, '');
+
+        const status = trade.tracking_status || 'WAITING';
+        const pnl = trade.pnl_pct || 0;
+        const price = trade.current_price || trade.entry;
+
+        if (!aggregated[signalId]) {
+            aggregated[signalId] = { status, pnl, price, exchange: trade.exchange };
+        } else {
+            // Pick 'most advanced' status per card
+            const priority = { 'TP_HIT': 4, 'SL_HIT': 3, 'RUNNING': 2, 'WAITING': 1 };
+            if (priority[status] > priority[aggregated[signalId].status]) {
+                aggregated[signalId].status = status;
+                aggregated[signalId].pnl = pnl;
+                aggregated[signalId].price = price;
+            } else if (status === aggregated[signalId].status) {
+                aggregated[signalId].price = price;
+                aggregated[signalId].pnl = pnl;
+            }
+        }
+    });
+
+    Object.keys(aggregated).forEach(signalId => {
         const card = document.getElementById(signalId);
         if (!card) return;
 
         const trackingSection = card.querySelector('.tracking-area');
         if (!trackingSection) return;
 
-        const status = trade.tracking_status || 'WAITING';
-        const pnl = trade.pnl_pct || 0;
-        const price = trade.current_price || trade.entry;
-
+        const { status, pnl, price, exchange } = aggregated[signalId];
         const pnlClass = pnl >= 0 ? 'pnl-pos' : 'pnl-neg';
         const pnlSign = pnl >= 0 ? '+' : '';
 
@@ -128,7 +151,7 @@ function updateTrackingUI(trades) {
                 </div>
             </div>
             <div class="live-price-box">
-                LIVE PRICE (${trade.exchange})
+                LIVE PRICE (${exchange})
                 <span class="live-price-val">$${price.toFixed(price < 1 ? 6 : 2)}</span>
             </div>
         `;
@@ -178,12 +201,12 @@ function addTradeSignal(trade) {
     const noMsg = document.getElementById('noSignalsMsg');
     if (noMsg) noMsg.style.display = 'none';
 
-    // Normalize symbol (e.g., remove underscores from MEXC symbols like BTC_USDT)
+    // Normalize symbol and exchange for ID
     const cleanSymbol = trade.symbol.replace(/_/g, '').toUpperCase();
+    const exch = trade.exchange ? trade.exchange.toUpperCase().replace(/\./g, '') : 'BINANCE';
 
-    // Generate a unique ID for the 'Master Signal' (Symbol + Direction)
-    // This ensures that multiple strategies firing on the same coin deduplicate visually in real-time.
-    const signalId = `signal-${cleanSymbol}-${trade.type}`.replace(/[^a-zA-Z0-9-]/g, '');
+    // Unique ID per Exchange + Symbol + Type
+    const signalId = `signal-${exch}-${cleanSymbol}-${trade.type}`.replace(/[^a-zA-Z0-9-]/g, '');
     let card = document.getElementById(signalId);
     let isUpdate = !!card;
 
@@ -191,7 +214,6 @@ function addTradeSignal(trade) {
         card = document.createElement('div');
         card.id = signalId;
         card.dataset.agreeingStrategies = JSON.stringify([trade.strategy]);
-        signalsCount++;
         signalsCount++;
         // Count update is now handled by filterSignalsByQuality()
     } else {
@@ -215,33 +237,46 @@ function addTradeSignal(trade) {
     const agreeingStrategies = JSON.parse(card.dataset.agreeingStrategies);
     const agreementCount = trade.agreement_count || agreeingStrategies.length;
 
-    card.className = `trade-card ${trade.type.toLowerCase()} quality-${(trade.signal_quality || 'STANDARD').toLowerCase()}`;
+    // Quality Upgrade Logic: Elite > Strong > Standard
+    let finalQuality = trade.signal_quality || 'STANDARD';
+    if (isUpdate) {
+        const qualityPriority = { 'ELITE': 3, 'STRONG': 2, 'STANDARD': 1 };
+        const currentClasses = Array.from(card.classList);
+        const currentQualityClass = currentClasses.find(c => c.startsWith('quality-'));
+        if (currentQualityClass) {
+            const currentQ = currentQualityClass.split('-')[1].toUpperCase();
+            if (qualityPriority[currentQ] > qualityPriority[finalQuality]) {
+                finalQuality = currentQ; // Keep the higher quality
+            }
+        }
+    }
 
-    // Check visibility against selected quality filters immediately
+    card.className = `trade-card ${trade.type.toLowerCase()} quality-${finalQuality.toLowerCase()}`;
+
+    // Check visibility against selected quality filters
     const selectedQualities = Array.from(document.querySelectorAll('#qualityList input:checked')).map(cb => cb.value);
-    const thisQuality = trade.signal_quality || 'STANDARD';
-    if (!selectedQualities.includes(thisQuality)) {
+    if (!selectedQualities.includes(finalQuality)) {
         card.style.display = 'none';
     } else {
-        card.style.display = ''; // Ensure it's visible if selected (important for updates)
+        card.style.display = '';
     }
 
     // Simplified color mapping for UI
     const typeColor = trade.type === 'LONG' ? '#00ff88' : '#ff4444';
     const exchangeName = trade.exchange || 'N/A';
 
-    // Exchange badge color mapping
+    // Exchange badge color mapping (Case-Insensitive)
     const exchangeColors = {
         'MEXC': '#00b897',
-        'Binance': '#f0b90b',
-        'Bitget': '#00f0ff',
-        'Bybit': '#f7931a',
+        'BINANCE': '#f0b90b',
+        'BITGET': '#00f0ff',
+        'BYBIT': '#f7931a',
         'OKX': '#ffffff',
-        'KuCoin': '#23af91',
-        'GateIO': '#2354e6',
+        'KUCOIN': '#23af91',
+        'GATEIO': '#2354e6',
         'HTX': '#2b71d6'
     };
-    const exchangeColor = exchangeColors[exchangeName] || '#888';
+    const exchangeColor = exchangeColors[exchangeName.toUpperCase()] || '#888';
 
     // Store trade data as a data attribute so the copy button can access it
     const tradeDataEncoded = encodeURIComponent(JSON.stringify(trade));
@@ -315,10 +350,12 @@ function addTradeSignal(trade) {
                     ${trade.indicators}
                 </div>${conflictHtml}${warningHtml}
                 <div class="tracking-area">
+                    ${isUpdate ? (card.querySelector('.tracking-area') ? card.querySelector('.tracking-area').innerHTML : '') : `
                     <div style="display: flex; align-items: center; gap: 10px;">
                         <span class="status-badge status-waiting">WAITING TO ENTER</span>
                         <div class="pnl-display">0.00%</div>
                     </div>
+                    `}
                 </div>
                 <button class="view-analysis-btn" data-trade="${tradeDataEncoded}" onclick="openAnalysisChart(this)">
                     🔍 View Analysis Chart
@@ -1148,6 +1185,55 @@ function plotAnalysisData(chart, series, data, candles, trade) {
         addModalKey('Mitigation Block', '#00d4ff');
     }
 
+    // 2b. Order Blocks (OB)
+    if (data.order_blocks) {
+        if (data.order_blocks.bullish_ob) {
+            series.createPriceLine({
+                price: data.order_blocks.bullish_ob.high,
+                color: 'rgba(0, 255, 136, 0.4)',
+                lineWidth: 1,
+                lineStyle: 2,
+                title: 'BULL OB',
+            });
+            addModalKey('Bullish Order Block', 'rgba(0, 255, 136, 0.6)');
+        }
+        if (data.order_blocks.bearish_ob) {
+            series.createPriceLine({
+                price: data.order_blocks.bearish_ob.low,
+                color: 'rgba(255, 68, 68, 0.4)',
+                lineWidth: 1,
+                lineStyle: 2,
+                title: 'BEAR OB',
+            });
+            addModalKey('Bearish Order Block', 'rgba(255, 68, 68, 0.6)');
+        }
+    }
+
+    // 2c. Supply / Demand Zones
+    if (data.sup_dem) {
+        series.createPriceLine({
+            price: data.sup_dem.level,
+            color: data.sup_dem.type === 'SUPPLY' ? '#ffaa00' : '#00d4ff',
+            lineWidth: 1,
+            lineStyle: 3,
+            title: data.sup_dem.type,
+        });
+        addModalKey(`${data.sup_dem.type} Zone`, data.sup_dem.type === 'SUPPLY' ? '#ffaa00' : '#00d4ff');
+    }
+
+    // 2d. Break of Structure (BOS)
+    if (data.bos) {
+        series.createPriceLine({
+            price: data.bos.level,
+            color: '#ffffff',
+            lineWidth: 1,
+            lineStyle: 1,
+            title: data.bos.type,
+        });
+        addModalKey(data.bos.type, '#ffffff');
+    }
+
+
     // 3. UT Bot Stop Level
     if (data.ut_stop) {
         series.createPriceLine({
@@ -1210,14 +1296,36 @@ function plotAnalysisData(chart, series, data, candles, trade) {
         addIndicatorLine(data.ema200_series, 'rgba(255,255,255,0.3)', 'EMA 200');
     }
 
-    // 10. Momentum Labels
-    if (data.rsi !== undefined || data.uo !== undefined || data.vfi !== undefined) {
+    // 10. Momentum & Advanced Metrics Labels (Tactical Info)
+    if (data.rsi !== undefined || data.uo !== undefined || data.vfi !== undefined ||
+        data.market_regime || data.wyckoff_phase || data.wyckoff ||
+        data.zscore || data.mtf_bias || data.rvol || data.harmonic_pattern) {
+
         let label = "";
+
+        // Elite 2026 Indicators
+        if (data.mtf_bias) label += `BIAS:${data.mtf_bias} `;
+        if (data.market_regime) label += `REGIME:${data.market_regime.regime || data.market_regime} `;
+
+        const w_phase = data.wyckoff_phase?.phase || data.wyckoff || data.wyckoff_phase;
+        if (w_phase && w_phase !== 'NEUTRAL' && w_phase !== 'UNKNOWN') {
+            label += `WYCKOFF:${w_phase} `;
+        }
+
+        if (data.harmonic_pattern) label += `HARMONIC:${data.harmonic_pattern} `;
+        if (data.rvol !== undefined) label += `RVOL:${typeof data.rvol === 'object' ? data.rvol.ratio : data.rvol}x `;
+
+        // Standard technicals
+        if (data.cumulative_delta !== undefined) label += `Δ:${data.cumulative_delta.toFixed(0)} `;
+        if (data.zscore !== undefined) label += `Z:${data.zscore.toFixed(2)} `;
         if (data.rsi !== undefined) label += `RSI:${data.rsi.toFixed(0)} `;
-        if (data.uo !== undefined) label += `UO:${data.uo.toFixed(0)} `;
         if (data.vfi !== undefined) label += `VFI:${data.vfi.toFixed(2)}`;
-        addModalKey(label.trim(), '#888');
+
+        if (label.trim()) {
+            addModalKey(label.trim(), '#ddd');
+        }
     }
+
 
     // 11. Mark the Signal Candle & Confluences (Markers)
     if (candles && candles.length > 0) {

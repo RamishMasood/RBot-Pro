@@ -4,6 +4,24 @@ from datetime import datetime, timedelta
 import threading
 import time
 import re
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/93.0.4577.82 Safari/537.36',
+    'Accept': 'application/xml,application/json' # RSS is XML, but we handle both
+}
+
+def safe_request(url, method='GET', params=None, json_data=None, timeout=12, retries=2):
+    """Fetch with retries and institutional headers."""
+    import time
+    last_err = None
+    for attempt in range(retries):
+        try:
+            r = requests.request(method, url, params=params, json=json_data, headers=HEADERS, timeout=timeout)
+            r.raise_for_status()
+            return r
+        except Exception as e:
+            last_err = e
+            time.sleep(1 + attempt)
+    raise last_err
 
 class NewsManager:
     def __init__(self):
@@ -34,7 +52,7 @@ class NewsManager:
         try:
             # CoinTelegraph RSS Feed (Reliable & Free)
             url = "https://cointelegraph.com/rss"
-            response = requests.get(url, timeout=10)
+            response = safe_request(url)
             
             if response.status_code == 200:
                 root = ET.fromstring(response.content)
@@ -112,7 +130,7 @@ class NewsManager:
         try:
             # Binance API for Price (Fast & Free)
             url = "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT"
-            response = requests.get(url, timeout=5)
+            response = safe_request(url, timeout=6)
             
             if response.status_code == 200:
                 data = response.json()

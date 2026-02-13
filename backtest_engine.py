@@ -10,6 +10,22 @@ import requests
 from datetime import datetime, timedelta
 from fast_analysis import analyze_timeframe, run_strategies, MIN_CONFIDENCE
 
+# --- GLOBAL REQUEST CONFIGURATION ---
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/93.0.4577.82 Safari/537.36'
+}
+
+def safe_request(url, retries=2):
+    import time
+    for i in range(retries):
+        try:
+            r = requests.get(url, headers=HEADERS, timeout=12)
+            r.raise_for_status()
+            return r
+        except:
+            time.sleep(1 + i)
+    return None
+
 # --- CONFIGURATION ---
 DEFAULT_BACKTEST_LIMIT = 500  # Number of candles to backtest
 DEFAULT_TIMEFRAMES = ['1h', '4h', '15m']
@@ -30,8 +46,8 @@ class Backtester:
         """Fetch historical klines from Binance API"""
         url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={timeframe}&limit={limit}"
         try:
-            r = requests.get(url, timeout=10)
-            if r.status_code == 200:
+            r = safe_request(url)
+            if r and r.status_code == 200:
                 data = r.json()
                 # Process into internal format: [time, open, high, low, close, volume]
                 return [[float(x) for x in k[:6]] for k in data]
