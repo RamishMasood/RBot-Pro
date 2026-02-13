@@ -684,27 +684,28 @@ class TradeTracker:
                             t['pnl_pct'] = ((price - entry_price) / entry_price) * 100
                             
                             if t['tracking_status'] == 'WAITING':
-                                if price >= entry_price * 0.9995: # Very tight 0.05% buffer
-                                    t['tracking_status'] = 'RUNNING'
-                                    print(f"✅ [RUNNING] {t['symbol']} LONG at {price}", flush=True)
+                                entry_type = str(t.get('entry_type', 'LIMIT')).upper()
+                                # For LIMIT/STOP-MARKET/STOP/STOP_LIMIT: LONG triggers if price >= entry, SHORT triggers if price <= entry
+                                if entry_type in ['LIMIT', 'STOP-MARKET', 'STOP_LIMIT', 'STOP']:
+                                    if t['type'] == 'LONG' and price >= entry_price * 0.9995:
+                                        t['tracking_status'] = 'RUNNING'
+                                        print(f"✅ [RUNNING] {t['symbol']} LONG at {price}", flush=True)
+                                    elif t['type'] == 'SHORT' and price <= entry_price * 1.0005:
+                                        t['tracking_status'] = 'RUNNING'
+                                        print(f"✅ [RUNNING] {t['symbol']} SHORT at {price}", flush=True)
+                                # MARKET already handled at registration
                             
                             if t['tracking_status'] == 'RUNNING':
-                                # SHIELDED SL CHECK: Use a small 'Noise Buffer' (0.2x ATR)
+                                # Only check SL/TP after entry is triggered (RUNNING)
                                 noise_buffer = (t.get('atr', 0) * 0.2)
                                 shielded_sl = sl_price - noise_buffer
-                                
-                                # DOUBLE-LOCK: Check BOTH Last Price and Mark Price
-                                # If either breaches SL for 2 consecutive ticks, it's a hit.
                                 trigger_price = min(price, fair_price) if price_data.get('is_ticker') else low
-                                
                                 hits = t.get('sl_hit_count', 0)
                                 if trigger_price <= shielded_sl:
                                     hits += 1
                                     t['sl_hit_count'] = hits
                                 else:
                                     t['sl_hit_count'] = 0
-                                    
-                                # Adaptive threshold: scalp TFs need 3 ticks to avoid wick noise
                                 sl_threshold = 3 if t.get('timeframe', '1h') in ['1m', '3m', '5m'] else 2
                                 if hits >= sl_threshold:
                                     t['tracking_status'] = 'SL_HIT'
@@ -714,8 +715,6 @@ class TradeTracker:
                                     exch = str(t.get('exchange', 'BINANCE')).upper()
                                     self.completed_trades.add((exch, t['symbol'], t['strategy'], t['type']))
                                     print(f"🛑 [SL HIT] {t['symbol']} LONG at {trigger_price} (Shielded SL: {shielded_sl:.6f})", flush=True)
-                                
-                                # TP Check (Use HIGH for Longs)
                                 elif high >= tp_price:
                                     t['tracking_status'] = 'TP_HIT'
                                     t['is_frozen'] = True
@@ -729,9 +728,15 @@ class TradeTracker:
                             t['pnl_pct'] = ((entry_price - price) / entry_price) * 100
                             
                             if t['tracking_status'] == 'WAITING':
-                                if price <= entry_price * 1.0005: # Very tight 0.05% buffer
-                                    t['tracking_status'] = 'RUNNING'
-                                    print(f"✅ [RUNNING] {t['symbol']} SHORT at {price}", flush=True)
+                                entry_type = str(t.get('entry_type', 'LIMIT')).upper()
+                                if entry_type in ['LIMIT', 'STOP-MARKET', 'STOP_LIMIT', 'STOP']:
+                                    if t['type'] == 'SHORT' and price <= entry_price * 1.0005:
+                                        t['tracking_status'] = 'RUNNING'
+                                        print(f"✅ [RUNNING] {t['symbol']} SHORT at {price}", flush=True)
+                                    elif t['type'] == 'LONG' and price >= entry_price * 0.9995:
+                                        t['tracking_status'] = 'RUNNING'
+                                        print(f"✅ [RUNNING] {t['symbol']} LONG at {price}", flush=True)
+                                # MARKET already handled at registration
 
                             if t['tracking_status'] == 'RUNNING':
                                 noise_buffer = (t.get('atr', 0) * 0.2)
