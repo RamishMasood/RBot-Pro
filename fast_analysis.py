@@ -5997,21 +5997,22 @@ def get_signal_quality(trade):
     mtf_status = trade.get('mtf_alignment', 'NEUTRAL')
     
     # ELITE Criteria (High Conviction Mastery):
-    # Rule 1: Extreme confidence (10/10) with ANY alignment and decent RR
-    # Rule 2: Strong confidence (9/10) with agreement OR perfect mtf alignment
+    # Much stricter now so that ELITE tier targets ~70–80% win-rate in practice:
+    # - Very high confidence (>= 9)
+    # - Strong MTF alignment
+    # - Solid confluence (agreement from multiple strategies)
+    # - High R:R (>= 2.5 : 1) except for the dedicated Quantum Elite strategy.
     is_elite = False
-    if score >= 10 and 'STRONG' in mtf_status and rr >= 2.0:
+    if score >= 9 and 'STRONG' in mtf_status and agreement >= 2 and rr >= 2.5:
         is_elite = True
-    elif score >= 9 and agreement >= 2 and rr >= 2.0:
-        is_elite = True
-    elif score >= 9 and 'STRONG' in mtf_status and rr >= 2.5:
-        is_elite = True
-    elif trade.get('strategy', '') == 'Quantum Elite 2026' and score >= 9:
+    elif trade.get('strategy', '') == 'Quantum Elite 2026' and score >= 9 and rr >= 2.0:
+        # Quantum Elite is allowed slightly more flexible RR if confidence is extreme
         is_elite = True
         
     if is_elite:
         return 'ELITE'
-    elif score >= 7 and rr >= 1.8:
+    # STRONG: solid but not ELITE (tightened slightly to raise overall quality)
+    elif score >= 8 and rr >= 2.0:
         return 'STRONG'
     else:
         return 'STANDARD'

@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <title>RBot Pro — Backtest UI</title>
@@ -12,29 +13,34 @@
       margin: 0;
       padding: 0;
     }
+
     .container {
       max-width: 1200px;
       margin: 0 auto;
       padding: 20px 16px 40px;
     }
+
     h1 {
       text-align: center;
       color: #00ff88;
       margin-bottom: 8px;
       font-size: 26px;
     }
+
     h2 {
       color: #00d4ff;
       font-size: 18px;
       margin-top: 24px;
       margin-bottom: 8px;
     }
+
     .subtitle {
       text-align: center;
       color: #9be7ff;
       margin-bottom: 20px;
       font-size: 13px;
     }
+
     .panel {
       background: #0c1015;
       border-radius: 8px;
@@ -42,21 +48,25 @@
       margin-bottom: 16px;
       border: 1px solid #1c2833;
     }
+
     .flex-row {
       display: flex;
       flex-wrap: wrap;
       gap: 16px;
     }
+
     .flex-col {
       flex: 1;
       min-width: 220px;
     }
+
     label {
       display: block;
       font-size: 13px;
       margin-bottom: 4px;
       color: #9be7ff;
     }
+
     select,
     input[type="number"] {
       width: 100%;
@@ -68,17 +78,21 @@
       font-size: 13px;
       box-sizing: border-box;
     }
+
     select[multiple] {
       min-height: 80px;
     }
+
     .field-inline {
       display: flex;
       gap: 8px;
       align-items: center;
     }
+
     .field-inline input[type="number"] {
       max-width: 120px;
     }
+
     .btn-primary {
       background: #00ff88;
       color: #000;
@@ -90,10 +104,12 @@
       cursor: pointer;
       margin-top: 8px;
     }
+
     .btn-primary:disabled {
       opacity: 0.6;
       cursor: default;
     }
+
     .badge {
       display: inline-block;
       padding: 2px 6px;
@@ -102,15 +118,29 @@
       font-weight: 600;
       margin-right: 6px;
     }
-    .badge-win { background: #00c853; color: #000; }
-    .badge-loss { background: #ff5252; color: #000; }
-    .badge-pending { background: #ffca28; color: #000; }
+
+    .badge-win {
+      background: #00c853;
+      color: #000;
+    }
+
+    .badge-loss {
+      background: #ff5252;
+      color: #000;
+    }
+
+    .badge-pending {
+      background: #ffca28;
+      color: #000;
+    }
+
     .summary-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
       gap: 8px;
       margin-top: 6px;
     }
+
     .summary-item {
       background: #050608;
       border-radius: 6px;
@@ -118,26 +148,32 @@
       border: 1px solid #16213e;
       font-size: 12px;
     }
+
     .summary-label {
       color: #9be7ff;
       margin-bottom: 2px;
     }
+
     .summary-value {
       font-weight: 600;
       font-size: 13px;
     }
+
     table {
       width: 100%;
       border-collapse: collapse;
       font-size: 12px;
       margin-top: 8px;
     }
-    th, td {
+
+    th,
+    td {
       border-bottom: 1px solid #161b22;
       padding: 4px 6px;
       text-align: left;
       white-space: nowrap;
     }
+
     th {
       background: #0b1118;
       color: #9be7ff;
@@ -145,6 +181,7 @@
       top: 0;
       z-index: 1;
     }
+
     .table-wrapper {
       max-height: 360px;
       overflow: auto;
@@ -152,24 +189,131 @@
       border: 1px solid #1c2833;
       margin-top: 6px;
     }
-    .text-green { color: #00e676; }
-    .text-red { color: #ff5252; }
-    .text-muted { color: #7f8c8d; }
+
+    .text-green {
+      color: #00e676;
+    }
+
+    .text-red {
+      color: #ff5252;
+    }
+
+    .text-muted {
+      color: #7f8c8d;
+    }
+
     .small {
       font-size: 11px;
       color: #7f8c8d;
     }
+
     .error {
       color: #ff5252;
       font-size: 13px;
       margin-top: 4px;
     }
-    @media (max-width: 600px) {
-      .panel { padding: 10px 10px; }
-      h1 { font-size: 20px; }
+
+    .best-performers-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+      margin-top: 10px;
+    }
+
+    .performer-card {
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 16px;
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.2s;
+    }
+
+    .performer-card:hover {
+      transform: translateY(-4px);
+      border-color: #00ff88;
+    }
+
+    .performer-card::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 60px;
+      height: 60px;
+      background: radial-gradient(circle at top right, rgba(0, 255, 136, 0.1), transparent);
+      z-index: 0;
+    }
+
+    .performer-header {
+      font-size: 15px;
+      font-weight: 700;
+      color: #00ff88;
+      margin-bottom: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .performer-tf {
+      font-size: 12px;
+      color: #94a3b8;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .performer-tf b {
+      color: #00d4ff;
+    }
+
+    .performer-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .performer-stat-box {
+      background: rgba(15, 23, 42, 0.5);
+      border-radius: 8px;
+      padding: 8px;
+      border: 1px solid #1e293b;
+    }
+
+    .stat-label {
+      font-size: 10px;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .stat-value {
+      font-size: 16px;
+      font-weight: 600;
+      color: #f8fafc;
+    }
+
+    .win-rate-ring {
+      position: absolute;
+      bottom: 16px;
+      right: 16px;
+      width: 44px;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      background: rgba(0, 255, 136, 0.1);
+      border: 2px solid #00ff88;
+      color: #00ff88;
+      font-size: 11px;
+      font-weight: 700;
     }
   </style>
 </head>
+
 <body>
   <div class="container">
     <h1>RBot Pro — Backtest Studio</h1>
@@ -186,8 +330,11 @@
           <div class="field-inline" style="justify-content:space-between;align-items:center;">
             <select id="exchanges" multiple></select>
             <div class="small">
-              <button type="button" class="btn-primary" style="padding:3px 8px;font-size:11px;" onclick="toggleSelectAll('exchanges', true)">All</button>
-              <button type="button" class="btn-primary" style="padding:3px 8px;font-size:11px;background:#263238;color:#fff;" onclick="toggleSelectAll('exchanges', false)">None</button>
+              <button type="button" class="btn-primary" style="padding:3px 8px;font-size:11px;"
+                onclick="toggleSelectAll('exchanges', true)">All</button>
+              <button type="button" class="btn-primary"
+                style="padding:3px 8px;font-size:11px;background:#263238;color:#fff;"
+                onclick="toggleSelectAll('exchanges', false)">None</button>
             </div>
           </div>
           <div class="small">Hold Ctrl/Cmd to multi-select. Leave empty = all exchanges.</div>
@@ -197,8 +344,11 @@
           <div class="field-inline" style="justify-content:space-between;align-items:center;">
             <select id="strategies" multiple></select>
             <div class="small">
-              <button type="button" class="btn-primary" style="padding:3px 8px;font-size:11px;" onclick="toggleSelectAll('strategies', true)">All</button>
-              <button type="button" class="btn-primary" style="padding:3px 8px;font-size:11px;background:#263238;color:#fff;" onclick="toggleSelectAll('strategies', false)">None</button>
+              <button type="button" class="btn-primary" style="padding:3px 8px;font-size:11px;"
+                onclick="toggleSelectAll('strategies', true)">All</button>
+              <button type="button" class="btn-primary"
+                style="padding:3px 8px;font-size:11px;background:#263238;color:#fff;"
+                onclick="toggleSelectAll('strategies', false)">None</button>
             </div>
           </div>
           <div class="small">Leave empty = all strategies.</div>
@@ -208,8 +358,11 @@
           <div class="field-inline" style="justify-content:space-between;align-items:center;">
             <select id="timeframes" multiple></select>
             <div class="small">
-              <button type="button" class="btn-primary" style="padding:3px 8px;font-size:11px;" onclick="toggleSelectAll('timeframes', true)">All</button>
-              <button type="button" class="btn-primary" style="padding:3px 8px;font-size:11px;background:#263238;color:#fff;" onclick="toggleSelectAll('timeframes', false)">None</button>
+              <button type="button" class="btn-primary" style="padding:3px 8px;font-size:11px;"
+                onclick="toggleSelectAll('timeframes', true)">All</button>
+              <button type="button" class="btn-primary"
+                style="padding:3px 8px;font-size:11px;background:#263238;color:#fff;"
+                onclick="toggleSelectAll('timeframes', false)">None</button>
             </div>
           </div>
           <div class="small">Leave empty = all timeframes.</div>
@@ -245,6 +398,11 @@
           <button id="run-btn" class="btn-primary">Run Backtest</button>
         </div>
       </div>
+    </div>
+
+    <div class="panel" id="best-performers-panel" style="display:none; background: #080c14; border-color: #1e293b;">
+      <h2 style="color: #00ff88;">🏆 Best Performers</h2>
+      <div id="best-performers-list" class="best-performers-container"></div>
     </div>
 
     <div class="panel">
@@ -296,6 +454,7 @@
               <th>Strat</th>
               <th>TF</th>
               <th>Status</th>
+              <th>Reason</th>
               <th>Price PnL%</th>
               <th>RR</th>
               <th>Risk</th>
@@ -319,6 +478,9 @@
     const minAgeInput = document.getElementById('min-age');
     const onlyEliteInput = document.getElementById('only-elite');
     const configError = document.getElementById('config-error');
+
+    const bestPanel = document.getElementById('best-performers-panel');
+    const bestList = document.getElementById('best-performers-list');
 
     const summaryEmpty = document.getElementById('summary-empty');
     const summaryGrid = document.getElementById('summary-grid');
@@ -385,6 +547,7 @@
       tradesTableBody.innerHTML = '';
       summaryEmpty.style.display = 'block';
       summaryGrid.style.display = 'none';
+      bestPanel.style.display = 'none';
 
       const payload = {
         exchanges: getSelectedValues(exchangesSelect),
@@ -408,6 +571,7 @@
           throw new Error(data.error || 'Backtest failed');
         }
 
+        renderBestPerformers(data.best_performers || []);
         renderSummary(data);
         renderTrades(data.trades || []);
       } catch (err) {
@@ -416,6 +580,39 @@
       } finally {
         setLoading(false);
       }
+    }
+
+    function renderBestPerformers(best) {
+      bestList.innerHTML = '';
+      if (!best || !best.length) {
+        bestPanel.style.display = 'none';
+        return;
+      }
+      bestPanel.style.display = 'block';
+      best.forEach(p => {
+        const card = document.createElement('div');
+        card.className = 'performer-card';
+        card.innerHTML = `
+          <div class="performer-header">${p.strategy}</div>
+          <div class="performer-tf">Timeframe: <b>${p.timeframe}</b></div>
+          <div class="performer-stats" style="grid-template-columns: 1fr 1fr 1fr;">
+            <div class="performer-stat-box">
+              <div class="stat-label">Total / Pend</div>
+              <div class="stat-value" style="font-size:13px;">${p.total_trades} / ${p.pending_trades}</div>
+            </div>
+            <div class="performer-stat-box">
+              <div class="stat-label">Wins / Loss</div>
+              <div class="stat-value" style="font-size:13px;">${p.wins} / ${p.losses}</div>
+            </div>
+            <div class="performer-stat-box">
+              <div class="stat-label">PnL %</div>
+              <div class="stat-value ${p.pnl_pct >= 0 ? 'text-green' : 'text-red'}" style="font-size:13px;">${p.pnl_pct > 0 ? '+' : ''}${p.pnl_pct}%</div>
+            </div>
+          </div>
+          <div class="win-rate-ring">${Math.round(p.win_rate)}%</div>
+        `;
+        bestList.appendChild(card);
+      });
     }
 
     function renderSummary(data) {
@@ -452,7 +649,7 @@
       if (!trades || !trades.length) {
         const tr = document.createElement('tr');
         const td = document.createElement('td');
-        td.colSpan = 12;
+        td.colSpan = 13;
         td.className = 'text-muted';
         td.textContent = 'No trades to display for these filters.';
         tr.appendChild(td);
@@ -479,6 +676,7 @@
           sig.strategy || '',
           sig.timeframe || '',
           badgeHtml,
+          t.reason || '',
           (t.pnl_price_pct ?? 0).toFixed(2) + '%',
           (t.rr ?? 0).toFixed(2),
           (t.risk_amount ?? 0).toFixed(2),
@@ -491,11 +689,15 @@
           if (idx === 6) {
             td.innerHTML = val;
           } else {
-            if (idx === 7 || idx === 10 || idx === 11) {
+            if (idx === 8 || idx === 11 || idx === 12) {
               const num = parseFloat(String(val).replace('%', ''));
               if (!isNaN(num)) {
                 td.className = num > 0 ? 'text-green' : (num < 0 ? 'text-red' : '');
               }
+            } else if (idx === 7) {
+              td.className = 'small';
+              td.style.whiteSpace = 'normal';
+              td.style.minWidth = '150px';
             }
             td.innerHTML = val;
           }
@@ -510,5 +712,5 @@
     window.addEventListener('load', loadOptions);
   </script>
 </body>
-</html>
 
+</html>

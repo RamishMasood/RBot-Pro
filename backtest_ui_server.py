@@ -200,6 +200,7 @@ def _evaluate_signal(sig):
 
     outcome = "PENDING"
     pnl_pct = 0.0
+    reason = ""
 
     if candles:
         last_close = float(candles[-1][4])
@@ -211,19 +212,23 @@ def _evaluate_signal(sig):
                 if c_low <= sl:
                     outcome = "LOSS"
                     pnl_pct = (sl - entry) / entry * 100
+                    reason = f"Hit SL at {sl:.2f}"
                     break
                 if c_high >= tp1:
                     outcome = "WIN"
                     pnl_pct = (tp1 - entry) / entry * 100
+                    reason = f"Hit TP1 at {tp1:.2f}"
                     break
             elif direction == 'SHORT':
                 if c_high >= sl:
                     outcome = "LOSS"
                     pnl_pct = (entry - sl) / entry * 100
+                    reason = f"Hit SL at {sl:.2f}"
                     break
                 if c_low <= tp1:
                     outcome = "WIN"
                     pnl_pct = (entry - tp1) / entry * 100
+                    reason = f"Hit TP1 at {tp1:.2f}"
                     break
 
         if outcome == 'PENDING':
@@ -231,13 +236,16 @@ def _evaluate_signal(sig):
                 pnl_pct = (last_close - entry) / entry * 100
             else:
                 pnl_pct = (entry - last_close) / entry * 100
+            reason = f"Trade Active (Last: {last_close:.2f})"
     else:
         outcome = "NO_DATA"
+        reason = "Market data unavailable for this period"
 
     return {
         'sig': sig,
         'outcome': outcome,
         'pnl_pct': pnl_pct,
+        'reason': reason,
         'exchange': exchange,
     }
 
@@ -258,6 +266,7 @@ def _compute_capital_path(results, initial_capital, risk_percent):
         sig = res['sig']
         outcome = res['outcome']
         pnl_price_pct = res['pnl_pct']
+        reason = res.get('reason', '')
 
         # Extract price levels
         try:
@@ -269,6 +278,7 @@ def _compute_capital_path(results, initial_capital, risk_percent):
             trades_out.append({
                 'signal': sig,
                 'outcome': outcome,
+                'reason': reason,
                 'pnl_price_pct': pnl_price_pct,
                 'capital_before': capital,
                 'risk_amount': 0.0,
@@ -285,6 +295,7 @@ def _compute_capital_path(results, initial_capital, risk_percent):
             trades_out.append({
                 'signal': sig,
                 'outcome': outcome,
+                'reason': reason,
                 'pnl_price_pct': pnl_price_pct,
                 'capital_before': capital,
                 'risk_amount': risk_amount,
@@ -322,6 +333,7 @@ def _compute_capital_path(results, initial_capital, risk_percent):
         trades_out.append({
             'signal': sig,
             'outcome': outcome,
+            'reason': reason,
             'pnl_price_pct': pnl_price_pct,
             'capital_before': round(capital_before, 2),
             'risk_amount': round(risk_amount, 2),
@@ -425,21 +437,76 @@ def api_run_backtest():
         'total_pnl_price_pct': 0.0,
     }
 
+    # Strategy/TF Performance Tracking
+    combo_stats = {}
+
     for res in results:
         agg['total'] += 1
         outcome = res['outcome']
         pnl_pct = res['pnl_pct']
+        sig = res['sig']
+        
+        strategy = sig.get('strategy', 'UNKNOWN')
+        tf = sig.get('timeframe', 'N/A')
+        key = f"{strategy}|{tf}"
+        
+        if key not in combo_stats:
+            combo_stats[key] = {
+                'strategy': strategy,
+                'timeframe': tf,
+                'total': 0, 
+                'wins': 0, 
+                'losses': 0, 
+                'pending': 0,
+                'pnl': 0.0
+            }
+        
+        stats = combo_stats[key]
+        stats['total'] += 1
 
         if outcome == 'WIN':
             agg['wins'] += 1
             agg['total_pnl_price_pct'] += pnl_pct
+            stats['wins'] += 1
+            stats['pnl'] += pnl_pct
         elif outcome == 'LOSS':
             agg['losses'] += 1
             agg['total_pnl_price_pct'] += pnl_pct
+            stats['losses'] += 1
+            stats['pnl'] += pnl_pct
         elif outcome == 'PENDING':
             agg['pending'] += 1
+            stats['pending'] += 1
         else:
             agg['no_data'] += 1
+
+    # Calculate Best Performer PER TIMEFRAME
+    tf_best = {}
+    for key, s in combo_stats.items():
+        total_closed = s['wins'] + s['losses']
+        if total_closed > 0 and s['pnl'] > 0:
+            win_rate = (s['wins'] / total_closed) * 100
+            score = s['pnl'] * (total_closed ** 0.5)
+            tf = s['timeframe']
+            
+            perf = {
+                'strategy': s['strategy'],
+                'timeframe': tf,
+                'win_rate': round(win_rate, 2),
+                'total_trades': s['total'],
+                'closed_trades': total_closed,
+                'wins': s['wins'],
+                'losses': s['losses'],
+                'pending_trades': s['pending'],
+                'pnl_pct': round(s['pnl'], 2),
+                'score': score
+            }
+            
+            if tf not in tf_best or score > tf_best[tf]['score']:
+                tf_best[tf] = perf
+    
+    # Sort performers by timeframe (optional: or by score)
+    best_performers = sorted(tf_best.values(), key=lambda x: x['timeframe'])
 
     # Simulate capital path with risk% logic
     trades_with_capital, final_capital = _compute_capital_path(results, initial_capital, risk_percent)
@@ -474,6 +541,7 @@ def api_run_backtest():
             'realized_pnl_amount': realized_pnl_amount,
             'realized_pnl_percent': realized_pnl_pct,
         },
+        'best_performers': best_performers,
         # Price-based aggregation (sum of individual price PnLs) – mostly diagnostic
         'price_pnl': {
             'total_pnl_percent_sum': round(agg['total_pnl_price_pct'], 2),
