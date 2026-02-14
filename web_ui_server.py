@@ -4,6 +4,9 @@ Advanced Web UI Server for RBot Pro Multi-Exchange Real-Time Analysis
 Features: Multi-Exchange Support, Symbol/Indicator Selection, Auto-Run, Customizable Strategies
 """
 
+import eventlet
+eventlet.monkey_patch()
+
 from flask import Flask, render_template, jsonify, request
 from flask_socketio import SocketIO, emit
 import subprocess
