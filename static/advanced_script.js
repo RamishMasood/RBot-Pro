@@ -152,7 +152,7 @@ function updateTrackingUI(trades) {
             </div>
             <div class="live-price-box">
                 LIVE PRICE (${exchange})
-                <span class="live-price-val">$${price.toFixed(price < 1 ? 6 : 2)}</span>
+                <span class="live-price-val">$${price < 0.00001 ? price.toFixed(10) : (price < 0.01 ? price.toFixed(8) : (price < 1 ? price.toFixed(6) : price.toFixed(2)))}</span>
             </div>
         `;
     });
@@ -327,15 +327,15 @@ function addTradeSignal(trade) {
         <div class="trade-body">
             <div>
                 <span class="trade-label">Price (${trade.entry_type})</span>
-                <span class="trade-val">$${trade.entry.toFixed(6)}</span>
+                <span class="trade-val">$${trade.entry < 0.00001 ? trade.entry.toFixed(10) : (trade.entry < 0.01 ? trade.entry.toFixed(8) : trade.entry.toFixed(6))}</span>
             </div>
             <div>
                 <span class="trade-label">Stop Loss</span>
-                <span class="trade-val" style="color:#ff8888;">$${trade.sl.toFixed(6)}</span>
+                <span class="trade-val" style="color:#ff8888;">$${trade.sl < 0.00001 ? trade.sl.toFixed(10) : (trade.sl < 0.01 ? trade.sl.toFixed(8) : trade.sl.toFixed(6))}</span>
             </div>
             <div>
                 <span class="trade-label">Target</span>
-                <span class="trade-val" style="color:#00ff88;">$${trade.tp1.toFixed(6)}</span>
+                <span class="trade-val" style="color:#00ff88;">$${trade.tp1 < 0.00001 ? trade.tp1.toFixed(10) : (trade.tp1 < 0.01 ? trade.tp1.toFixed(8) : trade.tp1.toFixed(6))}</span>
             </div>
             <div class="trade-details">
                 <div style="display: flex; gap: 20px; font-size: 0.85em; margin-bottom: 8px;">
@@ -399,10 +399,14 @@ function copyTradeFromBtn(btn) {
         const action = trade.type === 'LONG' ? '🚀 BUY' : '🔻 SELL';
         const exchangeName = trade.exchange || 'N/A';
 
-        // Helper to format numbers safely
+        // Helper to format numbers safely (Max Precision)
         const f = (val) => {
             const n = parseFloat(val);
-            return isNaN(n) ? '0.000000' : n.toFixed(6);
+            if (isNaN(n)) return '0.000000';
+            if (n < 0.00001) return n.toFixed(10);
+            if (n < 0.01) return n.toFixed(8);
+            if (n < 1) return n.toFixed(6);
+            return n.toFixed(2);
         };
 
         const text = `🔥 * [${trade.strategy}] TRADE ALERT *
@@ -1029,8 +1033,8 @@ async function openAnalysisChart(btn) {
             wickDownColor: '#ff4444',
             priceFormat: {
                 type: 'price',
-                precision: 4,
-                minMove: 0.0001,
+                precision: trade.entry < 0.00001 ? 10 : (trade.entry < 0.01 ? 8 : (trade.entry < 1 ? 6 : 2)),
+                minMove: trade.entry < 0.00001 ? 0.0000000001 : (trade.entry < 0.01 ? 0.00000001 : (trade.entry < 1 ? 0.000001 : 0.01)),
             },
         });
         activeCandleSeries = candlestickSeries;
