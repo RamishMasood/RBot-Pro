@@ -137,3 +137,125 @@ AssertionError: write() before start_response
 127.0.0.1 - - [14/Feb/2026 11:01:22] "POST /api/config HTTP/1.1" 200 -
 127.0.0.1 - - [14/Feb/2026 11:01:22] "POST /api/config HTTP/1.1" 200 -
 127.0.0.1 - - [14/Feb/2026 11:01:27] "POST /api/config HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:04:51] "GET /api/proxy/klines?symbol=WLDUSDT&interval=1m&limit=200&exchange=MEXC HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:04:52] "GET /api/proxy/klines?symbol=WLDUSDT&interval=1m&limit=200&exchange=MEXC HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:04:56] "GET /api/proxy/klines?symbol=ARCSOLUSDT&interval=15m&limit=200&exchange=MEXC HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:04:57] "GET /api/proxy/klines?symbol=ARCSOLUSDT&interval=15m&limit=200&exchange=MEXC HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:04:58] "GET /api/proxy/klines?symbol=ARCSOLUSDT&interval=15m&limit=200&exchange=MEXC HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:06:54] "GET /api/proxy/klines?symbol=SIRENUSDT&interval=1m&limit=200&exchange=MEXC HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:06:56] "GET /api/proxy/klines?symbol=SIRENUSDT&interval=1m&limit=200&exchange=MEXC HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:06:57] "GET /api/proxy/klines?symbol=SIRENUSDT&interval=1m&limit=200&exchange=MEXC HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:06:58] "GET /api/proxy/klines?symbol=SIRENUSDT&interval=1m&limit=200&exchange=MEXC HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:07:00] "GET /api/proxy/klines?symbol=BASUSDT&interval=1m&limit=200&exchange=MEXC HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:07:02] "GET /api/proxy/klines?symbol=BASUSDT&interval=1m&limit=200&exchange=MEXC HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:07:03] "GET /api/proxy/klines?symbol=BASUSDT&interval=1m&limit=200&exchange=MEXC HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:07:04] "GET /api/proxy/klines?symbol=BASUSDT&interval=1m&limit=200&exchange=MEXC HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:07:05] "GET /api/proxy/klines?symbol=BASUSDT&interval=1m&limit=200&exchange=MEXC HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:07:06] "GET /api/proxy/klines?symbol=BASUSDT&interval=1m&limit=200&exchange=MEXC HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:07:07] "GET /api/proxy/klines?symbol=BASUSDT&interval=1m&limit=200&exchange=MEXC HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:07:08] "GET /api/proxy/klines?symbol=BASUSDT&interval=1m&limit=200&exchange=MEXC HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:07:09] "GET /api/proxy/klines?symbol=BASUSDT&interval=1m&limit=200&exchange=MEXC HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:10:00] "GET /api/proxy/klines?symbol=WLDUSDT&interval=1m&limit=200&exchange=MEXC HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:10:01] "GET /api/proxy/klines?symbol=WLDUSDT&interval=1m&limit=200&exchange=MEXC HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:10:03] "GET /api/proxy/klines?symbol=WLDUSDT&interval=1m&limit=200&exchange=MEXC HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:10:05] "GET /api/proxy/klines?symbol=SOLUSDT&interval=1m&limit=200&exchange=MEXC HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:10:06] "GET /api/proxy/klines?symbol=SOLUSDT&interval=1m&limit=200&exchange=MEXC HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:10:11] "GET /api/proxy/klines?symbol=SOLUSDT&interval=1m&limit=200&exchange=MEXC HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:10:16] "GET /api/proxy/klines?symbol=PUMPFUNUSDT&interval=1m&limit=200&exchange=MEXC HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:10:17] "GET /api/proxy/klines?symbol=PUMPFUNUSDT&interval=1m&limit=200&exchange=MEXC HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:10:18] "GET /api/proxy/klines?symbol=PUMPFUNUSDT&interval=1m&limit=200&exchange=MEXC HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:14:39] "GET /socket.io/?EIO=4&transport=websocket HTTP/1.1" 500 -
+127.0.0.1 - - [14/Feb/2026 11:14:39] "GET / HTTP/1.1" 200 -
+Error on request:
+Traceback (most recent call last):
+  File "C:\Users\ramis\AppData\Local\Programs\Python\Python310\lib\site-packages\werkzeug\serving.py", line 335, in run_wsgi
+    execute(self.server.app)
+  File "C:\Users\ramis\AppData\Local\Programs\Python\Python310\lib\site-packages\werkzeug\serving.py", line 327, in execute
+    write(b"")
+  File "C:\Users\ramis\AppData\Local\Programs\Python\Python310\lib\site-packages\werkzeug\serving.py", line 252, in write
+    assert status_set is not None, "write() before start_response"
+AssertionError: write() before start_response
+127.0.0.1 - - [14/Feb/2026 11:14:40] "GET /static/socket.io.min.js HTTP/1.1" 304 -
+127.0.0.1 - - [14/Feb/2026 11:14:40] "GET /static/advanced_style.css HTTP/1.1" 304 -
+127.0.0.1 - - [14/Feb/2026 11:14:40] "GET /static/advanced_script.js?v=1739221302 HTTP/1.1" 304 -
+127.0.0.1 - - [14/Feb/2026 11:14:40] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:14:40] "POST /api/config HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:14:40] "POST /api/config HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:14:40] "POST /api/config HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:14:40] "GET /favicon.ico HTTP/1.1" 404 -
+127.0.0.1 - - [14/Feb/2026 11:14:40] "GET /socket.io/?EIO=4&transport=websocket HTTP/1.1" 500 -
+127.0.0.1 - - [14/Feb/2026 11:14:40] "GET /static/socket.io.min.js HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:14:40] "GET /static/advanced_style.css HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:14:40] "GET /static/advanced_script.js?v=1739221302 HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:14:41] "GET / HTTP/1.1" 200 -
+Error on request:
+Traceback (most recent call last):
+  File "C:\Users\ramis\AppData\Local\Programs\Python\Python310\lib\site-packages\werkzeug\serving.py", line 335, in run_wsgi
+    execute(self.server.app)
+  File "C:\Users\ramis\AppData\Local\Programs\Python\Python310\lib\site-packages\werkzeug\serving.py", line 327, in execute
+    write(b"")
+  File "C:\Users\ramis\AppData\Local\Programs\Python\Python310\lib\site-packages\werkzeug\serving.py", line 252, in write
+    assert status_set is not None, "write() before start_response"
+AssertionError: write() before start_response
+127.0.0.1 - - [14/Feb/2026 11:14:41] "POST /api/config HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:14:41] "POST /api/config HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:14:41] "POST /api/config HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:14:41] "GET /favicon.ico HTTP/1.1" 404 -
+127.0.0.1 - - [14/Feb/2026 11:14:41] "GET /socket.io/?EIO=4&transport=websocket HTTP/1.1" 500 -
+127.0.0.1 - - [14/Feb/2026 11:14:41] "GET /static/advanced_style.css HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:14:41] "GET /static/socket.io.min.js HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:14:41] "GET /static/advanced_script.js?v=1739221302 HTTP/1.1" 200 -
+Error on request:
+Traceback (most recent call last):
+  File "C:\Users\ramis\AppData\Local\Programs\Python\Python310\lib\site-packages\werkzeug\serving.py", line 335, in run_wsgi
+    execute(self.server.app)
+  File "C:\Users\ramis\AppData\Local\Programs\Python\Python310\lib\site-packages\werkzeug\serving.py", line 327, in execute
+    write(b"")
+  File "C:\Users\ramis\AppData\Local\Programs\Python\Python310\lib\site-packages\werkzeug\serving.py", line 252, in write
+    assert status_set is not None, "write() before start_response"
+AssertionError: write() before start_response
+127.0.0.1 - - [14/Feb/2026 11:14:42] "POST /api/config HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:14:42] "POST /api/config HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:14:42] "POST /api/config HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:14:42] "GET /favicon.ico HTTP/1.1" 404 -
+127.0.0.1 - - [14/Feb/2026 11:14:44] "POST /api/config HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:14:44] "POST /api/config HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:14:45] "GET /api/available-coins HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:14:45] "POST /api/config HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:14:48] "POST /api/config HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:14:49] "POST /api/config HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:14:54] "GET /socket.io/?EIO=4&transport=websocket HTTP/1.1" 500 -
+127.0.0.1 - - [14/Feb/2026 11:14:54] "GET / HTTP/1.1" 200 -
+Error on request:
+Traceback (most recent call last):
+  File "C:\Users\ramis\AppData\Local\Programs\Python\Python310\lib\site-packages\werkzeug\serving.py", line 335, in run_wsgi
+    execute(self.server.app)
+  File "C:\Users\ramis\AppData\Local\Programs\Python\Python310\lib\site-packages\werkzeug\serving.py", line 327, in execute
+    write(b"")
+  File "C:\Users\ramis\AppData\Local\Programs\Python\Python310\lib\site-packages\werkzeug\serving.py", line 252, in write
+    assert status_set is not None, "write() before start_response"
+AssertionError: write() before start_response
+127.0.0.1 - - [14/Feb/2026 11:14:55] "GET /static/socket.io.min.js HTTP/1.1" 304 -
+127.0.0.1 - - [14/Feb/2026 11:14:55] "GET /static/advanced_style.css HTTP/1.1" 304 -
+127.0.0.1 - - [14/Feb/2026 11:14:55] "GET /static/advanced_script.js?v=1739221302 HTTP/1.1" 304 -
+127.0.0.1 - - [14/Feb/2026 11:14:55] "POST /api/config HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:14:55] "POST /api/config HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:14:55] "POST /api/config HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:14:57] "POST /api/config HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:14:59] "POST /api/config HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:15:00] "POST /api/config HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:15:00] "POST /api/config HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:15:35] "GET /api/available-coins HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:15:35] "POST /api/config HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:15:51] "GET /api/proxy/klines?symbol=CLAWNCHUSDT&interval=5m&limit=200&exchange=MEXC HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:15:53] "GET /api/proxy/klines?symbol=AXSUSDT&interval=1h&limit=200&exchange=MEXC HTTP/1.1" 500 -
+127.0.0.1 - - [14/Feb/2026 11:15:53] "GET /api/proxy/klines?symbol=CLAWNCHUSDT&interval=5m&limit=200&exchange=MEXC HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:15:55] "GET /api/proxy/klines?symbol=CLAWNCHUSDT&interval=5m&limit=200&exchange=MEXC HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:15:56] "GET /api/proxy/klines?symbol=CLAWNCHUSDT&interval=5m&limit=200&exchange=MEXC HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:15:57] "GET /api/proxy/klines?symbol=CLAWNCHUSDT&interval=5m&limit=200&exchange=MEXC HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:16:01] "GET /api/proxy/klines?symbol=ATOMUSDT&interval=5m&limit=200&exchange=MEXC HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:16:02] "GET /api/proxy/klines?symbol=ATOMUSDT&interval=5m&limit=200&exchange=MEXC HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:16:03] "GET /api/proxy/klines?symbol=ATOMUSDT&interval=5m&limit=200&exchange=MEXC HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:16:09] "GET /api/proxy/klines?symbol=ATOMUSDT&interval=5m&limit=200&exchange=MEXC HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:16:11] "GET /api/proxy/klines?symbol=ATOMUSDT&interval=5m&limit=200&exchange=MEXC HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 11:16:12] "GET /api/proxy/klines?symbol=ATOMUSDT&interval=5m&limit=200&exchange=MEXC HTTP/1.1" 200 -
