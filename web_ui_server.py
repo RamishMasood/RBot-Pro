@@ -26,6 +26,11 @@ import requests
 
 # Import News Manager
 from news_manager import news_manager
+# Import Real Trader
+from real_trader import RealTrader
+
+# Initialize Real Trader
+real_trader = RealTrader()
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 app.config['SECRET_KEY'] = 'rbot-pro-analysis-ui-secret'
@@ -922,6 +927,38 @@ def send_telegram_alert(trade):
     except Exception as e:
         print(f"Telegram error: {e}")
 
+def execute_auto_trade(trade, sid=None):
+    """Execute trade via RealTrader and notify client"""
+    try:
+        # Run in a separate thread inside here if caller didn't thread it, 
+        # but better to assume caller threads it.
+        result = real_trader.execute_trade(trade)
+        
+        if result['status'] == 'success':
+            msg = f"✅ [AUTO-TRADE] Executed {trade['symbol']} on {trade['exchange']} | ID: {result['order']['id']}"
+            print(msg)
+            # Update trade status to reflect real execution if desired
+            # event = {'type': 'success', 'msg': msg}
+            if sid: 
+                socketio.emit('output', {'data': msg + '\n'}, room=sid, namespace='/')
+            else:
+                socketio.emit('output', {'data': msg + '\n'}, namespace='/')
+                
+        elif result['status'] == 'error':
+            msg = f"❌ [AUTO-TRADE] Failed {trade['symbol']}: {result['msg']}"
+            print(msg)
+            if sid:
+                socketio.emit('output', {'data': msg + '\n'}, room=sid, namespace='/')
+            else:
+                socketio.emit('output', {'data': msg + '\n'}, namespace='/')
+                
+        elif result['status'] == 'skipped':
+            # silent skip
+            pass
+            
+    except Exception as e:
+        print(f"Auto-Trade Execution Error: {e}")
+
 def market_monitor_loop():
     """Background thread to monitor market news and volatility"""
     last_news_time = 0
@@ -1009,6 +1046,10 @@ def run_session_analysis(sid, symbols, indicators, timeframes, min_conf, exchang
                             # Forward to Telegram
                             thread = threading.Thread(target=send_telegram_alert, args=(signal_data,), daemon=True)
                             thread.start()
+                            
+                            # Execute Auto-Trade
+                            thread_trade = threading.Thread(target=execute_auto_trade, args=(signal_data, sid), daemon=True)
+                            thread_trade.start()
                         else:
                             # For existing signals, don't re-emit 'trade_signal' unless we want to refresh UI card
                             # Usually tracking_update handles the live updates
@@ -1093,6 +1134,10 @@ def auto_run_analysis():
                         if track_status == 'NEW':
                             thread = threading.Thread(target=send_telegram_alert, args=(signal_data,), daemon=True)
                             thread.start()
+                            
+                            # Execute Auto-Trade
+                            thread_trade = threading.Thread(target=execute_auto_trade, args=(signal_data, None), daemon=True)
+                            thread_trade.start()
                     except:
                         pass
                         
@@ -1408,6 +1453,58 @@ def proxy_klines():
         return jsonify(klines)
         
     return jsonify({'error': f'Failed to fetch klines from {exchange}'}), 500
+
+# --- Real Trader API Routes ---
+@app.route('/api/trader/config', methods=['POST'])
+def save_trader_config():
+    """Save exchange API keys"""
+    data = request.json
+    exch = data.get('exchange')
+    key = data.get('apiKey')
+    secret = data.get('secretKey')
+    if not exch or not key or not secret:
+        return jsonify({'status': 'error', 'msg': 'Missing fields'}), 400
+    
+    success = real_trader.update_exchange_config(exch, key, secret)
+    return jsonify({'status': 'ok' if success else 'error'})
+
+@app.route('/api/trader/settings', methods=['POST'])
+def save_trader_settings():
+    """Save auto-trade settings"""
+    try:
+        data = request.json
+        print(f"Received trader settings: {data}")
+        auto_enabled = data.get('auto_trade_enabled', False)
+        risk_type = data.get('risk_type', 'percent')
+        risk_value = data.get('risk_value', 1.0)
+        filters = data.get('filters', ['STRONG', 'ELITE'])
+        
+        real_trader.update_settings(auto_enabled, risk_type, risk_value, filters)
+        return jsonify({'status': 'ok'})
+    except Exception as e:
+        print(f"Error saving trader settings: {e}")
+        return jsonify({'status': 'error', 'msg': str(e)}), 500
+
+@app.route('/api/trader/status', methods=['GET'])
+def get_trader_status():
+    """Get current connection status and settings"""
+    return jsonify({
+        'connected_exchanges': list(real_trader.exchanges.keys()),
+        'auto_trade_enabled': real_trader.auto_trade_enabled,
+        'risk_settings': real_trader.risk_settings,
+        'filters': real_trader.trade_filter
+    })
+
+@app.route('/api/trader/execute', methods=['POST'])
+def manual_trade_execution():
+    """Manually trigger a trade from the UI"""
+    trade_data = request.json.get('trade')
+    if not trade_data: return jsonify({'status': 'error', 'msg': 'No data'}), 400
+    
+    print(f"Manual trade request for: {trade_data['symbol']}")
+    # Execute immediately, overriding checks
+    result = real_trader.execute_trade(trade_data, manual_override=True)
+    return jsonify(result)
 
 @app.errorhandler(404)
 def not_found(e):

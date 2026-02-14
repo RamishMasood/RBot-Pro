@@ -326,6 +326,25 @@
                             </select>
                         </div>
                     </div>
+
+                    <!-- Auto Trader Section -->
+                    <div class="sidebar-section" style="border-color:#00ff8855;">
+                        <h3 style="color:#00ff88;">🤖 Auto Trader (Real)</h3>
+                        <div class="config-group row">
+                            <label>Master Switch</label>
+                            <div class="toggle-switch">
+                                <input type="checkbox" id="autoTradeToggle" onchange="toggleAutoTrader()">
+                                <label for="autoTradeToggle" class="toggle-slider"></label>
+                            </div>
+                        </div>
+                        <div class="config-group">
+                            <button class="btn btn-mini" onclick="openTraderConfig()"
+                                style="width:100%; border:1px solid #00ff8855;">⚙️ Setup Keys & Risk</button>
+                        </div>
+                        <div id="traderStatus" style="font-size:0.8em; color:#888; margin-top:5px; text-align:center;">
+                            Not Configured
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Action Buttons -->
@@ -535,7 +554,119 @@
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='advanced_script.js') }}?v=1739221302"></script>
+    <!-- Auto Trader Config Modal -->
+    <div id="traderModal" class="modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <div class="modal-info">
+                    <h2>🤖 Auto-Trader Setup</h2>
+                    <p style="color:#aaa;">Configure Real Trading Execution</p>
+                </div>
+                <button class="close-modal" onclick="closeTraderConfig()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <style>
+                    .tab-btn {
+                        background: transparent;
+                        border: none;
+                        color: #888;
+                        padding: 10px;
+                        cursor: pointer;
+                        border-bottom: 2px solid transparent;
+                    }
+
+                    .tab-btn.active {
+                        color: #fff;
+                        border-bottom: 2px solid var(--primary);
+                    }
+
+                    .tab-content {
+                        display: none;
+                        padding-top: 15px;
+                    }
+
+                    .tab-content.active {
+                        display: block;
+                    }
+                </style>
+                <div class="tabs" style="display:flex; border-bottom:1px solid #333;">
+                    <button class="tab-btn active" onclick="switchTab('keys')">🔑 Exchange Keys</button>
+                    <button class="tab-btn" onclick="switchTab('risk')">🛡️ Risk & Rules</button>
+                </div>
+
+                <!-- Keys Tab -->
+                <div id="tab-keys" class="tab-content active">
+                    <p style="font-size:0.85em; color:#ff8888; margin-bottom:10px;">⚠️ Note: You must provide FUTURES
+                        API keys for the selected exchange.</p>
+                    <div class="config-group">
+                        <label>Select Exchange</label>
+                        <select id="keyExchangeSelect"
+                            style="width:100%; padding:8px; background:#111; border:1px solid #444; color:#fff;">
+                            <option value="MEXC">MEXC</option>
+                            <option value="BINANCE">Binance</option>
+                            <option value="BYBIT">Bybit</option>
+                            <option value="OKX">OKX</option>
+                            <option value="BITGET">Bitget</option>
+                            <option value="KUCOIN">KuCoin</option>
+                            <option value="GATEIO">Gate.io</option>
+                            <option value="HTX">HTX</option>
+                        </select>
+                    </div>
+                    <div class="config-group">
+                        <label>API Key</label>
+                        <input type="text" id="apiKeyInput" placeholder="Enter API Key"
+                            style="width:100%; padding:8px; background:#111; border:1px solid #444; color:#fff;">
+                    </div>
+                    <div class="config-group">
+                        <label>Secret Key</label>
+                        <input type="password" id="secretKeyInput" placeholder="Enter Secret Key"
+                            style="width:100%; padding:8px; background:#111; border:1px solid #444; color:#fff;">
+                    </div>
+                    <button class="btn btn-primary" onclick="saveKeys()" style="width:100%;">💾 Save Exchange
+                        Keys</button>
+                    <p id="keyStatus" style="margin-top:10px; font-size:0.9em; text-align:center;"></p>
+
+                    <hr style="border-color:#333; margin:15px 0;">
+                    <h4>✅ Connected Exchanges:</h4>
+                    <div id="connectedList" style="color:#00ff88; font-size:0.9em; min-height:20px;">Checking...</div>
+                </div>
+
+                <!-- Risk Tab -->
+                <div id="tab-risk" class="tab-content">
+                    <div class="config-group">
+                        <label>Risk Per Trade</label>
+                        <div style="display:flex; gap:10px;">
+                            <select id="riskType"
+                                style="padding:8px; background:#111; border:1px solid #444; color:#fff;">
+                                <option value="percent">% of Balance</option>
+                                <option value="fixed">Fixed USDT</option>
+                            </select>
+                            <input type="number" id="riskValue" value="1.0" step="0.1"
+                                style="width:100px; padding:8px; background:#111; border:1px solid #444; color:#fff;">
+                        </div>
+                        <p style="font-size:0.8em; color:#888;">Example: 1.0% means risking 1% of total balance per
+                            trade.</p>
+                    </div>
+                    <div class="config-group">
+                        <label>Auto-Trade Filters (Only trade these)</label>
+                        <div class="checkbox-group">
+                            <label style="color:#ffd700;"><input type="checkbox" id="filterElite" value="ELITE" checked>
+                                🏆 ELITE</label>
+                            <label style="color:#00ff88;"><input type="checkbox" id="filterStrong" value="STRONG"
+                                    checked> 💪 STRONG</label>
+                            <label style="color:#00d4ff;"><input type="checkbox" id="filterStandard" value="STANDARD">
+                                📊 STANDARD</label>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" onclick="saveRiskSettings()" style="width:100%;">💾 Save
+                        Settings</button>
+                    <p id="riskStatus" style="margin-top:10px; font-size:0.9em; text-align:center; color:#00ff88;"></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='advanced_script.js') }}?v=1739221305"></script>
 </body>
 
 </html>

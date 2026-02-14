@@ -357,6 +357,7 @@ function addTradeSignal(trade) {
                     </div>
                     `}
                 </div>
+                <button class="btn-mini btn-primary" onclick="executeManualTrade(this)" data-trade="${tradeDataEncoded}" style="margin-top:5px; width:100%; margin-bottom:5px; background: linear-gradient(90deg, #ff8800, #ff4400); border:none;">🚀 TRADE NOW (Real)</button>
                 <button class="view-analysis-btn" data-trade="${tradeDataEncoded}" onclick="openAnalysisChart(this)">
                     🔍 View Analysis Chart
                 </button>
@@ -1578,3 +1579,164 @@ document.addEventListener('change', (e) => {
     if (e.target.closest('#strategyList')) updateStrategyCount();
     if (e.target.closest('#timeframeList')) updateTimeframeCount();
 });
+
+// --- Auto Trader Logic ---
+
+function openTraderConfig() {
+    document.getElementById('traderModal').style.display = 'flex';
+    fetchTraderStatus();
+}
+
+function closeTraderConfig() {
+    document.getElementById('traderModal').style.display = 'none';
+}
+
+function switchTab(tabName) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    // Select specific button based on tab name
+    const buttons = document.querySelectorAll('.tab-btn');
+    if (tabName === 'keys') buttons[0].classList.add('active');
+    if (tabName === 'risk') buttons[1].classList.add('active');
+    document.getElementById(`tab-${tabName}`).classList.add('active');
+}
+
+function saveKeys() {
+    const exch = document.getElementById('keyExchangeSelect').value;
+    const key = document.getElementById('apiKeyInput').value;
+    const secret = document.getElementById('secretKeyInput').value;
+
+    fetch('/api/trader/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ exchange: exch, apiKey: key, secretKey: secret })
+    })
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'ok') {
+                document.getElementById('keyStatus').innerText = '✅ Keys Saved & Connected!';
+                document.getElementById('keyStatus').style.color = '#00ff88';
+                fetchTraderStatus();
+            } else {
+                document.getElementById('keyStatus').innerText = '❌ Error: ' + data.msg;
+                document.getElementById('keyStatus').style.color = '#ff4444';
+            }
+        })
+        .catch(e => {
+            document.getElementById('keyStatus').innerText = '❌ Network Error';
+        });
+}
+
+
+function saveRiskSettings() {
+    const type = document.getElementById('riskType').value;
+    const value = document.getElementById('riskValue').value;
+    const filters = [];
+    if (document.getElementById('filterElite').checked) filters.push('ELITE');
+    if (document.getElementById('filterStrong').checked) filters.push('STRONG');
+    if (document.getElementById('filterStandard').checked) filters.push('STANDARD');
+
+    const autoEnabled = document.getElementById('autoTradeToggle').checked;
+
+    fetch('/api/trader/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            auto_trade_enabled: autoEnabled,
+            risk_type: type,
+            risk_value: value,
+            filters: filters
+        })
+    })
+        .then(r => r.json())
+        .then(data => {
+            const statusEl = document.getElementById('riskStatus');
+            if (statusEl) {
+                statusEl.innerText = '✅ Settings Saved!';
+                setTimeout(() => statusEl.innerText = '', 3000);
+            }
+            updateTraderStatusUI(autoEnabled);
+        });
+}
+
+function toggleAutoTrader() {
+    saveRiskSettings(); // Save new toggle state
+}
+
+function fetchTraderStatus() {
+    fetch('/api/trader/status')
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('connectedList').innerText = data.connected_exchanges.join(', ') || 'None';
+            document.getElementById('autoTradeToggle').checked = data.auto_trade_enabled;
+
+            // Update Risk UI
+            if (data.risk_settings) {
+                document.getElementById('riskType').value = data.risk_settings.type;
+                document.getElementById('riskValue').value = data.risk_settings.value;
+            }
+
+            // Update Filters
+            if (data.filters) {
+                document.getElementById('filterElite').checked = data.filters.includes('ELITE');
+                document.getElementById('filterStrong').checked = data.filters.includes('STRONG');
+                document.getElementById('filterStandard').checked = data.filters.includes('STANDARD');
+            }
+
+            updateTraderStatusUI(data.auto_trade_enabled);
+        })
+        .catch(e => console.log('Trader status fetch failed', e));
+}
+
+function updateTraderStatusUI(enabled) {
+    const statusEl = document.getElementById('traderStatus');
+    if (statusEl) {
+        if (enabled) {
+            statusEl.innerHTML = '<span style="color:#00ff88; font-weight:bold;">✅ AUTO-TRADING ACTIVE</span>';
+        } else {
+            statusEl.innerHTML = '<span style="color:#888;">⏸ PAUSED - Manual Only</span>';
+        }
+    }
+}
+
+function executeManualTrade(btn) {
+    if (!confirm("⚠️ Are you sure you want to open a REAL trade?")) return;
+
+    const trade = JSON.parse(decodeURIComponent(btn.getAttribute('data-trade')));
+    const originalText = btn.innerText;
+    btn.innerText = "⏳ Placing Order...";
+    btn.disabled = true;
+
+    fetch('/api/trader/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trade: trade })
+    })
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'success') {
+                btn.innerText = "✅ ORDER PLACED";
+                btn.style.background = "#00ff88";
+                btn.style.color = "#000";
+                addTerminalLine(`✅ Manual Trade Executed: ${trade.symbol} | ID: ${data.order.id}`, 'success');
+            } else {
+                btn.innerText = "❌ FAILED";
+                btn.style.background = "#ff4444";
+                btn.disabled = false;
+                addTerminalLine(`❌ Manual Trade Failed: ${data.msg}`, 'error');
+                setTimeout(() => {
+                    btn.innerText = originalText;
+                    btn.style.background = "";
+                    btn.style.color = "";
+                }, 3000);
+            }
+        })
+        .catch(e => {
+            btn.innerText = "❌ NETWORK ERROR";
+            btn.disabled = false;
+            setTimeout(() => { btn.innerText = originalText; }, 3000);
+        });
+}
+
+// Initial fetch
+document.addEventListener('DOMContentLoaded', fetchTraderStatus);

@@ -1,0 +1,11 @@
+{
+    "auto_trade_enabled": false,
+    "risk_settings": {
+        "type": "percent",
+        "value": 1.0
+    },
+    "trade_filter": [
+        "ELITE",
+        "STRONG"
+    ]
+}
