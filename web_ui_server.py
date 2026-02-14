@@ -7,15 +7,20 @@ Features: Multi-Exchange Support, Symbol/Indicator Selection, Auto-Run, Customiz
 from flask import Flask, render_template, jsonify, request
 from flask_socketio import SocketIO, emit
 import subprocess
-import threading
-import sys
 import os
+import sys
+import io
 import queue
-from datetime import datetime
+import threading
+from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import json
-from apscheduler.schedulers.background import BackgroundScheduler
 import time
+import json
+
+# Fix Windows Unicode encoding issues for emojis
+if sys.platform == 'win32':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 import csv
 import requests
 
@@ -406,13 +411,13 @@ class TradeTracker:
                         t['sl'] = new_sl
                         t['tp1'] = float(trade.get('tp1', t['tp1']))
                         t['tp2'] = float(trade.get('tp2', t['tp2']))
-                        t['entry'] = float(trade.get('entry', t['entry']))
-                        # IMPORTANT: Do NOT overwrite tracking_status or registration_time
+                        # IMPORTANT: Do NOT overwrite entry, tracking_status, or registration_time
                     except: pass
                     return 'TRACKING', t['tracking_status']
             
             # Initial state already determined in caller or defaults here
-            entry_type = str(trade.get('entry_type', 'LIMIT')).upper()
+            entry_type = str(trade.get('entry_type', 'MARKET')).upper()
+            trade['entry_type'] = entry_type # Ensure it's stored for the update loop
             if 'tracking_status' not in trade:
                 trade['tracking_status'] = 'RUNNING' if entry_type == 'MARKET' else 'WAITING'
             
@@ -424,8 +429,8 @@ class TradeTracker:
             trade['updated_at'] = datetime.now().strftime('%H:%M:%S')
             trade['entry_confirm_hits'] = 0 
             trade['entry_trigger_time'] = 0 # Track when it actually enters RUNNING
-            trade['session_high'] = trade['current_price']
-            trade['session_low'] = trade['current_price']
+            trade['session_high'] = 0
+            trade['session_low'] = 0
             
             self.active_trades.append(trade)
             status = trade['tracking_status']
@@ -697,13 +702,14 @@ class TradeTracker:
                             t['pnl_pct'] = ((price - entry_price) / entry_price) * 100
                             
                             if t['tracking_status'] == 'WAITING':
-                                if time.time() - t.get('registration_time', 0) < 3:
-                                    continue
+                                # Check entry immediately without delay
                                     
-                                entry_type = str(t.get('entry_type', 'LIMIT')).upper()
+                                entry_type = str(t.get('entry_type', 'MARKET')).upper()
                                 at_limit = False
                                 
-                                if entry_type == 'LIMIT':
+                                if entry_type == 'MARKET':
+                                    at_limit = True
+                                elif entry_type == 'LIMIT':
                                     if price <= entry_price * 1.0005: at_limit = True
                                 elif entry_type in ['STOP-MARKET', 'STOP_LIMIT', 'STOP']:
                                     if price >= entry_price * 0.9995: at_limit = True
@@ -713,7 +719,7 @@ class TradeTracker:
                                 else:
                                     t['entry_confirm_hits'] = 0
                                     
-                                if t['entry_confirm_hits'] >= 2:
+                                if t['entry_confirm_hits'] >= 1: # Reduced to 1 hit for responsive entry
                                     t['tracking_status'] = 'RUNNING'
                                     t['entry_time'] = datetime.now().strftime('%H:%M:%S')
                                     t['entry_trigger_time'] = time.time()
@@ -722,19 +728,18 @@ class TradeTracker:
                                     print(f"🚀 [ENTRY TRIGGERED] {t['symbol']} LONG at {price} ({entry_type} Entry: {entry_price})", flush=True)
                             
                             elif t['tracking_status'] == 'RUNNING':
-                                # GRACE PERIOD: 3 seconds after ENTRY to avoid initial noise
+                                # GRACE PERIOD: 5 seconds after ENTRY to avoid initial noise
                                 base_trigger_time = t.get('entry_trigger_time', 0) or t.get('registration_time', 0)
-                                if time.time() - base_trigger_time < 3:
+                                if time.time() - base_trigger_time < 5:
                                     continue
                                 
                                 if price <= 0 or fair_price <= 0:
                                     continue
 
-                                # SL Check using Session Low (for ticker data) or Candle Low
+                                # SL Check: Must be below SL for X ticks (Double-Lock with fair_price)
                                 noise_buffer = (t.get('atr', 0) * 0.2)
                                 shielded_sl = sl_price - noise_buffer
-                                # Use session-based extremes to prevent false hits from 24h data
-                                trigger_price = (t.get('session_low', price) if price_data.get('is_ticker') else low)
+                                trigger_price = min(price, fair_price) if price_data.get('is_ticker') else low
                                 if trigger_price <= 0: continue
 
                                 hits = t.get('sl_hit_count', 0)
@@ -744,7 +749,7 @@ class TradeTracker:
                                 else:
                                     t['sl_hit_count'] = 0
 
-                                sl_threshold = 3 if t.get('timeframe', '1h') in ['1m', '3m', '5m'] else 2
+                                sl_threshold = 4 if t.get('timeframe', '1h') in ['1m', '3m', '5m'] else 3
                                 if hits >= sl_threshold:
                                     t['tracking_status'] = 'SL_HIT'
                                     t['is_frozen'] = True 
@@ -768,13 +773,14 @@ class TradeTracker:
                             t['pnl_pct'] = ((entry_price - price) / entry_price) * 100
                             
                             if t['tracking_status'] == 'WAITING':
-                                if time.time() - t.get('registration_time', 0) < 3:
-                                    continue
+                                # Check entry immediately without delay
                                     
-                                entry_type = str(t.get('entry_type', 'LIMIT')).upper()
+                                entry_type = str(t.get('entry_type', 'MARKET')).upper()
                                 at_limit = False
                                 
-                                if entry_type == 'LIMIT':
+                                if entry_type == 'MARKET':
+                                    at_limit = True
+                                elif entry_type == 'LIMIT':
                                     if price >= entry_price * 0.9995: at_limit = True
                                 elif entry_type in ['STOP-MARKET', 'STOP_LIMIT', 'STOP']:
                                     if price <= entry_price * 1.0005: at_limit = True
@@ -784,7 +790,7 @@ class TradeTracker:
                                 else:
                                     t['entry_confirm_hits'] = 0
 
-                                if t['entry_confirm_hits'] >= 2:
+                                if t['entry_confirm_hits'] >= 1: # Reduced to 1 hit for responsive entry
                                     t['tracking_status'] = 'RUNNING'
                                     t['entry_time'] = datetime.now().strftime('%H:%M:%S')
                                     t['entry_trigger_time'] = time.time()
@@ -793,18 +799,18 @@ class TradeTracker:
                                     print(f"🚀 [ENTRY TRIGGERED] {t['symbol']} SHORT at {price} ({entry_type} Entry: {entry_price})", flush=True)
 
                             elif t['tracking_status'] == 'RUNNING':
-                                # GRACE PERIOD: 3 seconds after ENTRY
+                                # GRACE PERIOD: 5 seconds after ENTRY
                                 base_trigger_time = t.get('entry_trigger_time', 0) or t.get('registration_time', 0)
-                                if time.time() - base_trigger_time < 3:
+                                if time.time() - base_trigger_time < 5:
                                     continue
                                     
                                 if price <= 0 or fair_price <= 0:
                                     continue
 
-                                # SL Check for SHORT (using Session High or Candle High)
+                                # SL Check: Must be above SL for X ticks
                                 noise_buffer = (t.get('atr', 0) * 0.2)
                                 shielded_sl = sl_price + noise_buffer
-                                trigger_price = (t.get('session_high', price) if price_data.get('is_ticker') else high)
+                                trigger_price = max(price, fair_price) if price_data.get('is_ticker') else high
                                 if trigger_price <= 0: continue
                                 
                                 hits = t.get('sl_hit_count', 0)
@@ -814,7 +820,7 @@ class TradeTracker:
                                 else:
                                     t['sl_hit_count'] = 0 
                                 
-                                sl_threshold = 3 if t.get('timeframe', '1h') in ['1m', '3m', '5m'] else 2
+                                sl_threshold = 4 if t.get('timeframe', '1h') in ['1m', '3m', '5m'] else 3
                                 if hits >= sl_threshold:
                                     t['tracking_status'] = 'SL_HIT'
                                     t['is_frozen'] = True
@@ -1421,7 +1427,7 @@ if __name__ == '__main__':
     update_scheduler()
 
     
-    print("🌐 RBot Pro Multi-Exchange Analysis UI Server")
+    print("RBot Pro Multi-Exchange Analysis UI Server")
     print("📱 Open: http://localhost:5000")
     print("✓ Using queue-based streaming for stability")
     

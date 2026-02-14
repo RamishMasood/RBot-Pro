@@ -6008,24 +6008,29 @@ def get_signal_quality(trade):
     agreement = trade.get('agreement_count', 1)
     rr = trade.get('risk_reward', 0)
     mtf_status = trade.get('mtf_alignment', 'NEUTRAL')
+    strategy = trade.get('strategy', '')
     
     # ELITE Criteria (High Conviction Mastery):
-    # Much stricter now so that ELITE tier targets ~70–80% win-rate in practice:
-    # - Very high confidence (>= 9)
-    # - Strong MTF alignment
-    # - Solid confluence (agreement from multiple strategies)
-    # - High R:R (>= 2.5 : 1) except for the dedicated Quantum Elite strategy.
+    # - Score >= 9 (Very High Confidence)
+    # - RR >= 2.0 (Sustainable Reward)
+    # - Confluence: Either strong MTF alignment OR multiple strategy agreement (3+)
     is_elite = False
-    if score >= 9 and 'STRONG' in mtf_status and agreement >= 2 and rr >= 2.5:
-        is_elite = True
-    elif trade.get('strategy', '') == 'Quantum Elite 2026' and score >= 9 and rr >= 2.0:
-        # Quantum Elite is allowed slightly more flexible RR if confidence is extreme
-        is_elite = True
-        
+    
+    # Tier 1: General Elite (High Confluence)
+    if score >= 9 and rr >= 1.8:
+        if agreement >= 2: # Any agreement + Score 9 + RR 1.8 is already very rare and powerful
+            is_elite = True
+            
+    # Tier 2: Dedicated Elite Strategies (Special Handling)
+    if not is_elite and score >= 9:
+        elite_strategies = ['Quantum Elite 2026', 'SMC Elite (X-Confluence)', 'Harmonic Pro', 'UTBot Elite']
+        if any(es in strategy for es in elite_strategies):
+            is_elite = True
+            
     if is_elite:
         return 'ELITE'
-    # STRONG: solid but not ELITE (tightened slightly to raise overall quality)
-    elif score >= 8 and rr >= 2.0:
+    # STRONG: solid but not ELITE
+    elif score >= 8 and rr >= 1.7:
         return 'STRONG'
     else:
         return 'STANDARD'
