@@ -326,43 +326,71 @@ def run_backtest():
         sl = float(sig['sl'])
         
         start_ms = get_utc_timestamp(sig['timestamp'])
+        exchange = sig.get('exchange', 'Binance')
+        entry_type = str(sig.get('entry_type', 'MARKET')).upper()
         
         # Use specific exchange fetcher
         candles = fetch_candles(symbol, start_ms, exchange)
         
         outcome = "PENDING"
         pnl = 0.0
+        state = "WAITING" if entry_type != 'MARKET' else "RUNNING"
         
         if candles:
             last_close = float(candles[-1][4])
             for c in candles:
                 c_high = float(c[2])
                 c_low = float(c[3])
+                c_close = float(c[4])
                 
-                if direction == 'LONG':
-                    if c_low <= sl:
-                        outcome = "LOSS"
-                        pnl = (sl - entry) / entry * 100
-                        break
-                    if c_high >= tp1:
-                        outcome = "WIN"
-                        pnl = (tp1 - entry) / entry * 100
-                        break
-                elif direction == 'SHORT':
-                    if c_high >= sl:
-                        outcome = "LOSS"
-                        pnl = (entry - sl) / entry * 100
-                        break
-                    if c_low <= tp1:
-                        outcome = "WIN"
-                        pnl = (entry - tp1) / entry * 100
-                        break
+                if state == "WAITING":
+                    # Entry Trigger logic
+                    if direction == 'LONG':
+                        if entry_type == 'LIMIT':
+                            # LONG LIMIT: Trigger if price drops to or below entry
+                            if c_low <= entry: state = "RUNNING"
+                        elif entry_type in ['STOP-MARKET', 'STOP_LIMIT', 'STOP']:
+                            # LONG STOP: Trigger if price breaks above entry
+                            if c_high >= entry: state = "RUNNING"
+                    else: # SHORT
+                        if entry_type == 'LIMIT':
+                            # SHORT LIMIT: Trigger if price rises to or above entry
+                            if c_high >= entry: state = "RUNNING"
+                        elif entry_type in ['STOP-MARKET', 'STOP_LIMIT', 'STOP']:
+                            # SHORT STOP: Trigger if price breaks below entry
+                            if c_low <= entry: state = "RUNNING"
+                    
+                    if state == "WAITING": continue # Still waiting...
+                    # If we just triggered, we'll continue to check TP/SL from this candle
+                
+                if state == "RUNNING":
+                    if direction == 'LONG':
+                        if c_low <= sl:
+                            outcome = "LOSS"
+                            pnl = (sl - entry) / entry * 100
+                            break
+                        if c_high >= tp1:
+                            outcome = "WIN"
+                            pnl = (tp1 - entry) / entry * 100
+                            break
+                    elif direction == 'SHORT':
+                        if c_high >= sl:
+                            outcome = "LOSS"
+                            pnl = (entry - sl) / entry * 100
+                            break
+                        if c_low <= tp1:
+                            outcome = "WIN"
+                            pnl = (entry - tp1) / entry * 100
+                            break
 
             if outcome == 'PENDING':
-                if direction == 'LONG':
-                    pnl = (last_close - entry) / entry * 100
+                if state == "WAITING":
+                    outcome = "WAITING" # Specifically show we never entered
                 else:
-                    pnl = (entry - last_close) / entry * 100
+                    if direction == 'LONG':
+                        pnl = (last_close - entry) / entry * 100
+                    else:
+                        pnl = (entry - last_close) / entry * 100
         else:
             outcome = "NO_DATA"
 

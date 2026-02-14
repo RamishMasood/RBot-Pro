@@ -6234,6 +6234,7 @@ def save_signal_history(trades, filepath='signals_history.json'):
                 'timeframe': trade.get('timeframe'),
                 'candle_time': trade.get('candle_time'),
                 'reason': trade.get('reason'),
+                'entry_type': trade.get('entry_type', 'MARKET'),
                 'result': None  # To be filled in later for performance tracking
             }
             history.append(entry)

@@ -407,24 +407,30 @@ class TradeTracker:
                         t['tp1'] = float(trade.get('tp1', t['tp1']))
                         t['tp2'] = float(trade.get('tp2', t['tp2']))
                         t['entry'] = float(trade.get('entry', t['entry']))
+                        # IMPORTANT: Do NOT overwrite tracking_status or registration_time
                     except: pass
-                    return 'TRACKING'
+                    return 'TRACKING', t['tracking_status']
             
-            # Auto-set status for MARKET entries
+            # Initial state already determined in caller or defaults here
             entry_type = str(trade.get('entry_type', 'LIMIT')).upper()
-            if entry_type == 'MARKET':
-                trade['tracking_status'] = 'RUNNING'
-                print(f"📡 Registered {trade['symbol']} (MARKET) - Started RUNNING immediately.", flush=True)
-            else:
-                trade['tracking_status'] = 'WAITING'
-                print(f"📡 Registered {trade['symbol']} ({entry_type}) for tracking.", flush=True)
+            if 'tracking_status' not in trade:
+                trade['tracking_status'] = 'RUNNING' if entry_type == 'MARKET' else 'WAITING'
+            
+            if 'registration_time' not in trade:
+                trade['registration_time'] = time.time()
 
-            trade['current_price'] = trade['entry']
+            trade['current_price'] = float(trade.get('entry', 0))
             trade['pnl_pct'] = 0.0
             trade['updated_at'] = datetime.now().strftime('%H:%M:%S')
+            trade['entry_confirm_hits'] = 0 
+            trade['entry_trigger_time'] = 0 # Track when it actually enters RUNNING
+            trade['session_high'] = trade['current_price']
+            trade['session_low'] = trade['current_price']
+            
             self.active_trades.append(trade)
-            print(f"📈 Total active trades being tracked: {len(self.active_trades)}", flush=True)
-            return 'NEW'
+            status = trade['tracking_status']
+            print(f"📡 Registered {trade['symbol']} ({entry_type}) as {status} (Entry: {trade['entry']})", flush=True)
+            return 'NEW', status
 
     def _fetch_bulk_mexc(self):
         try:
@@ -548,8 +554,8 @@ class TradeTracker:
                     return {
                         'close': ticker['last'],
                         'fair': ticker.get('fair', ticker['last']), 
-                        'high': ticker.get('high', ticker['last']),
-                        'low': ticker.get('low', ticker['last']),
+                        'high': ticker['last'], # Use last price for high/low to avoid 24h extreme contamination
+                        'low': ticker['last'],
                         'is_ticker': True
                     }
             # Fallback...
@@ -679,71 +685,127 @@ class TradeTracker:
                         t['current_price'] = price
                         t['updated_at'] = datetime.now().strftime('%H:%M:%S')
 
+                        # Track session extremes for accurate SL/TP checking
+                        if t.get('tracking_status') == 'RUNNING':
+                            if t.get('session_high', 0) == 0: t['session_high'] = price
+                            if t.get('session_low', 0) == 0: t['session_low'] = price
+                            t['session_high'] = max(t['session_high'], price)
+                            t['session_low'] = min(t['session_low'], price)
+
                         # Calculate PnL
                         if t['type'] == 'LONG':
                             t['pnl_pct'] = ((price - entry_price) / entry_price) * 100
                             
                             if t['tracking_status'] == 'WAITING':
+                                if time.time() - t.get('registration_time', 0) < 3:
+                                    continue
+                                    
                                 entry_type = str(t.get('entry_type', 'LIMIT')).upper()
-                                # For LIMIT/STOP-MARKET/STOP/STOP_LIMIT: LONG triggers if price >= entry, SHORT triggers if price <= entry
-                                if entry_type in ['LIMIT', 'STOP-MARKET', 'STOP_LIMIT', 'STOP']:
-                                    if t['type'] == 'LONG' and price >= entry_price * 0.9995:
-                                        t['tracking_status'] = 'RUNNING'
-                                        print(f"✅ [RUNNING] {t['symbol']} LONG at {price}", flush=True)
-                                    elif t['type'] == 'SHORT' and price <= entry_price * 1.0005:
-                                        t['tracking_status'] = 'RUNNING'
-                                        print(f"✅ [RUNNING] {t['symbol']} SHORT at {price}", flush=True)
-                                # MARKET already handled at registration
+                                at_limit = False
+                                
+                                if entry_type == 'LIMIT':
+                                    if price <= entry_price * 1.0005: at_limit = True
+                                elif entry_type in ['STOP-MARKET', 'STOP_LIMIT', 'STOP']:
+                                    if price >= entry_price * 0.9995: at_limit = True
+                                
+                                if at_limit:
+                                    t['entry_confirm_hits'] = t.get('entry_confirm_hits', 0) + 1
+                                else:
+                                    t['entry_confirm_hits'] = 0
+                                    
+                                if t['entry_confirm_hits'] >= 2:
+                                    t['tracking_status'] = 'RUNNING'
+                                    t['entry_time'] = datetime.now().strftime('%H:%M:%S')
+                                    t['entry_trigger_time'] = time.time()
+                                    t['session_high'] = price
+                                    t['session_low'] = price
+                                    print(f"🚀 [ENTRY TRIGGERED] {t['symbol']} LONG at {price} ({entry_type} Entry: {entry_price})", flush=True)
                             
-                            if t['tracking_status'] == 'RUNNING':
-                                # Only check SL/TP after entry is triggered (RUNNING)
+                            elif t['tracking_status'] == 'RUNNING':
+                                # GRACE PERIOD: 3 seconds after ENTRY to avoid initial noise
+                                base_trigger_time = t.get('entry_trigger_time', 0) or t.get('registration_time', 0)
+                                if time.time() - base_trigger_time < 3:
+                                    continue
+                                
+                                if price <= 0 or fair_price <= 0:
+                                    continue
+
+                                # SL Check using Session Low (for ticker data) or Candle Low
                                 noise_buffer = (t.get('atr', 0) * 0.2)
                                 shielded_sl = sl_price - noise_buffer
-                                trigger_price = min(price, fair_price) if price_data.get('is_ticker') else low
+                                # Use session-based extremes to prevent false hits from 24h data
+                                trigger_price = (t.get('session_low', price) if price_data.get('is_ticker') else low)
+                                if trigger_price <= 0: continue
+
                                 hits = t.get('sl_hit_count', 0)
                                 if trigger_price <= shielded_sl:
                                     hits += 1
                                     t['sl_hit_count'] = hits
                                 else:
                                     t['sl_hit_count'] = 0
+
                                 sl_threshold = 3 if t.get('timeframe', '1h') in ['1m', '3m', '5m'] else 2
                                 if hits >= sl_threshold:
                                     t['tracking_status'] = 'SL_HIT'
                                     t['is_frozen'] = True 
                                     t['pnl_pct'] = ((sl_price - entry_price) / entry_price) * 100
-                                    t['reason'] = f"{t.get('reason', '')} | [🛑 DOUBLE-LOCK SL HIT AT {trigger_price}]"
+                                    t['reason'] = f"{t.get('reason', '')} | [🛑 SL HIT AT {trigger_price}]"
                                     exch = str(t.get('exchange', 'BINANCE')).upper()
                                     self.completed_trades.add((exch, t['symbol'], t['strategy'], t['type']))
                                     print(f"🛑 [SL HIT] {t['symbol']} LONG at {trigger_price} (Shielded SL: {shielded_sl:.6f})", flush=True)
-                                elif high >= tp_price:
+                                
+                                # TP Check using Session High / Candle High
+                                elif (t.get('session_high', price) if price_data.get('is_ticker') else high) >= tp_price:
                                     t['tracking_status'] = 'TP_HIT'
                                     t['is_frozen'] = True
                                     t['pnl_pct'] = ((tp_price - entry_price) / entry_price) * 100
-                                    t['reason'] = f"{t.get('reason', '')} | [💰 TP HIT AT {high}]"
+                                    t['reason'] = f"{t.get('reason', '')} | [💰 TP HIT AT {t.get('session_high', price)}]"
                                     exch = str(t.get('exchange', 'BINANCE')).upper()
                                     self.completed_trades.add((exch, t['symbol'], t['strategy'], t['type']))
-                                    print(f"💰 [TP HIT] {t['symbol']} LONG at {high}", flush=True)
+                                    print(f"💰 [TP HIT] {t['symbol']} LONG at {tp_price}", flush=True)
                         
                         else:  # SHORT
                             t['pnl_pct'] = ((entry_price - price) / entry_price) * 100
                             
                             if t['tracking_status'] == 'WAITING':
+                                if time.time() - t.get('registration_time', 0) < 3:
+                                    continue
+                                    
                                 entry_type = str(t.get('entry_type', 'LIMIT')).upper()
-                                if entry_type in ['LIMIT', 'STOP-MARKET', 'STOP_LIMIT', 'STOP']:
-                                    if t['type'] == 'SHORT' and price <= entry_price * 1.0005:
-                                        t['tracking_status'] = 'RUNNING'
-                                        print(f"✅ [RUNNING] {t['symbol']} SHORT at {price}", flush=True)
-                                    elif t['type'] == 'LONG' and price >= entry_price * 0.9995:
-                                        t['tracking_status'] = 'RUNNING'
-                                        print(f"✅ [RUNNING] {t['symbol']} LONG at {price}", flush=True)
-                                # MARKET already handled at registration
+                                at_limit = False
+                                
+                                if entry_type == 'LIMIT':
+                                    if price >= entry_price * 0.9995: at_limit = True
+                                elif entry_type in ['STOP-MARKET', 'STOP_LIMIT', 'STOP']:
+                                    if price <= entry_price * 1.0005: at_limit = True
+                                        
+                                if at_limit:
+                                    t['entry_confirm_hits'] = t.get('entry_confirm_hits', 0) + 1
+                                else:
+                                    t['entry_confirm_hits'] = 0
 
-                            if t['tracking_status'] == 'RUNNING':
+                                if t['entry_confirm_hits'] >= 2:
+                                    t['tracking_status'] = 'RUNNING'
+                                    t['entry_time'] = datetime.now().strftime('%H:%M:%S')
+                                    t['entry_trigger_time'] = time.time()
+                                    t['session_high'] = price
+                                    t['session_low'] = price
+                                    print(f"🚀 [ENTRY TRIGGERED] {t['symbol']} SHORT at {price} ({entry_type} Entry: {entry_price})", flush=True)
+
+                            elif t['tracking_status'] == 'RUNNING':
+                                # GRACE PERIOD: 3 seconds after ENTRY
+                                base_trigger_time = t.get('entry_trigger_time', 0) or t.get('registration_time', 0)
+                                if time.time() - base_trigger_time < 3:
+                                    continue
+                                    
+                                if price <= 0 or fair_price <= 0:
+                                    continue
+
+                                # SL Check for SHORT (using Session High or Candle High)
                                 noise_buffer = (t.get('atr', 0) * 0.2)
                                 shielded_sl = sl_price + noise_buffer
-                                
-                                # DOUBLE-LOCK: Use max() for shorts
-                                trigger_price = max(price, fair_price) if price_data.get('is_ticker') else high
+                                trigger_price = (t.get('session_high', price) if price_data.get('is_ticker') else high)
+                                if trigger_price <= 0: continue
                                 
                                 hits = t.get('sl_hit_count', 0)
                                 if trigger_price >= shielded_sl:
@@ -752,26 +814,25 @@ class TradeTracker:
                                 else:
                                     t['sl_hit_count'] = 0 
                                 
-                                # Adaptive threshold: scalp TFs need 3 ticks to avoid wick noise
                                 sl_threshold = 3 if t.get('timeframe', '1h') in ['1m', '3m', '5m'] else 2
                                 if hits >= sl_threshold:
                                     t['tracking_status'] = 'SL_HIT'
                                     t['is_frozen'] = True
                                     t['pnl_pct'] = ((entry_price - sl_price) / entry_price) * 100
-                                    t['reason'] = f"{t.get('reason', '')} | [🛑 DOUBLE-LOCK SL HIT AT {trigger_price}]"
+                                    t['reason'] = f"{t.get('reason', '')} | [🛑 SL HIT AT {trigger_price}]"
                                     exch = str(t.get('exchange', 'BINANCE')).upper()
                                     self.completed_trades.add((exch, t['symbol'], t['strategy'], t['type']))
                                     print(f"🛑 [SL HIT] {t['symbol']} SHORT at {trigger_price} (Shielded SL: {shielded_sl:.6f})", flush=True)
                                 
-                                # TP Check (Use LOW for Shorts)
-                                elif low <= tp_price:
+                                # TP Check for SHORT (using Session Low or Candle Low)
+                                elif (t.get('session_low', price) if price_data.get('is_ticker') else low) <= tp_price:
                                     t['tracking_status'] = 'TP_HIT'
                                     t['is_frozen'] = True
                                     t['pnl_pct'] = ((entry_price - tp_price) / entry_price) * 100
-                                    t['reason'] = f"{t.get('reason', '')} | [💰 TP HIT AT {low}]"
+                                    t['reason'] = f"{t.get('reason', '')} | [💰 TP HIT AT {t.get('session_low', price)}]"
                                     exch = str(t.get('exchange', 'BINANCE')).upper()
                                     self.completed_trades.add((exch, t['symbol'], t['strategy'], t['type']))
-                                    print(f"💰 [TP HIT] {t['symbol']} SHORT at {low}", flush=True)
+                                    print(f"💰 [TP HIT] {t['symbol']} SHORT at {tp_price}", flush=True)
 
                     # Broadcast
                     socketio.emit('tracking_update', self.active_trades, namespace='/')
@@ -928,23 +989,24 @@ def run_session_analysis(sid, symbols, indicators, timeframes, min_conf, exchang
                         
                         # INJECT MARKET WARNING IF EXISTS
                         status = news_manager.get_market_status()
-                        if status.get('volatility_warning'):
-                            signal_data['warning'] = status['volatility_warning']
-                        if status.get('news_warning'):
-                            signal_data['warning'] = f"{signal_data.get('warning', '')} {status['news_warning']}"
+                        # 1. Add/Update tracker FIRST to get stable state
+                        track_status, current_tracking_status = trade_tracker.add_trade(signal_data)
+                        
+                        # 2. Sync signal_data for emission (Must match tracker's reality)
+                        signal_data['tracking_status'] = current_tracking_status
+                        if 'registration_time' not in signal_data:
+                            signal_data['registration_time'] = time.time()
 
-                        # Register with GLOBAL tracker (all users see active trades)
-                        track_status = trade_tracker.add_trade(signal_data)
-                        
-                        # Only emit signal if it's NEW or we want to allow updates (but NOT for completed)
-                        if track_status != 'COMPLETED':
-                            # Emit signal ONLY to this session's UI
-                            socketio.emit('trade_signal', signal_data, room=sid, namespace='/')
-                        
-                        # Forward to Telegram (Global config) - Only for NEW ones
+                        # 3. Handle UI update - Only send brand new ones OR major updates
                         if track_status == 'NEW':
+                            socketio.emit('trade_signal', signal_data, room=sid, namespace='/')
+                            # Forward to Telegram
                             thread = threading.Thread(target=send_telegram_alert, args=(signal_data,), daemon=True)
                             thread.start()
+                        else:
+                            # For existing signals, don't re-emit 'trade_signal' unless we want to refresh UI card
+                            # Usually tracking_update handles the live updates
+                            pass
                     except Exception as e:
                         print(f"Error processing trade signal: {e}")
                     continue

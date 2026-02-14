@@ -91,8 +91,27 @@ class Backtester:
                     high = current_candle[2]
                     close = current_candle[4]
 
-                    # 1. Manage Active Trade (Check SL/TP)
+                    # 1. Manage Active Trade (Check Entry or SL/TP)
                     if active_trade:
+                        if active_trade.get('tracking_status') == 'WAITING':
+                            entry_type = str(active_trade.get('entry_type', 'LIMIT')).upper()
+                            entry_p = float(active_trade['entry'])
+                            triggered = False
+                            
+                            if active_trade['type'] == 'LONG':
+                                if entry_type == 'LIMIT' and low <= entry_p: triggered = True
+                                elif entry_type in ['STOP-MARKET', 'STOP_LIMIT', 'STOP'] and high >= entry_p: triggered = True
+                            else: # SHORT
+                                if entry_type == 'LIMIT' and high >= entry_p: triggered = True
+                                elif entry_type in ['STOP-MARKET', 'STOP_LIMIT', 'STOP'] and low <= entry_p: triggered = True
+                                
+                            if triggered:
+                                active_trade['tracking_status'] = 'RUNNING'
+                                # Optional: continue to check SL/TP in same candle if wanted, 
+                                # but usually safer to wait for next candle in 1m simulation
+                            else:
+                                continue # Still waiting for entry
+
                         # Check Stop Loss
                         hit_sl = False
                         if active_trade['type'] == 'LONG' and low <= active_trade['sl']: hit_sl = True
@@ -142,6 +161,8 @@ class Backtester:
                                 
                                 # Use $10,000 balance / 1% risk ($100) per trade for PnL simulation
                                 trade['risk_amount'] = 100.0 
+                                entry_type = str(trade.get('entry_type', 'MARKET')).upper()
+                                trade['tracking_status'] = 'RUNNING' if entry_type == 'MARKET' else 'WAITING'
                                 active_trade = trade
                         except Exception as e:
                             continue

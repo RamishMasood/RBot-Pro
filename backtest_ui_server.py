@@ -201,42 +201,64 @@ def _evaluate_signal(sig):
     outcome = "PENDING"
     pnl_pct = 0.0
     reason = ""
+    entry_type = str(sig.get('entry_type', 'MARKET')).upper()
+    state = "WAITING" if entry_type != 'MARKET' else "RUNNING"
 
     if candles:
         last_close = float(candles[-1][4])
         for c in candles:
             c_high = float(c[2])
             c_low = float(c[3])
-
-            if direction == 'LONG':
-                if c_low <= sl:
-                    outcome = "LOSS"
-                    pnl_pct = (sl - entry) / entry * 100
-                    reason = f"Hit SL at {sl:.2f}"
-                    break
-                if c_high >= tp1:
-                    outcome = "WIN"
-                    pnl_pct = (tp1 - entry) / entry * 100
-                    reason = f"Hit TP1 at {tp1:.2f}"
-                    break
-            elif direction == 'SHORT':
-                if c_high >= sl:
-                    outcome = "LOSS"
-                    pnl_pct = (entry - sl) / entry * 100
-                    reason = f"Hit SL at {sl:.2f}"
-                    break
-                if c_low <= tp1:
-                    outcome = "WIN"
-                    pnl_pct = (entry - tp1) / entry * 100
-                    reason = f"Hit TP1 at {tp1:.2f}"
-                    break
+            
+            if state == "WAITING":
+                # Entry Trigger logic
+                if direction == 'LONG':
+                    if entry_type == 'LIMIT':
+                        if c_low <= entry: state = "RUNNING"
+                    elif entry_type in ['STOP-MARKET', 'STOP_LIMIT', 'STOP']:
+                        if c_high >= entry: state = "RUNNING"
+                else: # SHORT
+                    if entry_type == 'LIMIT':
+                        if c_high >= entry: state = "RUNNING"
+                    elif entry_type in ['STOP-MARKET', 'STOP_LIMIT', 'STOP']:
+                        if c_low <= entry: state = "RUNNING"
+                
+                if state == "WAITING": continue
+                
+            if state == "RUNNING":
+                if direction == 'LONG':
+                    if c_low <= sl:
+                        outcome = "LOSS"
+                        pnl_pct = (sl - entry) / entry * 100
+                        reason = f"Hit SL at {sl:.2f}"
+                        break
+                    if c_high >= tp1:
+                        outcome = "WIN"
+                        pnl_pct = (tp1 - entry) / entry * 100
+                        reason = f"Hit TP1 at {tp1:.2f}"
+                        break
+                elif direction == 'SHORT':
+                    if c_high >= sl:
+                        outcome = "LOSS"
+                        pnl_pct = (entry - sl) / entry * 100
+                        reason = f"Hit SL at {sl:.2f}"
+                        break
+                    if c_low <= tp1:
+                        outcome = "WIN"
+                        pnl_pct = (entry - tp1) / entry * 100
+                        reason = f"Hit TP1 at {tp1:.2f}"
+                        break
 
         if outcome == 'PENDING':
-            if direction == 'LONG':
-                pnl_pct = (last_close - entry) / entry * 100
+            if state == "WAITING":
+                outcome = "WAITING"
+                reason = f"Waiting for {entry_type} entry at {entry:.2f}"
             else:
-                pnl_pct = (entry - last_close) / entry * 100
-            reason = f"Trade Active (Last: {last_close:.2f})"
+                if direction == 'LONG':
+                    pnl_pct = (last_close - entry) / entry * 100
+                else:
+                    pnl_pct = (entry - last_close) / entry * 100
+                reason = f"Trade Active (Last: {last_close:.2f})"
     else:
         outcome = "NO_DATA"
         reason = "Market data unavailable for this period"
