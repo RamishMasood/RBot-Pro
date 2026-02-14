@@ -287,7 +287,7 @@ function addTradeSignal(trade) {
         'STRONG': { bg: '#00ff8822', color: '#00ff88', border: '#00ff8855', icon: '💪', label: 'STRONG' },
         'STANDARD': { bg: '#00d4ff22', color: '#00d4ff', border: '#00d4ff55', icon: '📊', label: 'STANDARD' }
     };
-    const quality = qualityStyles[trade.signal_quality] || qualityStyles['STANDARD'];
+    const quality = qualityStyles[finalQuality] || qualityStyles['STANDARD'];
 
     // Agreement badge (Now an interactive button)
     const agreementHtml = agreementCount > 1

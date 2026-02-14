@@ -5938,16 +5938,16 @@ def enhance_confidence(trades):
 
         bonuses = 0
 
-        # +1 for excellent R:R (>= 3:1)
-        if trade.get('risk_reward', 0) >= 3:
+        # +1 for excellent R:R (>= 2.0:1) - Tightened back to 2.0
+        if trade.get('risk_reward', 0) >= 2.0:
             bonuses += 1
 
-        # +1 for strong agreement (3+ strategies)
+        # +1 for strong agreement (3+ strategies) - Tightened back to 3
         if trade.get('agreement_count', 1) >= 3:
             bonuses += 1
 
-        # +1 for high-timeframe confirmation (1h, 4h, 1d)
-        if TF_WEIGHTS.get(trade.get('timeframe', '1m'), 1) >= 3:
+        # +1 for moderate-timeframe confirmation (15m+) 
+        if TF_WEIGHTS.get(trade.get('timeframe', '1m'), 1) >= 2:
             bonuses += 1
 
         # Apply bonuses (capped at 10)
@@ -6012,25 +6012,28 @@ def get_signal_quality(trade):
     
     # ELITE Criteria (High Conviction Mastery):
     # - Score >= 9 (Very High Confidence)
-    # - RR >= 2.0 (Sustainable Reward)
-    # - Confluence: Either strong MTF alignment OR multiple strategy agreement (3+)
+    # - RR >= 1.8 (Sustainable Reward)
+    # - Confluence: Agreement >= 3 OR (Agreement >= 2 AND Strong MTF)
     is_elite = False
     
-    # Tier 1: General Elite (High Confluence)
+    # Tier 1: General Elite (High Confluence/Alignment)
     if score >= 9 and rr >= 1.8:
-        if agreement >= 2: # Any agreement + Score 9 + RR 1.8 is already very rare and powerful
+        if agreement >= 3: 
+            is_elite = True
+        elif agreement >= 2 and 'STRONG' in mtf_status: 
             is_elite = True
             
     # Tier 2: Dedicated Elite Strategies (Special Handling)
+    # Only SPECIFIC high-end strategies qualify automatically with Score >= 9
     if not is_elite and score >= 9:
-        elite_strategies = ['Quantum Elite 2026', 'SMC Elite (X-Confluence)', 'Harmonic Pro', 'UTBot Elite']
-        if any(es in strategy for es in elite_strategies):
+        elite_strs = ['Quantum', 'SMC Elite', 'Harmonic Pro', 'UTBot Elite', 'Wealth Division', 'Silver Bullet', 'TrendRider']
+        if any(es.lower() in strategy.lower() for es in elite_strs):
             is_elite = True
             
     if is_elite:
         return 'ELITE'
     # STRONG: solid but not ELITE
-    elif score >= 8 and rr >= 1.7:
+    elif (score >= 8 and rr >= 1.5) or (score >= 7 and agreement >= 2):
         return 'STRONG'
     else:
         return 'STANDARD'
@@ -6091,12 +6094,17 @@ def apply_global_market_filters(trades, symbol_analyses_map):
             if adx < 18 and 'Trend' in t['strategy']:
                 continue
 
-        # 4. INSTITUTIONAL CONFIRMATION (World-Best Rule #3)
-        if current_tf_analysis:
+        # 4. INSTITUTIONAL CONFIRMATION (Relaxed for ELITE visibility)
+        # CONFLUENCE IMMUNITY: If 2+ strategies agree, we trust the consensus even if filters are marginal
+        confluence_shield = t.get('agreement_count', 1) >= 2
+        
+        if current_tf_analysis and not confluence_shield:
             rvol = current_tf_analysis.get('rvol', 1.0)
             delta = current_tf_analysis.get('cumulative_delta', {}).get('trend', 'NEUTRAL')
-            if t['confidence_score'] >= 7:
-                 if rvol < 1.1: t['confidence_score'] -= 1
+            
+            # Only penalize very high scores if volume is TRULY bad (rvol < 0.8)
+            if t['confidence_score'] >= 8: 
+                 if rvol < 0.8: t['confidence_score'] -= 1
                  if (t['type'] == 'LONG' and delta == 'SELLING') or (t['type'] == 'SHORT' and delta == 'BUYING'):
                      t['confidence_score'] -= 1 
 
