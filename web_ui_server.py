@@ -941,14 +941,18 @@ messenger_configs = {
     'whatsapp': copy.deepcopy(config)
 }
 
-def send_telegram_alert(trade):
+def send_telegram_alert(trade, target_quality=None):
     """Send trade alert to Telegram if configured and meets quality filter"""
     token = config.get('telegram_token')
     chat_id = config.get('telegram_chat_id')
     if not token or not chat_id: return
     
-    # 1. Apply Quality Filter
-    target_quality = config.get('telegram_quality', 'ELITE').upper()
+    # 1. Apply Quality Filter (Use passed quality or fallback to global)
+    if target_quality is None:
+        target_quality = config.get('telegram_quality', 'ELITE').upper()
+    else:
+        target_quality = target_quality.upper()
+        
     trade_quality = trade.get('signal_quality', 'STANDARD').upper()
     
     # Logical Hierarchy: ELITE > STRONG > STANDARD > ALL
@@ -962,6 +966,13 @@ def send_telegram_alert(trade):
     
     action = "🚀 BUY" if trade['type'] == 'LONG' else "🔻 SELL"
     entry_type_label = trade.get('entry_type', 'MARKET').upper()
+
+    # Strategy Alignment Info
+    agreeing = trade.get('agreeing_strategies', [])
+    alignment_text = ""
+    if len(agreeing) > 1:
+        alignment_text = f"\n🤝 *{len(agreeing)} Strategies Aligning:*\n• " + "\n• ".join(agreeing)
+    
     msg = f"""🔥 *[RBot Pro] TRADE ALERT*
 ━━━━━━━━━━━━━━━━━━━━
 🏢 *Exchange:* {trade.get('exchange', 'N/A')}
@@ -970,27 +981,32 @@ def send_telegram_alert(trade):
 🛑 *SL:* ${trade['sl']:.6f}
 🎯 *TP:* ${trade['tp1']:.6f}
 💎 *R/R:* {trade['risk_reward']}:1
-🔍 *Reason:* {trade['reason']}
+🔍 *Reason:* {trade['reason']}{alignment_text}
 ━━━━━━━━━━━━━━━━━━━━
 *by RBot Pro — World's Best AI Bot!* 🏆"""
     
     try:
         url = f"https://api.telegram.org/bot{token}/sendMessage"
-        requests.post(url, json={
+        tg_session.post(url, json={
             "chat_id": chat_id,
             "text": msg,
-            "parse_mode": "Markdown"
-        }, timeout=5)
+            "parse_mode": "Markdown",
+            "disable_web_page_preview": True
+        }, timeout=10)
     except Exception as e:
-        print(f"Telegram error: {e}")
+        print(f"Telegram alert error: {e}")
 
-def send_whatsapp_alert(trade):
+def send_whatsapp_alert(trade, target_quality=None):
     """Send trade alert to WhatsApp if configured and meets quality filter"""
     chat_id = config.get('whatsapp_chat_id')
     if not chat_id: return
     
     # Apply Quality Filter
-    target_quality = config.get('whatsapp_quality', 'ELITE').upper()
+    if target_quality is None:
+        target_quality = config.get('whatsapp_quality', 'ELITE').upper()
+    else:
+        target_quality = target_quality.upper()
+        
     trade_quality = trade.get('signal_quality', 'STANDARD').upper()
     
     quality_map = {'ELITE': 3, 'STRONG': 2, 'STANDARD': 1, 'ALL': 0}
@@ -1001,6 +1017,13 @@ def send_whatsapp_alert(trade):
         return
 
     action = "🚀 BUY" if trade['type'] == 'LONG' else "🔻 SELL"
+    
+    # Strategy Alignment Info
+    agreeing = trade.get('agreeing_strategies', [])
+    alignment_text = ""
+    if len(agreeing) > 1:
+        alignment_text = f"\n🤝 *{len(agreeing)} Strategies Aligning:*\n- " + "\n- ".join(agreeing)
+        
     # Basic markdown for WhatsApp
     msg = f"""🔥 *[RBot Pro] TRADE ALERT*
 ━━━━━━━━━━━━━━━━━━━━
@@ -1009,7 +1032,7 @@ def send_whatsapp_alert(trade):
 📍 *Entry:* ${trade['entry']:.6f} ({trade.get('entry_type', 'MARKET').upper()})
 🛑 *SL:* ${trade['sl']:.6f}
 🎯 *TP:* ${trade['tp1']:.6f}
-🔍 *Reason:* {trade['reason']}
+🔍 *Reason:* {trade['reason']}{alignment_text}
 ━━━━━━━━━━━━━━━━━━━━
 *by RBot Pro — World's Best AI Bot!* 🏆"""
     
@@ -1183,12 +1206,16 @@ def run_session_analysis(sid, symbols, indicators, timeframes, min_conf, exchang
                             # INTELLIGENT ROUTING: 
                             # If source is a messenger, ONLY alert that messenger. 
                             # If source is WEB (None), alert BOTH.
+                            m_conf = messenger_configs.get(source_messenger or 'telegram', config)
+                            
                             if not source_messenger or source_messenger == 'telegram':
-                                eventlet.spawn(send_telegram_alert, signal_data)
+                                q = m_conf.get('telegram_quality', 'ELITE')
+                                eventlet.spawn(send_telegram_alert, signal_data, q)
                                 if source_messenger == 'telegram': signals_sent += 1
                                 
                             if not source_messenger or source_messenger == 'whatsapp':
-                                eventlet.spawn(send_whatsapp_alert, signal_data)
+                                q = m_conf.get('whatsapp_quality', 'ELITE')
+                                eventlet.spawn(send_whatsapp_alert, signal_data, q)
                                 if source_messenger == 'whatsapp': signals_sent += 1
                                 
                             eventlet.spawn(execute_auto_trade, signal_data, sid)
