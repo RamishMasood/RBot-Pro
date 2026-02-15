@@ -22,6 +22,7 @@ import json
 
 # Fix Windows Unicode encoding issues for emojis
 import copy
+import signal
 if sys.platform == 'win32':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
@@ -976,6 +977,7 @@ def send_telegram_alert(trade, target_quality=None):
     msg = f"""🔥 *[RBot Pro] TRADE ALERT*
 ━━━━━━━━━━━━━━━━━━━━
 🏢 *Exchange:* {trade.get('exchange', 'N/A')}
+🏅 *Quality:* {trade.get('signal_quality', 'STANDARD').upper()}
 📈 *Signal:* {action} {trade['symbol']} ({trade['timeframe']})
 📍 *Entry:* ${trade['entry']:.6f} ({entry_type_label})
 🛑 *SL:* ${trade['sl']:.6f}
@@ -1028,6 +1030,7 @@ def send_whatsapp_alert(trade, target_quality=None):
     msg = f"""🔥 *[RBot Pro] TRADE ALERT*
 ━━━━━━━━━━━━━━━━━━━━
 🏢 *Exchange:* {trade.get('exchange', 'N/A')}
+🏅 *Quality:* {trade.get('signal_quality', 'STANDARD').upper()}
 📈 *Signal:* {action} {trade['symbol']} ({trade['timeframe']})
 📍 *Entry:* ${trade['entry']:.6f} ({trade.get('entry_type', 'MARKET').upper()})
 🛑 *SL:* ${trade['sl']:.6f}
@@ -1782,6 +1785,7 @@ def handle_bot_logic(messenger, chat_id, raw_text, user="User"):
                 "📡 *Data Commands:*\n"
                 "• `/load top all` — Load high-volume coins\n\n"
                 "⚙️ *Settings Commands:*\n"
+                "• `/exchange [ex1,ex2]` — Select exchanges (e.g. binance,mexc)\n"
                 "• `/confidence [5-10]` — Set score threshold\n"
                 "• `/timeframe [tf]` — Set timeframes (e.g. 15m,1h)\n"
                 "• `/status` — View configuration\n"
@@ -1828,6 +1832,20 @@ def handle_bot_logic(messenger, chat_id, raw_text, user="User"):
                 return "📡 *Scanning ALL exchanges...* (Please wait ~8s)"
             return "❌ Exchange specific load coming soon. Use 'all'."
 
+        elif cmd == '/exchange':
+            if len(parts) < 2:
+                return "❌ Usage: /exchange binance,mexc,bitget..."
+            
+            ex_list = [e.strip().upper() for e in parts[1].split(',')]
+            valid_ex = ['MEXC', 'BINANCE', 'BYBIT', 'OKX', 'BITGET', 'KUCOIN', 'GATEIO', 'HTX']
+            filtered_ex = [ex for ex in ex_list if ex in valid_ex]
+            
+            if filtered_ex:
+                m_config['exchanges'] = filtered_ex
+                return f"⚙️ *Exchanges Set:* {', '.join(filtered_ex)}"
+            else:
+                return f"❌ No valid exchanges found. Use: {', '.join(valid_ex)}"
+
         elif cmd == '/confidence':
             if len(parts) < 2:
                 return "❌ Usage: /confidence [5-10]"
@@ -1855,16 +1873,27 @@ def handle_bot_logic(messenger, chat_id, raw_text, user="User"):
                 return f"❌ No valid timeframes found. Use: {', '.join(valid_tfs)}"
 
         elif cmd == '/status':
-            is_active = client_sessions.get('bot_run', {}).get('active', False)
-            status = "🟢 ACTIVE" if is_active else "⚪ IDLE"
-            q = m_config.get(f'{messenger}_quality')
+            sid = f'bot_{messenger}'
+            is_active = client_sessions.get(sid, {}).get('active', False)
+            status_label = "🟢 ACTIVE" if is_active else "⚪ IDLE"
+            
+            exchanges_str = ", ".join(m_config.get('exchanges', []))
+            timeframes_str = ", ".join(m_config.get('timeframes', []))
+            quality_str = m_config.get(f'{messenger}_quality', 'ELITE')
+            confidence_val = m_config.get('min_confidence', 5)
+            symbols_count = len(m_config.get('symbols', []))
+            
             return (
-                f"📊 *Bot Status ({messenger.capitalize()})*\n"
-                f"━━━━━━━━━━━━\n"
-                f"Status: {status}\n"
-                f"Quality Filter: {q}\n"
-                f"Min Confidence: {m_config.get('min_confidence')}\n"
-                f"Symbols Loaded: {len(m_config.get('symbols', []))}"
+                f"📊 *{messenger.upper()} BOT STATUS* 🤖\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"⚡ *Status:* {status_label}\n"
+                f"🏅 *Quality:* {quality_str}\n"
+                f"🎯 *Confidence:* {confidence_val}+ Score\n"
+                f"🏛️ *Exchanges:* {exchanges_str}\n"
+                f"⏱️ *Timeframes:* {timeframes_str}\n"
+                f"📡 *Symbols Loaded:* {symbols_count}\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"Use `/start` to see all commands."
             )
 
         elif cmd == '/stop':
@@ -1875,9 +1904,10 @@ def handle_bot_logic(messenger, chat_id, raw_text, user="User"):
             # Restore Factory Defaults for this messenger
             m_config['symbols'] = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT']
             m_config['timeframes'] = ['1m', '3m', '5m', '15m', '30m', '1h', '4h', '1d']
+            m_config['exchanges'] = ['MEXC', 'BINANCE', 'BYBIT', 'OKX', 'BITGET', 'KUCOIN', 'GATEIO', 'HTX']
             m_config['min_confidence'] = 5
             m_config[f'{messenger}_quality'] = 'ELITE'
-            return "✅ *Bot Reset to Defaults for this messenger.*"
+            return "✅ *Bot Reset to Defaults for this platform.*"
 
         return None
     except Exception as e:
@@ -2203,6 +2233,29 @@ if __name__ == '__main__':
     # Start Trade Tracking loop
     eventlet.spawn(trade_tracker.update_loop)
     
+    # Fast Exit Handler for Windows (Ctrl+C)
+    def fast_exit_handler(sig, frame):
+        print("\n🛑 Shutting down RBot Pro (Fast-Exit)...")
+        # Kill WhatsApp Bridge if running
+        try:
+            if whatsapp_state.get('bridge_process'):
+                proc = whatsapp_state['bridge_process']
+                if proc.poll() is None:
+                    if sys.platform == 'win32':
+                        subprocess.run(['taskkill', '/F', '/T', '/PID', str(proc.pid)], capture_output=True)
+                    else:
+                        proc.kill()
+        except: pass
+        
+        # Kill all other analysis processes
+        for sid in list(client_sessions.keys()):
+            kill_analysis_process(sid)
+            
+        print("✓ System offline.")
+        os._exit(0) # Force exit to avoid eventlet hub hangs on Windows
+
+    signal.signal(signal.SIGINT, fast_exit_handler)
+
     try:
         socketio.run(
             app,
