@@ -26,6 +26,13 @@ if sys.platform == 'win32':
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 import csv
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+# Robust global session for Telegram Connectivity
+tg_session = requests.Session()
+tg_retries = Retry(total=5, backoff_factor=1, status_forcelist=[500, 502, 503, 504])
+tg_session.mount('https://', HTTPAdapter(max_retries=tg_retries))
 
 # Import News Manager
 from news_manager import news_manager
@@ -34,6 +41,13 @@ from real_trader import RealTrader
 
 # Initialize Real Trader
 real_trader = RealTrader()
+
+# WhatsApp State
+whatsapp_state = {
+    'qr': None,
+    'status': 'DISCONNECTED',
+    'bridge_process': None
+}
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 app.config['SECRET_KEY'] = 'rbot-pro-analysis-ui-secret'
@@ -914,7 +928,10 @@ config = {
     'telegram_token': '',
     'telegram_chat_id': '',
     'telegram_quality': 'ELITE', # Filter: ELITE, STRONG, STANDARD, ALL
-    'telegram_enabled': True
+    'telegram_enabled': True,
+    'whatsapp_chat_id': '',
+    'whatsapp_enabled': True,
+    'whatsapp_quality': 'ELITE'
 }
 
 def send_telegram_alert(trade):
@@ -927,15 +944,13 @@ def send_telegram_alert(trade):
     target_quality = config.get('telegram_quality', 'ELITE').upper()
     trade_quality = trade.get('signal_quality', 'STANDARD').upper()
     
-    # Logical Hierarchy: ELITE > STRONG > STANDARD
+    # Logical Hierarchy: ELITE > STRONG > STANDARD > ALL
     quality_map = {'ELITE': 3, 'STRONG': 2, 'STANDARD': 1, 'ALL': 0}
     
     target_rank = quality_map.get(target_quality, 3)
     trade_rank = quality_map.get(trade_quality, 1)
     
     if trade_rank < target_rank:
-        # If user wants ELITE (3) and trade is STRONG (2), skip.
-        # If user wants STRONG (2) and trade is ELITE (3), allow.
         return
     
     action = "🚀 BUY" if trade['type'] == 'LONG' else "🔻 SELL"
@@ -961,6 +976,38 @@ def send_telegram_alert(trade):
         }, timeout=5)
     except Exception as e:
         print(f"Telegram error: {e}")
+
+def send_whatsapp_alert(trade):
+    """Send trade alert to WhatsApp if configured and meets quality filter"""
+    chat_id = config.get('whatsapp_chat_id')
+    if not chat_id: return
+    
+    # Apply Quality Filter
+    target_quality = config.get('whatsapp_quality', 'ELITE').upper()
+    trade_quality = trade.get('signal_quality', 'STANDARD').upper()
+    
+    quality_map = {'ELITE': 3, 'STRONG': 2, 'STANDARD': 1, 'ALL': 0}
+    target_rank = quality_map.get(target_quality, 3)
+    trade_rank = quality_map.get(trade_quality, 1)
+    
+    if trade_rank < target_rank:
+        return
+
+    action = "🚀 BUY" if trade['type'] == 'LONG' else "🔻 SELL"
+    # Basic markdown for WhatsApp
+    msg = f"""🔥 *[RBot Pro] TRADE ALERT*
+━━━━━━━━━━━━━━━━━━━━
+🏢 *Exchange:* {trade.get('exchange', 'N/A')}
+📈 *Signal:* {action} {trade['symbol']} ({trade['timeframe']})
+📍 *Entry:* ${trade['entry']:.6f} ({trade.get('entry_type', 'MARKET').upper()})
+🛑 *SL:* ${trade['sl']:.6f}
+🎯 *TP:* ${trade['tp1']:.6f}
+🔍 *Reason:* {trade['reason']}
+━━━━━━━━━━━━━━━━━━━━
+*by RBot Pro — World's Best AI Bot!* 🏆"""
+    
+    # Use the bridge helper
+    send_whatsapp_message(chat_id, msg)
 
 def execute_auto_trade(trade, sid=None):
     """Execute trade via RealTrader and notify client"""
@@ -1096,8 +1143,12 @@ def run_session_analysis(sid, symbols, indicators, timeframes, min_conf, exchang
                             # Only send Telegram/Auto-trade for NEW signals (not updates)
                             if track_status == 'NEW':
                                 # Forward to Telegram
-                                thread = threading.Thread(target=send_telegram_alert, args=(signal_data,), daemon=True)
-                                thread.start()
+                                thread_tg = threading.Thread(target=send_telegram_alert, args=(signal_data,), daemon=True)
+                                thread_tg.start()
+                                
+                                # Forward to WhatsApp
+                                thread_wa = threading.Thread(target=send_whatsapp_alert, args=(signal_data,), daemon=True)
+                                thread_wa.start()
                                 
                                 # Execute Auto-Trade
                                 thread_trade = threading.Thread(target=execute_auto_trade, args=(signal_data, sid), daemon=True)
@@ -1122,10 +1173,16 @@ def run_session_analysis(sid, symbols, indicators, timeframes, min_conf, exchang
              client_sessions[sid]['active'] = False
              client_sessions[sid]['process'] = None
              
-             if sid == 'telegram':
-                 chat_id = config.get('telegram_chat_id')
-                 if chat_id:
-                     send_tg_message(chat_id, "✅ *Analysis Completed*")
+             if sid == 'bot_run' or sid == 'telegram':
+                 # Notify Telegram
+                 tg_chat = config.get('telegram_chat_id')
+                 if tg_chat:
+                      send_tg_message(tg_chat, "✅ *Analysis Completed*")
+                 
+                 # Notify WhatsApp
+                 wa_chat = config.get('whatsapp_chat_id')
+                 if wa_chat:
+                      send_whatsapp_message(wa_chat, "✅ *Analysis Completed*")
 
     except Exception as e:
         error_msg = str(e)
@@ -1191,8 +1248,11 @@ def auto_run_analysis():
                         
                         # Telegram if NEW
                         if track_status == 'NEW':
-                            thread = threading.Thread(target=send_telegram_alert, args=(signal_data,), daemon=True)
-                            thread.start()
+                            thread_tg = threading.Thread(target=send_telegram_alert, args=(signal_data,), daemon=True)
+                            thread_tg.start()
+
+                            thread_wa = threading.Thread(target=send_whatsapp_alert, args=(signal_data,), daemon=True)
+                            thread_wa.start()
                             
                             # Execute Auto-Trade
                             thread_trade = threading.Thread(target=execute_auto_trade, args=(signal_data, None), daemon=True)
@@ -1257,6 +1317,10 @@ def update_config():
         config['telegram_token'] = data['telegram_token']
     if 'telegram_chat_id' in data:
         config['telegram_chat_id'] = data['telegram_chat_id']
+    if 'whatsapp_chat_id' in data:
+        config['whatsapp_chat_id'] = data['whatsapp_chat_id']
+    if 'whatsapp_quality' in data:
+        config['whatsapp_quality'] = data['whatsapp_quality']
     
     socketio.emit('config_updated', config, namespace='/')
     return jsonify({'status': 'ok', 'config': config})
@@ -1396,29 +1460,128 @@ def get_available_coins():
     final_list = sorted(list(all_coins_set))
     return jsonify({'coins': final_list})
 
+@app.route('/api/whatsapp/status', methods=['GET'])
+def get_whatsapp_status():
+    return jsonify({
+        'status': whatsapp_state['status'],
+        'qr': whatsapp_state['qr']
+    })
+
 # --- Telegram Bot Functionality (Internal Implementation) ---
 def send_tg_message(chat_id, text):
-    """Helper to send text messages to Telegram with Markdown support"""
+    """Helper to send text messages to Telegram with Markdown support and auto-retry"""
     token = config.get('telegram_token')
     if not token or not chat_id: return
+    
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    payload = {
+        "chat_id": chat_id, 
+        "text": text, 
+        "parse_mode": "Markdown",
+        "disable_web_page_preview": True
+    }
+    
+    # Try sending with internal retries for Windows-specific 10054 errors
+    for attempt in range(3):
+        try:
+            r = tg_session.post(url, json=payload, timeout=15)
+            if r.status_code == 200:
+                return True
+            else:
+                print(f"  ⚠ Telegram Send Error ({r.status_code}): {r.text}")
+                break
+        except Exception as e:
+            if "10054" in str(e) or "aborted" in str(e).lower():
+                time.sleep(1) # Back off briefly and retry
+                continue
+            print(f"  ⚠ Telegram Send Exception: {e}")
+            break
+    return False
+
+# --- WhatsApp Bot Functionality (Bridge Integration) ---
+def send_whatsapp_message(to, text):
+    """Helper to send messages via the Node.js WhatsApp Bridge"""
     try:
-        url = f"https://api.telegram.org/bot{token}/sendMessage"
-        payload = {
-            "chat_id": chat_id, 
-            "text": text, 
-            "parse_mode": "Markdown",
-            "disable_web_page_preview": True
-        }
-        r = requests.post(url, json=payload, timeout=12)
-        if r.status_code != 200:
-            print(f"  ⚠ Telegram Send Error ({r.status_code}): {r.text}")
+        # Use IPv4 127.0.0.1 explicitly to avoid Windows [Errno 11001] errors
+        url = 'http://127.0.0.1:3001/send'
+        payload = {'to': to, 'message': text}
+        r = requests.post(url, json=payload, timeout=10)
+        return r.status_code == 200
     except Exception as e:
-        print(f"  ⚠ Telegram Send Exception: {e}")
+        print(f"  ⚠ WhatsApp Send Error: {e}")
+        return False
+
+@app.route('/api/whatsapp/qr', methods=['POST'])
+def whatsapp_qr_update():
+    """Endpoint for Node.js bridge to send QR or Status"""
+    data = request.json
+    if 'qr' in data:
+        whatsapp_state['qr'] = data['qr']
+        whatsapp_state['status'] = 'SCAN_REQUIRED'
+        socketio.emit('whatsapp_qr', {'qr': data['qr']}, namespace='/')
+    if 'status' in data:
+        whatsapp_state['status'] = data['status']
+        if data['status'] == 'READY':
+            whatsapp_state['qr'] = None
+        socketio.emit('whatsapp_status', {'status': data['status']}, namespace='/')
+    return jsonify({'ok': True})
+
+@app.route('/api/whatsapp/message', methods=['POST'])
+def whatsapp_incoming_command():
+    """Endpoint for Node.js bridge to forward user commands"""
+    data = request.json
+    raw_text = data.get('text', '')
+    from_id = data.get('from', '')
+    
+    if not raw_text.startswith('/'):
+        # Auto-sync Chat ID if user just sends a message
+        if config.get('whatsapp_chat_id') != from_id:
+            config['whatsapp_chat_id'] = from_id
+            print(f"✅ WhatsApp Chat ID synced to: {from_id}")
+            socketio.emit('config_updated', config, namespace='/')
+        return jsonify({'reply': None})
+
+    # Standardize handling for both platforms
+    reply = handle_bot_logic('whatsapp', from_id, raw_text)
+    return jsonify({'reply': reply})
+
+def start_whatsapp_bridge():
+    """Launches the Node.js WhatsApp Bridge in the background"""
+    if whatsapp_state.get('bridge_process'):
+        if whatsapp_state['bridge_process'].poll() is None:
+            print("🟢 WhatsApp Bridge is already running.")
+            return
+
+    print("🚀 Launching WhatsApp Web Bridge (Node.js)...")
+    
+    if not os.path.exists('node_modules'):
+        print("❌ 'node_modules' missing. Please run: npm install")
+        return
+
+    try:
+        import shutil
+        node_path = shutil.which('node') or 'node'
+        
+        # Prevent window popup on Windows
+        startupinfo = None
+        if sys.platform == 'win32':
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            # startupinfo.wShowWindow = subprocess.SW_HIDE # SW_HIDE is 0
+
+        proc = subprocess.Popen([node_path, 'whatsapp_bridge.js'], 
+                               cwd=os.getcwd(), 
+                               shell=(sys.platform == 'win32'),
+                               startupinfo=startupinfo)
+        whatsapp_state['bridge_process'] = proc
+    except Exception as e:
+        print(f"❌ Failed to start WhatsApp Bridge: {e}")
 
 def telegram_worker_loop():
-    """Background thread to listen for Telegram commands (Synchronous Polling for Eventlet compatibility)"""
+    """Background thread to listen for Telegram commands with institutional session stability"""
     print("📡 Telegram Bot Listener started...")
     last_update_id = 0
+    
     while True:
         token = config.get('telegram_token')
         if not token:
@@ -1427,8 +1590,9 @@ def telegram_worker_loop():
             
         try:
             url = f"https://api.telegram.org/bot{token}/getUpdates"
-            params = {'offset': last_update_id + 1, 'timeout': 30}
-            r = requests.get(url, params=params, timeout=35)
+            params = {'offset': last_update_id + 1, 'timeout': 20} 
+            r = tg_session.get(url, params=params, timeout=25)
+            
             if r.status_code == 200:
                 data = r.json()
                 if data.get('ok'):
@@ -1437,193 +1601,203 @@ def telegram_worker_loop():
                         if 'message' in update and 'text' in update['message']:
                             handle_telegram_command(update['message'])
             elif r.status_code == 401:
-                # print("  ⚠ Telegram Token Invalid")
                 eventlet.sleep(60)
+            elif r.status_code >= 500:
+                eventlet.sleep(10)
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+            # Routine network blips handled by global session adapter and this loop
+            eventlet.sleep(5)
         except Exception as e:
-            print(f"Telegram Bot Error: {e}")
+            print(f"  ⚠ Telegram Polling Exception: {e}")
             eventlet.sleep(5)
         
-        eventlet.sleep(0.1)
+        eventlet.sleep(0.5)
 
 def handle_telegram_command(message):
-    """Process incoming Telegram commands with support for Groups (@botname)"""
+    """Process incoming Telegram commands"""
     try:
         raw_text = message.get('text', '').strip()
         if not raw_text.startswith('/'): return
         
         chat_id = str(message['chat']['id'])
-        chat_type = message['chat'].get('type', 'private')
-        user = message.get('from', {}).get('first_name', 'Unknown')
+        user = message.get('from', {}).get('first_name', 'User')
         
-        print(f"📩 Telegram [{chat_type}] from {user} ({chat_id}): {raw_text}")
-        
-        # Auto-sync chat_id (Always sync if it changes, especially for groups)
-        if config.get('telegram_chat_id') != chat_id:
-            config['telegram_chat_id'] = chat_id
-            print(f"✅ Telegram Chat ID synced to: {chat_id}")
-        
+        # Standardize handling
+        reply = handle_bot_logic('telegram', chat_id, raw_text, user)
+        if reply:
+            send_tg_message(chat_id, reply)
+            
+    except Exception as e:
+        print(f"❌ Error handling Telegram command: {e}")
+
+def handle_bot_logic(messenger, chat_id, raw_text, user="User"):
+    """Unified logic for Telegram and WhatsApp commands"""
+    try:
+        # Sync Chat IDs
+        if messenger == 'telegram':
+            if config.get('telegram_chat_id') != chat_id:
+                config['telegram_chat_id'] = chat_id
+                print(f"✅ Telegram Chat ID synced to: {chat_id}")
+        else:
+            if config.get('whatsapp_chat_id') != chat_id:
+                config['whatsapp_chat_id'] = chat_id
+                print(f"✅ WhatsApp Chat ID synced to: {chat_id}")
+                socketio.emit('config_updated', config, namespace='/')
+
         parts = raw_text.split()
-        if not parts: return
+        if not parts: return None
         
         full_cmd = parts[0].lower()
-        cmd = full_cmd.split('@')[0]
+        cmd = full_cmd.split('@')[0] # Remove bot name if present
         
         if cmd == '/start':
-            welcome = (
+            return (
                 "🔥 *RBot Pro — World's Best AI Trading Bot* 🏆\n"
                 "━━━━━━━━━━━━━━━━━━━━\n"
-                "Welcome to the official controller. Use the commands below to pilot your analysis:\n\n"
+                f"Welcome {user}! use these commands to pilot your analysis:\n\n"
                 "🚀 *Analysis Commands:*\n"
-                "• `/analyze elite` — Only the highest conviction signals (Score 9+)\n"
-                "• `/analyze strong` — Professional grade signals (Score 7+)\n"
-                "• `/analyze standard` — All detected signals (Score 5+)\n"
-                "• `/stop` — Immediately kill any active analysis\n\n"
+                "• `/analyze elite` — Highest conviction (Score 9+)\n"
+                "• `/analyze strong` — Professional grade (Score 7+)\n"
+                "• `/analyze standard` — Balanced signals (Score 5+)\n"
+                "• `/analyze all` — Every signal found\n"
+                "• `/stop` — Stop current analysis\n\n"
                 "📡 *Data Commands:*\n"
-                "• `/load top [exchange]` — Load top symbols (e.g. `/load top binance`)\n"
-                "• `/load top all` — Load high-volume coins from EVERY exchange\n\n"
+                "• `/load top all` — Load high-volume coins\n\n"
                 "⚙️ *Settings Commands:*\n"
-                "• `/confidence [5-10]` — Set score threshold (e.g. `/confidence 8`)\n"
-                "• `/timeframe [tf]` — Set timeframes (e.g. `/timeframe 15m`)\n"
-                "• `/status` — View current bot configuration and active status\n\n"
-                "• **Note:** Avoid trading during improtant news tie or high volatility because technical anlysis usually fails during the mentioned times.\n"
-                "━━━━━━━━━━━━━━━━━━━━\n"
-                "*Pilot Note:* Configure settings first, then run `/analyze`."
+                "• `/confidence [5-10]` — Set score threshold\n"
+                "• `/timeframe [tf]` — Set timeframes (e.g. 15m,1h)\n"
+                "• `/status` — View configuration\n"
+                "• `/reset` — Restore default settings\n"
+                "━━━━━━━━━━━━━━━━━━━━"
             )
-            send_tg_message(chat_id, welcome)
 
         elif cmd == '/analyze':
             quality = parts[1].lower() if len(parts) > 1 else 'elite'
             if quality not in ['elite', 'strong', 'standard', 'all']:
-                send_tg_message(chat_id, "❌ Invalid quality. Use: elite, strong, standard, all")
-                return
-                
-            qual_upper = 'STANDARD' if quality == 'all' else quality.upper()
-            config['telegram_quality'] = qual_upper
-            config['telegram_chat_id'] = chat_id # Ensure alerts go to THIS chat
-            send_tg_message(chat_id, f"🚀 *STARTING {qual_upper} ANALYSIS...*")
+                return "❌ Invalid quality. Use: elite, strong, standard, all"
             
-            # Trigger analysis using the 'telegram' session ID
-            start_telegram_analysis(chat_id)
+            qual_upper = quality.upper()
+            if messenger == 'telegram':
+                config['telegram_quality'] = qual_upper
+                config['telegram_chat_id'] = chat_id
+            else:
+                config['whatsapp_quality'] = qual_upper
+                config['whatsapp_chat_id'] = chat_id
+            
+            # Start Analysis
+            start_bot_analysis(chat_id, messenger)
+            return f"🚀 *STARTING {qual_upper} ANALYSIS...*"
 
         elif cmd == '/load':
             if len(parts) < 3 or parts[1].lower() != 'top':
-                send_tg_message(chat_id, "❌ Usage: /load top [exchange|all]")
-                return
+                return "❌ Usage: /load top [exchange|all]"
             
             target = parts[2].lower()
             if target == 'all':
-                send_tg_message(chat_id, "📡 *Scanning ALL exchanges for high-volume coins...* (This takes ~8 seconds)")
-                try:
-                    all_coins_set = {'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT'}
-                    exchanges_to_scan = ['MEXC', 'BINANCE', 'BYBIT', 'OKX', 'BITGET', 'KUCOIN', 'GATEIO', 'HTX']
-                    
-                    with ThreadPoolExecutor(max_workers=len(exchanges_to_scan)) as ex:
-                        fetch_map = {
-                            'MEXC': fetch_mexc_top, 'BINANCE': fetch_binance_top, 
-                            'BYBIT': fetch_bybit_top, 'BITGET': fetch_bitget_top,
-                            'OKX': fetch_okx_top, 'KUCOIN': fetch_kucoin_top,
-                            'GATEIO': fetch_gateio_top, 'HTX': fetch_htx_top
-                        }
-                        futures = {ex.submit(fetch_map[exch]): exch for exch in exchanges_to_scan}
-                        for fut in as_completed(futures):
-                            try:
-                                _, coins = fut.result()
-                                if coins: all_coins_set.update(coins)
-                            except: pass
-                    
-                    config['symbols'] = sorted(list(all_coins_set))
-                    config['telegram_chat_id'] = chat_id # Set target chat
-                    send_tg_message(chat_id, f"✅ *Full Market Loaded!* Found {len(config['symbols'])} unique high-volume coins across all exchanges.")
-                except Exception as e:
-                    send_tg_message(chat_id, f"❌ Error loading all coins: {e}")
-                return
-
-            exchange = target.upper()
-            send_tg_message(chat_id, f"📡 Loading top 200 coins from {exchange}...")
-            
-            try:
-                fetch_map = {
-                    'MEXC': fetch_mexc_top, 'BINANCE': fetch_binance_top, 
-                    'BYBIT': fetch_bybit_top, 'BITGET': fetch_bitget_top,
-                    'OKX': fetch_okx_top, 'KUCOIN': fetch_kucoin_top,
-                    'GATEIO': fetch_gateio_top, 'HTX': fetch_htx_top
-                }
-                if exchange not in fetch_map:
-                    send_tg_message(chat_id, f"❌ Invalid exchange: {exchange}")
-                    return
-                    
-                _, result = fetch_map[exchange]()
-                if result:
-                    config['symbols'] = sorted(list(result))
-                    config['telegram_chat_id'] = chat_id # Sync target
-                    send_tg_message(chat_id, f"✅ Loaded {len(result)} unique coins from {exchange}.\nYou can now start /analyze")
-                else:
-                    send_tg_message(chat_id, f"❌ Failed to load coins from {exchange}. API error or no symbols found.")
-            except Exception as e:
-                send_tg_message(chat_id, f"❌ Error loading coins: {e}")
+                # Trigger background loading
+                threading.Thread(target=sync_load_all_coins, args=(messenger, chat_id), daemon=True).start()
+                return "📡 *Scanning ALL exchanges...* (Please wait ~8s)"
+            return "❌ Exchange specific load coming soon. Use 'all'."
 
         elif cmd == '/confidence':
             if len(parts) < 2:
-                send_tg_message(chat_id, "❌ Usage: /confidence [5-10]")
-                return
+                return "❌ Usage: /confidence [5-10]"
             try:
                 val = int(parts[1])
                 if 1 <= val <= 10:
                     config['min_confidence'] = val
-                    send_tg_message(chat_id, f"⚙️ *Confidence Set:* Filtering for signals with score {val} and greater.")
+                    return f"⚙️ *Confidence Set:* Filtering for signals with score {val} and greater."
                 else:
-                    send_tg_message(chat_id, "❌ Please choose a score between 1 and 10.")
+                    return "❌ Please choose a score between 1 and 10."
             except:
-                send_tg_message(chat_id, "❌ Invalid number.")
+                return "❌ Invalid number."
 
         elif cmd == '/timeframe':
             if len(parts) < 2:
-                send_tg_message(chat_id, "❌ Usage: /timeframe [tf1,tf2...]")
-                return
+                return "❌ Usage: /timeframe [tf1,tf2...]"
             tfs = parts[1].replace(' ', '').split(',')
             valid_tfs = ['1m', '3m', '5m', '15m', '30m', '1h', '4h', '1d']
             filtered_tfs = [tf for tf in tfs if tf.lower() in valid_tfs]
             
             if filtered_tfs:
                 config['timeframes'] = filtered_tfs
-                send_tg_message(chat_id, f"⚙️ *Timeframes Set:* {', '.join(filtered_tfs)}")
+                return f"⚙️ *Timeframes Set:* {', '.join(filtered_tfs)}"
             else:
-                send_tg_message(chat_id, f"❌ No valid timeframes found. Use: {', '.join(valid_tfs)}")
-
-        elif cmd == '/stop':
-            stop_telegram_analysis()
-            send_tg_message(chat_id, "🛑 Analysis Stopped.")
+                return f"❌ No valid timeframes found. Use: {', '.join(valid_tfs)}"
 
         elif cmd == '/status':
-            is_active = client_sessions.get('telegram', {}).get('active', False)
+            is_active = client_sessions.get('bot_run', {}).get('active', False)
             status = "🟢 ACTIVE" if is_active else "⚪ IDLE"
-            msg = (
-                f"📊 *Bot Status*\n"
+            q = config.get('telegram_quality') if messenger == 'telegram' else config.get('whatsapp_quality')
+            return (
+                f"📊 *Bot Status ({messenger.capitalize()})*\n"
                 f"━━━━━━━━━━━━\n"
                 f"Status: {status}\n"
-                f"Quality: {config.get('telegram_quality')}\n"
-                f"Symbols: {len(config.get('symbols', []))}\n"
-                f"Exchanges: {', '.join(config.get('exchanges', []))}"
+                f"Quality Filter: {q}\n"
+                f"Target Symbols: {len(config.get('symbols', []))}"
             )
-            send_tg_message(chat_id, msg)
 
+        elif cmd == '/stop':
+            stop_bot_analysis()
+            return "🛑 Analysis Stopped."
+
+        elif cmd == '/reset':
+            # Restore Factory Defaults
+            config['symbols'] = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT']
+            config['timeframes'] = ['1m', '3m', '5m', '15m', '30m', '1h', '4h', '1d']
+            config['min_confidence'] = 5
+            config['telegram_quality'] = 'ELITE'
+            config['whatsapp_quality'] = 'ELITE'
+            socketio.emit('config_updated', config, namespace='/')
+            return "✅ *Bot Reset to Defaults.*\n(Symbols, Timeframes, Confidence, and Quality Filters restored)"
+
+        return None
     except Exception as e:
-        print(f"❌ Error handling Telegram command: {e}")
-        send_tg_message(chat_id, f"❌ Internal Error: {e}")
+        print(f"❌ Logic Error: {e}")
+        return f"❌ Error: {str(e)}"
 
-def start_telegram_analysis(chat_id):
-    """Launches analysis in a managed 'telegram' session"""
-    sid = 'telegram'
+def sync_load_all_coins(messenger, chat_id):
+    """Background task to fetch all coins and notify user"""
+    try:
+        all_coins_set = {'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT'}
+        exchanges_to_scan = ['MEXC', 'BINANCE', 'BYBIT', 'OKX', 'BITGET', 'KUCOIN', 'GATEIO', 'HTX']
+        
+        with ThreadPoolExecutor(max_workers=len(exchanges_to_scan)) as ex:
+            fetch_map = {
+                'MEXC': fetch_mexc_top, 'BINANCE': fetch_binance_top, 
+                'BYBIT': fetch_bybit_top, 'BITGET': fetch_bitget_top,
+                'OKX': fetch_okx_top, 'KUCOIN': fetch_kucoin_top,
+                'GATEIO': fetch_gateio_top, 'HTX': fetch_htx_top
+            }
+            futures = {ex.submit(fetch_map[exch]): exch for exch in exchanges_to_scan}
+            for fut in as_completed(futures):
+                try:
+                    _, coins = fut.result()
+                    if coins: all_coins_set.update(coins)
+                except: pass
+        
+        config['symbols'] = sorted(list(all_coins_set))
+        msg = f"✅ Loaded {len(config['symbols'])} symbols from all exchanges."
+        if messenger == 'telegram': send_tg_message(chat_id, msg)
+        else: send_whatsapp_message(chat_id, msg)
+    except Exception as e:
+        print(f"Error loading coins: {e}")
+
+def start_bot_analysis(chat_id, messenger):
+    """Launches analysis shared by bots"""
+    sid = 'bot_run'
     if sid in client_sessions and client_sessions[sid].get('active'):
-        stop_telegram_analysis()
-        eventlet.sleep(1) # Wait for cleanup
+        stop_bot_analysis()
+        eventlet.sleep(1)
         
     client_sessions[sid] = {'active': True, 'process': None}
     
     # Notify user that analysis is starting
-    send_tg_message(chat_id, "⏳ *Analysis in progress...*\nIt may take a few minutes depending on market conditions and loaded symbols.")
+    if messenger == 'telegram':
+        send_tg_message(chat_id, "⏳ *Analysis in progress...*\nIt may take a few minutes depending on market conditions and loaded symbols.")
+    else:
+        send_whatsapp_message(chat_id, "⏳ Analysis in progress...\nIt may take a few minutes depending on market conditions and loaded symbols.")
     
-    # Run in a separate thread so it doesn't block the command listener
     def run_analysis_task():
         run_session_analysis(
             sid, 
@@ -1637,18 +1811,21 @@ def start_telegram_analysis(chat_id):
     
     eventlet.spawn(run_analysis_task)
 
-def stop_telegram_analysis():
-    """Kills any active analysis process owned by the Telegram user"""
-    sid = 'telegram'
+def stop_bot_analysis():
+    """Kills any active analysis process owned by the bots"""
+    sid = 'bot_run'
     if sid in client_sessions:
         proc = client_sessions[sid].get('process')
         if proc:
             try:
                 import signal
-                os.kill(proc.pid, signal.SIGTERM)
-                client_sessions[sid]['active'] = False
-                client_sessions[sid]['process'] = None
+                if sys.platform == 'win32':
+                    os.kill(proc.pid, signal.CTRL_C_EVENT)
+                else:
+                    os.kill(proc.pid, signal.SIGTERM)
             except: pass
+        client_sessions[sid]['active'] = False
+        client_sessions[sid]['process'] = None
 
 # --- Helper fetchers for Telegram (extracted from get_available_coins) ---
 @socketio.on('connect', namespace='/')
@@ -1856,6 +2033,9 @@ if __name__ == '__main__':
 
     # Start Telegram Bot Listener
     eventlet.spawn(telegram_worker_loop)
+
+    # Start WhatsApp Web Bridge
+    start_whatsapp_bridge()
 
     # Apply initial scheduler config
     update_scheduler()

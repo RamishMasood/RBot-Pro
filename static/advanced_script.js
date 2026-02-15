@@ -1848,4 +1848,162 @@ function executeManualTrade(btn) {
 }
 
 // Initial fetch
-document.addEventListener('DOMContentLoaded', fetchTraderStatus);
+document.addEventListener('DOMContentLoaded', () => {
+    fetchTraderStatus();
+    checkWhatsAppStatus();
+});
+
+// ===== WhatsApp Bridge Logic =====
+
+function openWhatsAppSetup() {
+    document.getElementById('whatsappModal').style.display = 'block';
+    checkWhatsAppStatus();
+}
+
+function closeWhatsAppSetup() {
+    document.getElementById('whatsappModal').style.display = 'none';
+}
+
+function checkWhatsAppStatus() {
+    // Show loading initially
+    document.getElementById('wa-loading').style.display = 'block';
+    document.getElementById('wa-qr-container').style.display = 'none';
+    document.getElementById('wa-connected').style.display = 'none';
+    document.getElementById('wa-error').style.display = 'none';
+
+    fetch('/api/whatsapp/status')
+        .then(r => r.json())
+        .then(data => {
+            updateWhatsAppUI(data.status, data.qr);
+        })
+        .catch(e => {
+            console.error('WhatsApp status check failed', e);
+            document.getElementById('wa-loading').style.display = 'none';
+            document.getElementById('wa-error').style.display = 'block';
+        });
+}
+
+function updateWhatsAppUI(status, qr = null) {
+    document.getElementById('wa-loading').style.display = 'none';
+
+    const sidebarStatus = document.getElementById('whatsappStatusSidebar');
+
+    if (status === 'READY') {
+        document.getElementById('wa-connected').style.display = 'block';
+        document.getElementById('wa-qr-container').style.display = 'none';
+
+        if (sidebarStatus) {
+            sidebarStatus.innerHTML = '<span style="color:#25d366; font-weight:bold;">● Connected</span>';
+        }
+
+        // Load current config if available
+        fetch('/api/config')
+            .then(r => r.json())
+            .then(config => {
+                if (config.whatsapp_chat_id) {
+                    document.getElementById('waChatId').value = config.whatsapp_chat_id;
+                    document.getElementById('waChatId').style.color = '#fff';
+                }
+                if (config.whatsapp_quality) {
+                    document.getElementById('waQualitySelect').value = config.whatsapp_quality;
+                }
+            });
+
+    } else if (status === 'SCAN_REQUIRED' || qr) {
+        document.getElementById('wa-qr-container').style.display = 'block';
+        document.getElementById('wa-connected').style.display = 'none';
+
+        if (qr) {
+            const qrImg = document.getElementById('wa-qr-image');
+            qrImg.innerHTML = `<img src="${qr}" style="width: 256px; height: 256px;">`;
+        }
+
+        if (sidebarStatus) {
+            sidebarStatus.innerHTML = '<span style="color:#ffaa00;">● Scan Required</span>';
+        }
+    } else {
+        document.getElementById('wa-loading').style.display = 'block';
+        if (sidebarStatus) {
+            sidebarStatus.innerHTML = '<span style="color:#888;">● Initializing...</span>';
+        }
+    }
+}
+
+function updateWhatsAppConfig() {
+    const quality = document.getElementById('waQualitySelect').value;
+
+    fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            whatsapp_quality: quality
+        })
+    });
+}
+
+// Socket.IO Events for WhatsApp
+socket.on('whatsapp_qr', (data) => {
+    console.log('📱 WhatsApp QR Received');
+    updateWhatsAppUI('SCAN_REQUIRED', data.qr);
+});
+
+socket.on('whatsapp_status', (data) => {
+    console.log('📱 WhatsApp Status:', data.status);
+    updateWhatsAppUI(data.status);
+
+    // If it just became ready, update the chat ID input if we have one
+    if (status === 'READY') {
+        fetch('/api/config').then(r => r.json()).then(c => {
+            if (c.whatsapp_chat_id) document.getElementById('waChatId').value = c.whatsapp_chat_id;
+        });
+    }
+});
+
+// Auto-Sync Chat ID from Server-side update
+socket.on('config_updated', (config) => {
+    if (config.whatsapp_chat_id) {
+        const input = document.getElementById('waChatId');
+        if (input) {
+            input.value = config.whatsapp_chat_id;
+            input.style.color = '#fff';
+        }
+    }
+});
+// --- Telegram Local Storage Logic ---
+function updateTelegramConfig() {
+    const token = document.getElementById('tgToken').value;
+    const chatId = document.getElementById('tgChatId').value;
+
+    // Save to Local Storage only (Client-side)
+    localStorage.setItem('rbot_tg_token', token);
+    localStorage.setItem('rbot_tg_chat_id', chatId);
+
+    // Notify user (optional visual feedback)
+    console.log("Telegram credentials saved to browser storage.");
+
+    // Send to server ONLY for the active session (optional, if you want it to work immediately)
+    // The user requested: "code mein nahi save karna", implying persistence in file.
+    // However, for the bot to work, the server NEEDS these values in memory.
+    // We will emit them to update the CONFIG in memory, but the server won't write them to disk.
+    socket.emit('update_config', {
+        telegram_token: token,
+        telegram_chat_id: chatId
+    });
+}
+
+// Load Telegram Config on Startup
+document.addEventListener('DOMContentLoaded', () => {
+    const savedToken = localStorage.getItem('rbot_tg_token');
+    const savedChatId = localStorage.getItem('rbot_tg_chat_id');
+
+    if (savedToken) {
+        document.getElementById('tgToken').value = savedToken;
+        // Pushing to server so it knows about it immediately on refresh
+        socket.emit('update_config', { telegram_token: savedToken });
+    }
+
+    if (savedChatId) {
+        document.getElementById('tgChatId').value = savedChatId;
+        socket.emit('update_config', { telegram_chat_id: savedChatId });
+    }
+});

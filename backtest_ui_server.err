@@ -1,9 +1,0 @@
- * Running on all addresses (0.0.0.0)
-   WARNING: This is a development server. Do not use it in a production deployment.
- * Running on http://127.0.0.1:5100
- * Running on http://192.168.1.3:5100 (Press CTRL+C to quit)
-127.0.0.1 - - [15/Feb/2026 02:46:30] "GET / HTTP/1.1" 200 -
-127.0.0.1 - - [15/Feb/2026 02:46:30] "GET /favicon.ico HTTP/1.1" 404 -
-127.0.0.1 - - [15/Feb/2026 02:46:30] "GET /api/backtest/options HTTP/1.1" 200 -
-127.0.0.1 - - [15/Feb/2026 02:46:47] "POST /api/backtest/run HTTP/1.1" 200 -
-127.0.0.1 - - [15/Feb/2026 02:47:17] "POST /api/backtest/run HTTP/1.1" 200 -

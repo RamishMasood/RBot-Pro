@@ -321,6 +321,22 @@
                             Telegram.</p>
                     </div>
 
+                    <!-- WhatsApp Notifications -->
+                    <div class="sidebar-section" style="margin-top: 20px; border-color: #25d36655;">
+                        <h3 style="color: #25d366;">📱 Mobile Alerts (WhatsApp)</h3>
+                        <div class="config-group">
+                            <button class="btn btn-mini" onclick="openWhatsAppSetup()"
+                                style="width:100%; border:1px solid #25d36655; color: #25d366;">🟢 Setup WhatsApp (QR
+                                Scan)</button>
+                        </div>
+                        <div id="whatsappStatusSidebar"
+                            style="font-size:0.8em; color:#888; margin-top:5px; text-align:center;">
+                            Disconnected
+                        </div>
+                        <p style="font-size: 0.7em; color: #666; margin-top: 5px;">*Redirects signals to WhatsApp group
+                            or chat.</p>
+                    </div>
+
                     <!-- Auto-Run Settings -->
                     <div class="config-group row" style="margin-top: 20px;">
                         <label>🤖 Auto-Run Analysis</label>
@@ -685,6 +701,67 @@
     </div>
 
     <script src="{{ url_for('static', filename='advanced_script.js') }}?v=1739221305"></script>
+    <!-- WhatsApp Setup Modal -->
+    <div id="whatsappModal" class="modal">
+        <div class="modal-content" style="max-width: 450px;">
+            <div class="modal-header">
+                <div class="modal-info">
+                    <h2 style="color: #25d366;">🟢 WhatsApp Web Integration</h2>
+                    <p style="color:#aaa;">Scan QR to enable mobile alerts</p>
+                </div>
+                <button class="close-modal" onclick="closeWhatsAppSetup()">&times;</button>
+            </div>
+            <div class="modal-body" style="text-align: center; padding: 20px;">
+                <div id="wa-loading">
+                    <p>Initializing WhatsApp Bridge...</p>
+                    <div class="spinner"></div>
+                </div>
+
+                <div id="wa-qr-container" style="display: none;">
+                    <p style="margin-bottom: 15px; color: #ccc;">Scan this QR code with your WhatsApp app <br> (Linked
+                        Devices > Link a Device)</p>
+                    <div id="wa-qr-image"
+                        style="background: white; padding: 15px; display: inline-block; border-radius: 8px;">
+                        <!-- QR Image will be injected here -->
+                    </div>
+                </div>
+
+                <div id="wa-connected" style="display: none;">
+                    <div style="font-size: 3em; margin-bottom: 15px;">✅</div>
+                    <h3 style="color: #25d366;">WhatsApp Connected!</h3>
+                    <p id="wa-info" style="margin-top: 10px; color: #aaa;">Link is active. Signals will be forwarded.
+                    </p>
+
+                    <div class="config-group" style="margin-top: 20px; text-align: left;">
+                        <label>WhatsApp Quality Filter:</label>
+                        <select id="waQualitySelect" onchange="updateWhatsAppConfig()"
+                            style="width:100%; padding:8px; background:#111; border:1px solid #444; color:#fff;">
+                            <option value="ELITE">🏆 ELITE (Recommended)</option>
+                            <option value="STRONG">💪 STRONG</option>
+                            <option value="STANDARD">📊 ALL SIGNALS</option>
+                        </select>
+                    </div>
+                    <div class="config-group" style="margin-top: 15px; text-align: left;">
+                        <label>Target Chat ID (Auto-Synced):</label>
+                        <input type="text" id="waChatId" placeholder="Waiting for interaction..." readonly
+                            style="width:100%; padding:8px; background:#111; border:1px solid #444; color:#888;">
+                        <p style="font-size:0.75em; color:#666; margin-top:5px;">Send any message to the bot on WhatsApp
+                            to sync your Chat ID.</p>
+                    </div>
+                </div>
+
+                <div id="wa-error" style="display: none; color: #ff4444;">
+                    <p>Error connecting to WhatsApp Bridge.</p>
+                    <button class="btn btn-mini" onclick="checkWhatsAppStatus()"
+                        style="margin-top: 10px;">Retry</button>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-mini" onclick="closeWhatsAppSetup()" style="width: 100%;">Close Setup</button>
+            </div>
+        </div>
+    </div>
+
 </body>
 
 </html>

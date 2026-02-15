@@ -1,0 +1,28 @@
+{
+  "name": "rbot-pro",
+  "version": "1.0.0",
+  "description": "<p align=\"center\">\r   <img src=\"https://img.shields.io/badge/RBot%20Pro-v3.2-00ff00?style=for-the-badge&logo=bitcoin&logoColor=white&labelColor=0a0a0a\" alt=\"Version\" />\r   <img src=\"https://img.shields.io/badge/Indicators-52-00d4ff?style=for-the-badge&labelColor=0a0a0a\" alt=\"Indicators\" />\r   <img src=\"https://img.shields.io/badge/Strategies-55-ff3e3e?style=for-the-badge&labelColor=0a0a0a\" alt=\"Strategies\" />\r   <img src=\"https://img.shields.io/badge/Timeframes-8-ffaa00?style=for-the-badge&labelColor=0a0a0a\" alt=\"Timeframes\" />\r   <img src=\"https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white&labelColor=0a0a0a\" alt=\"Python\" />\r   <img src=\"https://img.shields.io/badge/License-Proprietary-888888?style=for-the-badge&labelColor=0a0a0a\" alt=\"License\" />\r </p>",
+  "main": "whatsapp_bridge.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RamishMasood/RBot-Pro.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/RamishMasood/RBot-Pro/issues"
+  },
+  "homepage": "https://github.com/RamishMasood/RBot-Pro#readme",
+  "dependencies": {
+    "axios": "^1.13.5",
+    "express": "^5.2.1",
+    "qrcode": "^1.5.4",
+    "qrcode-terminal": "^0.12.0",
+    "whatsapp-web.js": "^1.34.6"
+  }
+}
