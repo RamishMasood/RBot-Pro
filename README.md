@@ -1,7 +1,7 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/RBot%20Pro-v3.2-00ff00?style=for-the-badge&logo=bitcoin&logoColor=white&labelColor=0a0a0a" alt="Version" />
-  <img src="https://img.shields.io/badge/Indicators-52-00d4ff?style=for-the-badge&labelColor=0a0a0a" alt="Indicators" />
-  <img src="https://img.shields.io/badge/Strategies-55-ff3e3e?style=for-the-badge&labelColor=0a0a0a" alt="Strategies" />
+  <img src="https://img.shields.io/badge/RBot%20Pro-v4.0-00ff00?style=for-the-badge&logo=bitcoin&logoColor=white&labelColor=0a0a0a" alt="Version" />
+  <img src="https://img.shields.io/badge/Indicators-80+-00d4ff?style=for-the-badge&labelColor=0a0a0a" alt="Indicators" />
+  <img src="https://img.shields.io/badge/Strategies-85+-ff3e3e?style=for-the-badge&labelColor=0a0a0a" alt="Strategies" />
   <img src="https://img.shields.io/badge/Timeframes-8-ffaa00?style=for-the-badge&labelColor=0a0a0a" alt="Timeframes" />
   <img src="https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white&labelColor=0a0a0a" alt="Python" />
   <img src="https://img.shields.io/badge/License-Proprietary-888888?style=for-the-badge&labelColor=0a0a0a" alt="License" />
@@ -11,7 +11,7 @@
 
 <p align="center">
   <b>The World's Most Advanced Real-Time Cryptocurrency Technical Analysis System</b><br/>
-    <i>52 Indicators · 55 Strategies · 8 Timeframes · 200+ Coins · 8 Exchanges Live Data</i>
+    <i>80+ Indicators · 85+ Strategies · 8 Timeframes · 200+ Coins · 8 Exchanges Live Data</i>
 </p>
 
 <p align="center">
@@ -30,8 +30,8 @@
 - [Overview](#-overview)
 - [Key Features](#-key-features)
 - [Live Trade Tracker](#-live-institutional-trade-tracker-new)
-- [Intelligence Suite (52)](#-elite-2026-intelligence-suite--52-indicators)
-- [Strategy Core (55)](#-proprietary-strategy-core--55-power-strategies)
+- [Intelligence Suite (80+)](#-elite-2026-intelligence-suite--80-indicators)
+- [Strategy Core (85+)](#-proprietary-strategy-core--85-power-strategies)
 - [Trade Engine](#-institutional-trade-engine-architecture)
 - [Installation](#-installation)
 - [Usage](#-usage)
@@ -47,7 +47,7 @@
 
 ## 🌟 Overview
 
-**RBot Pro** is a professional-grade, real-time cryptocurrency technical analysis and trading signal generation system. It connects directly to **8 major exchanges** (**MEXC, Binance, Bitget, Bybit, OKX, KuCoin, Gate.io, and HTX**), fetches live candlestick (kline) data, computes **52 advanced technical indicators** across **8 timeframes**, and runs **55 proprietary trading strategies** to identify high-confidence trade setups with precise entry, stop-loss, and take-profit levels.
+**RBot Pro** is a professional-grade, real-time cryptocurrency technical analysis and trading signal generation system. It connects directly to **8 major exchanges** (**MEXC, Binance, Bitget, Bybit, OKX, KuCoin, Gate.io, and HTX**), fetches live candlestick (kline) data, computes **80+ advanced technical indicators** across **8 timeframes**, and runs **85+ proprietary trading strategies** to identify high-confidence trade setups with precise entry, stop-loss, and take-profit levels.
 
 Fully automated quantitative analysis on **200+ coins simultaneously** in under 2 minutes, scanning for institutional-grade setups using Smart Money Concepts (SMC), ICT methodology, and classical technical analysis.
 
@@ -55,8 +55,8 @@ Fully automated quantitative analysis on **200+ coins simultaneously** in under 
 
 | Feature | RBot Pro | Typical Bots |
 |---------|----------|--------------|
-| Indicators | **52** | 5–10 |
-| Strategies | **55** | 1–3 |
+| Indicators | **80+** | 5–10 |
+| Strategies | **85+** | 1–3 |
 | Timeframes | **8** simultaneous | 1–2 |
 | Coins scanned | **200+** concurrent | 5–20 |
 | ICT / SMC concepts | ✅ Full support | ❌ None |
@@ -65,7 +65,7 @@ Fully automated quantitative analysis on **200+ coins simultaneously** in under 
 | Visual Analysis Charts | ✅ **Integrated TradingView** | ❌ Text-only / External |
 | Custom coin addition | ✅ Add any USDT pair | ❌ Fixed lists |
 | Data source | Live data from 8 Exchanges | Delayed / single source |
-| Codebase size | **4,100+ lines** of pure analysis logic | <500 lines |
+| Codebase size | **7,800+ lines** of pure analysis logic | <500 lines |
 | News & Sentiment | ✅ **Real-time Feed + AI Analysis** | ❌ None |
 | Volatility Protection | ✅ **Flash Crash Protection** | ❌ None |
 | Signal Intelligence | ✅ **Deduplication & Anti-Conflict** | ❌ None |
@@ -107,9 +107,9 @@ Fully automated quantitative analysis on **200+ coins simultaneously** in under 
 
 ---
 
-## 📊 Elite 2026 Intelligence Suite — 57 Indicators
+## 📊 Elite 2026 Intelligence Suite — 80+ Indicators
 
-RBot Pro computes **57 technical indicators** on every timeframe for every coin. Each indicator is implemented from scratch with high-performance mathematical optimizations.
+RBot Pro computes **80+ technical indicators** on every timeframe for every coin. Each indicator is implemented from scratch with high-performance mathematical optimizations.
 
 ### 🔝 Primary Analysis Suite
 | Indicator | Type | Purpose |
@@ -131,17 +131,17 @@ RBot Pro computes **57 technical indicators** on every timeframe for every coin.
 - **ZLSMA** — Zero-lag SMA for ultra-fast crossovers.
 - **TSI** — Double-smoothed true strength momentum.
 
-### 🌍 World-Class Trend & Volatility
-- **Ichimoku (Full)** — Tenkan, Kijun, Senkou A/B Cloud.
-- **SuperTrend** — ATR-based trend direction overlay.
-- **Keltner / BB / Donchian** — Triple Volatility Channels.
-- **Hull Suite** — Low-lag trend tracking at high speeds.
-- **Darvas Boxes** — Institutional breakout range detection.
-- **Pivot Points** — Institutional Floor/HLC reversal levels.
+### 🌍 World-Class Trend & Volatility (NEW 2026)
+- **Mass Index & Coppock** — Long-term trend reversal sensors.
+- **KST & TRIX** — Multi-smoothed momentum oscillators.
+- **Elder Ray & Klinger** — Bull/Bear power and volume flow.
+- **Aroon & VHF** — Trend strength and efficiency filters.
+- **Murrey Math & Camarilla** — Institutional level prediction.
+- **PFE & RVI** — Fractal efficiency and vigor tracking.
 
 ---
 
-## 🎯 Proprietary Strategy Core — 60 Power Strategies
+## 🎯 Proprietary Strategy Core — 85+ Power Strategies
 
 Every signal is generated with **high-probability confluence (7+/10 score)** and precise multi-level targets.
 
@@ -150,7 +150,7 @@ Every signal is generated with **high-probability confluence (7+/10 score)** and
 - **ICT Silver Bullet** — Time-weighted kill-zone FVG setups.
 - **Wyckoff Spring/Upthrust** — Catching accumulation extremes.
 - **Smart Money Trap** — Reversing retail stop hunts.
-- **Liquidity Grab Pro** — Entering after market cleanouts.
+- **Liquidity Void Reentry** — Entering after market cleanouts.
 - **Harmonic Pro Scanner** — Bat, Gartley, and Deep Crab patterns.
 
 ### ⚡ Momentum & Scalping
@@ -161,13 +161,14 @@ Every signal is generated with **high-probability confluence (7+/10 score)** and
 - **VWAP Institutional** — Multi-day fair value deviations.
 - **Fisher Pivot Lead** — Predictive turning point sensor.
 
-### 📈 Modern Trend Following
+### 📈 Modern Trend Following (Adaptive Elite)
 - **Swing Trend Master** — Daily/4h trend alignment rider.
 - **MTF Trend Rider** — Triple timeframe confluence (1d+4h+1h).
 - **Gann Activator Bot** — Trend stabilization and riding.
 - **Vortex Trend Phase** — Identifying new market cycles.
 - **ADX Breakout Pro** — Volume-confirmed momentum bursts.
 - **Alligator Awake** — Williams-based trend birth signals.
+- **Mass Index Reversal** — Catching major trend shifts early.
 
 ---
 

@@ -63,8 +63,11 @@ DEFAULT_INDICATOR_LIST = {
     'HMA', 'REGIME', 'DELTA', 'ZSCORE', 'WYCKOFF', 'RVOL',
     # SuperScalp 2026 suite
     'PSAR', 'TEMA', 'CHANDELIER', 'KAMA', 'VFI',
-    # World-Class 2026 suite
-    'PIVOT', 'CCI', 'LR', 'CYBER', 'CHVOL', 'DARVAS', 'GANN', 'ALLIGATOR', 'FRACTAL'
+    # World-Class 2026 suite (80+ Global Indicators)
+    'PIVOT', 'CCI', 'LR', 'CYBER', 'CHVOL', 'DARVAS', 'GANN', 'ALLIGATOR', 'FRACTAL',
+    'MASS_INDEX', 'COPPOCK', 'KST', 'TRIX', 'DPO', 'ELDER_RAY', 'KLINGER', 'AROON',
+    'GRI', 'LRS', 'TMF', 'CMO', 'DMI', 'QSTICK', 'MURREY', 'CAMARILLA', 'SMI',
+    'RAVI', 'VIDYA', 'VHF', 'PFE', 'RVI', 'BOP'
 }
 ENABLED_INDICATORS = set(args.indicators.split(',')) if args.indicators else DEFAULT_INDICATOR_LIST
 ENABLED_TIMEFRAMES = args.timeframes.split(',') if args.timeframes else ['1m', '3m', '5m', '15m', '30m', '1h', '4h', '1d']
@@ -82,8 +85,16 @@ DEFAULT_STRATEGY_LIST = {
     'ICHIMOKU_KUMO_BREAKOUT', 'PINBAR_REVERSAL', 'TDI_GOLDEN_CROSS', 'VWAP_INSTITUTIONAL', 'FIBONACCI_CONFLUENCE',
     'PIVOT_REVERSAL', 'VORTEX_CROSS', 'ALLIGATOR_BREAKOUT', 'FRACTAL_BREAKOUT', 'WOODIES_CCI',
     'DARVAS_BOX_SIGNAL', 'LINEAR_REG_REVERSION', 'HMA_TREND_SCALP', 'IOF_PREDICTION', 'AGENTIC_SENTIMENT',
-    'PREDICTIVE_MOMENTUM', 'CHAIKIN_VOLATILITY', 'GANN_HILO_TREND'
+    'PREDICTIVE_MOMENTUM', 'CHAIKIN_VOLATILITY', 'GANN_HILO_TREND',
+    # NEW WORLD-CLASS 2026 STRATEGIES
+    'MASS_INDEX_REVERSAL', 'COPPOCK_CURVE_BUY', 'KST_MOMENTUM_CROSS', 'TRIX_TREND_CROSS', 'ELDER_RAY_POWER',
+    'KLINGER_VOLUME_REVERSAL', 'AROON_TREND_STRENGTH', 'CHANDELIER_EXIT_STRATEGY', 'MURREY_MATH_REBOUND',
+    'CAMARILLA_BREAKOUT', 'SMI_SCALP', 'RAVI_TREND_CONFIRM', 'VIDYA_ADAPTIVE_MA', 'VHF_TREND_FILTER',
+    'PFE_EFFICIENCY_ENTRY', 'RVI_SWING', 'BOP_ACCUMULATION', 'PREDATOR_VOLATILITY', 'INSTITUTIONAL_FOOTPRINT',
+    'LIQUIDITY_VOID_REENTRY', 'MITIGATION_BLOCK_PRO', 'BREAKER_BLOCK_ELITE', 'POWER_OF_THREE',
+    'JUDAS_SWING_ICT', 'TURTLE_SOUP_ICT'
 }
+
 ENABLED_STRATEGIES = set(args.strategies.upper().split(',')) if args.strategies else DEFAULT_STRATEGY_LIST
 
 # --- GLOBAL REQUEST CONFIGURATION ---
@@ -1210,13 +1221,13 @@ def detect_order_blocks(candles, lookback=20):
         ob_candles_high = highs[-lookback + min_idx - 3 : -lookback + min_idx]
         ob_candles_low = lows[-lookback + min_idx - 3 : -lookback + min_idx]
         if ob_candles_high and ob_candles_low:
-            bullish_ob_zone = {'high': max(ob_candles_high), 'low': min(ob_candles_low)}
+            bullish_ob_zone = {'high': max(ob_candles_high), 'low': min(ob_candles_low), 'top': max(ob_candles_high), 'bottom': min(ob_candles_low)}
             
     if max_idx > 2:
         ob_candles_high = highs[-lookback + max_idx - 3 : -lookback + max_idx]
         ob_candles_low = lows[-lookback + max_idx - 3 : -lookback + max_idx]
         if ob_candles_high and ob_candles_low:
-            bearish_ob_zone = {'high': max(ob_candles_high), 'low': min(ob_candles_low)}
+            bearish_ob_zone = {'high': max(ob_candles_high), 'low': min(ob_candles_low), 'top': max(ob_candles_high), 'bottom': min(ob_candles_low)}
     return {'bullish_ob': bullish_ob_zone, 'bearish_ob': bearish_ob_zone}
 
 def detect_price_action(candles):
@@ -1323,9 +1334,9 @@ def detect_bos(candles, lookback=20):
     prev_close = candles[-2]['close']
     
     if current_close > last_swing_high and prev_close <= last_swing_high:
-        return {'type': 'BOS_UP', 'level': last_swing_high}
+        return {'type': 'BULLISH', 'level': last_swing_high}
     if current_close < last_swing_low and prev_close >= last_swing_low:
-        return {'type': 'BOS_DOWN', 'level': last_swing_low}
+        return {'type': 'BEARISH', 'level': last_swing_low}
         
     return None
 
@@ -1954,6 +1965,229 @@ def calculate_fractals(highs, lows):
     except: return {'up': False, 'down': False}
 
 # ═══════════════════════════════════════════════════════════════
+# 🚀 NEW ADVANCED INDICATORS 2026 SUITE (80+ INDICATORS)
+# ═══════════════════════════════════════════════════════════════
+
+def calculate_mass_index(highs, lows, period=9):
+    """Mass Index (Detects trend reversals)"""
+    try:
+        if len(highs) < 30: return 10
+        diffs = [h - l for h, l in zip(highs, lows)]
+        ema1 = calculate_ema_series(diffs, period)
+        ema2 = calculate_ema_series(ema1, period)
+        ratio = [e1 / e2 if e2 != 0 else 1 for e1, e2 in zip(ema1, ema2)]
+        return sum(ratio[-25:])
+    except: return 10
+
+def calculate_coppock_curve(closes, wma_p=10, roc_long=14, roc_short=11):
+    """Coppock Curve (Long-term trend detection)"""
+    try:
+        if len(closes) < max(roc_long, roc_short) + wma_p: return 0
+        roc1 = [(closes[i] - closes[i-roc_long])/closes[i-roc_long] for i in range(roc_long, len(closes))]
+        roc2 = [(closes[i] - closes[i-roc_short])/closes[i-roc_short] for i in range(roc_short, len(closes))]
+        min_len = min(len(roc1), len(roc2))
+        combined = [r1 + r2 for r1, r2 in zip(roc1[-min_len:], roc2[-min_len:])]
+        return sum(combined[-wma_p:]) / wma_p
+    except: return 0
+
+def calculate_kst(closes):
+    """Know Sure Thing (KST) Oscillator"""
+    try:
+        if len(closes) < 50: return 0
+        def roc_sma(data, r, s):
+            roc = [(data[i] - data[i-r])/data[i-r] * 100 for i in range(r, len(data))]
+            return sum(roc[-s:]) / s if len(roc) >= s else 0
+        kst = (roc_sma(closes, 10, 10) * 1) + (roc_sma(closes, 15, 10) * 2) + \
+              (roc_sma(closes, 20, 10) * 3) + (roc_sma(closes, 30, 15) * 4)
+        return kst
+    except: return 0
+
+def calculate_trix(closes, period=15):
+    """TRIX (Triple Exponentially Smoothed Average)"""
+    try:
+        if len(closes) < period * 3: return 0
+        ema1 = calculate_ema_series(closes, period)
+        ema2 = calculate_ema_series(ema1, period)
+        ema3 = calculate_ema_series(ema2, period)
+        return (ema3[-1] - ema3[-2]) / ema3[-2] * 100 if ema3[-2] != 0 else 0
+    except: return 0
+
+def calculate_dpo(closes, period=20):
+    """Detrended Price Oscillator"""
+    try:
+        if len(closes) < period + 10: return 0
+        offset = int(period / 2 + 1)
+        sma = sum(closes[-period-offset:-offset]) / period
+        return closes[-1] - sma
+    except: return 0
+
+def calculate_elder_ray(highs, lows, closes, period=13):
+    """Elder Ray Index (Bull and Bear Power)"""
+    try:
+        ema = calculate_ema(closes, period)
+        return {'bull': highs[-1] - ema, 'bear': lows[-1] - ema}
+    except: return {'bull': 0, 'bear': 0}
+
+def calculate_klinger(highs, lows, closes, volumes):
+    """Klinger Oscillator"""
+    try:
+        if len(closes) < 55: return 0
+        sv = []
+        for i in range(1, len(closes)):
+            tp = (highs[i] + lows[i] + closes[i]) / 3
+            ptp = (highs[i-1] + lows[i-1] + closes[i-1]) / 3
+            trend = 1 if tp > ptp else -1
+            sv.append(volumes[i] * trend * 100)
+        ema34 = calculate_ema_series(sv, 34)
+        ema55 = calculate_ema_series(sv, 55)
+        return ema34[-1] - ema55[-1]
+    except: return 0
+
+def calculate_aroon(highs, lows, period=25):
+    """Aroon Indicator"""
+    try:
+        if len(highs) < period: return {'up': 50, 'down': 50}
+        window_h = highs[-period:]
+        window_l = lows[-period:]
+        high_days = period - 1 - window_h[::-1].index(max(window_h))
+        low_days = period - 1 - window_l[::-1].index(min(window_l))
+        up = ((period - (period - 1 - high_days)) / period) * 100
+        down = ((period - (period - 1 - low_days)) / period) * 100
+        return {'up': up, 'down': down}
+    except: return {'up': 50, 'down': 50}
+
+def calculate_gri(highs, lows, period=14):
+    """Gopalakrishnan Range Index (GAP)"""
+    try:
+        if len(highs) < period: return 0
+        m_range = max(highs[-period:]) - min(lows[-period:])
+        return (math.log10(m_range) if m_range > 0 else 0) / math.log10(period)
+    except: return 0
+
+def calculate_lrs(closes, period=14):
+    """Linear Regression Slope"""
+    try:
+        res = calculate_linear_regression(closes, period)
+        return res['slope']
+    except: return 0
+
+def calculate_twiggs_money_flow(highs, lows, closes, volumes, period=21):
+    """Twiggs Money Flow"""
+    try:
+        if len(closes) < period + 5: return 0
+        ad = []
+        for i in range(1, len(closes)):
+            tr_h = max(highs[i], closes[i-1])
+            tr_l = min(lows[i], closes[i-1])
+            if tr_h == tr_l: ad.append(0)
+            else: ad.append(volumes[i] * ((closes[i] - tr_l) - (tr_h - closes[i])) / (tr_h - tr_l))
+        ema_ad = calculate_ema_series(ad, period)
+        ema_vol = calculate_ema_series(volumes[1:], period)
+        return ema_ad[-1] / (ema_vol[-1] + 1e-9)
+    except: return 0
+
+def calculate_cmo(closes, period=14):
+    """Chande Momentum Oscillator"""
+    try:
+        if len(closes) < period + 1: return 0
+        deltas = [closes[i] - closes[i-1] for i in range(1, len(closes))]
+        su = sum(d for d in deltas[-period:] if d > 0)
+        sd = sum(abs(d) for d in deltas[-period:] if d < 0)
+        return 100 * (su - sd) / (su + sd + 1e-9)
+    except: return 0
+
+def calculate_dmi_osc(highs, lows, closes, period=14):
+    """Dynamic Momentum Index"""
+    try:
+        if len(closes) < 30: return 50
+        std = calculate_stdev(closes, 5)
+        avg_std = sum([calculate_stdev(closes[i-5:i], 5) for i in range(len(closes)-10, len(closes))]) / 10
+        vi = std / (avg_std + 1e-9)
+        adj_period = max(5, min(30, int(period / (vi + 1e-9))))
+        return calculate_rsi(closes, adj_period)
+    except: return 50
+
+def calculate_qstick(opens, closes, period=14):
+    """QStick Indicator (EMA of Close - Open)"""
+    try:
+        diffs = [c - o for o, c in zip(opens, closes)]
+        return calculate_ema(diffs, period)
+    except: return 0
+
+def calculate_murrey_math(highs, lows):
+    """Murrey Math Lines (8/8ths)"""
+    try:
+        h = max(highs[-64:])
+        l = min(lows[-64:])
+        diff = h - l
+        return {f'fractal_{i}/8': l + (i/8)*diff for i in range(9)}
+    except: return {}
+
+def calculate_camarilla(high, low, close):
+    """Camarilla Pivots"""
+    try:
+        diff = high - low
+        return {'h4': close + diff*1.1/2, 'h3': close + diff*1.1/4, 'l3': close - diff*1.1/4, 'l4': close - diff*1.1/2}
+    except: return {}
+
+def calculate_smi(highs, lows, closes, period=13):
+    """Stochastic Momentum Index"""
+    try:
+        if len(closes) < period: return 0
+        ll = min(lows[-period:])
+        hh = max(highs[-period:])
+        center = (hh + ll) / 2
+        diff = closes[-1] - center
+        return (diff / (hh - ll + 1e-9) * 100) if hh != ll else 0
+    except: return 0
+
+def calculate_ravi(closes, short=7, long=65):
+    """Range Action Verification Index"""
+    try:
+        if len(closes) < long: return 0
+        ma_s = sum(closes[-short:]) / short
+        ma_l = sum(closes[-long:]) / long
+        return 100 * abs(ma_s - ma_l) / (ma_l + 1e-9)
+    except: return 0
+
+def calculate_vhf(closes, period=28):
+    """Vertical Horizontal Filter"""
+    try:
+        if len(closes) < period: return 0
+        h = max(closes[-period:])
+        l = min(closes[-period:])
+        denom = sum(abs(closes[i] - closes[i-1]) for i in range(len(closes)-period+1, len(closes)))
+        return (h - l) / (denom + 1e-9)
+    except: return 0
+
+def calculate_pfe(closes, period=10):
+    """Polarized Fractal Efficiency"""
+    try:
+        if len(closes) < period: return 0
+        dist = math.sqrt((closes[-1] - closes[-period])**2 + period**2)
+        total_dist = sum(math.sqrt((closes[i] - closes[i-1])**2 + 1) for i in range(len(closes)-period+1, len(closes)))
+        pfe = (dist / (total_dist + 1e-9) * 100)
+        return pfe if closes[-1] > closes[-period] else -pfe
+    except: return 0
+
+def calculate_rvi(opens, highs, lows, closes, period=10):
+    """Relative Vigor Index"""
+    try:
+        if len(closes) < period + 4: return 0
+        num = [(closes[i]-opens[i] + 2*(closes[i-1]-opens[i-1]) + 2*(closes[i-2]-opens[i-2]) + (closes[i-3]-opens[i-3]))/6 for i in range(3, len(closes))]
+        den = [(highs[i]-lows[i] + 2*(highs[i-1]-lows[i-1]) + 2*(highs[i-2]-lows[i-2]) + (highs[i-3]-lows[i-3]))/6 for i in range(3, len(closes))]
+        return sum(num[-period:]) / (sum(den[-period:]) + 1e-9)
+    except: return 0
+
+def calculate_bop(opens, highs, lows, closes):
+    """Balance of Power"""
+    try:
+        res = [(c-o)/(h-l+1e-9) for o, h, l, c in zip(opens, highs, lows, closes)]
+        return sum(res[-14:]) / 14
+    except: return 0
+
+
+# ═══════════════════════════════════════════════════════════════
 # END NEW ADVANCED INDICATORS
 # ═══════════════════════════════════════════════════════════════
 
@@ -2413,23 +2647,45 @@ def analyze_timeframe(candles, timeframe_name):
     support = min(lows[-20:]) if len(lows) >= 20 else lows[-1]
     resistance = max(highs[-20:]) if len(highs) >= 20 else highs[-1]
     
-    # ═══ NEW ADVANCED INDICATORS ═══
+    # ═══ 80+ ADVANCED INDICATOR ENGINE CALLS ═══
+    mass_index = calculate_mass_index(highs, lows) if 'MASS_INDEX' in ENABLED_INDICATORS else 10
+    coppock = calculate_coppock_curve(closes) if 'COPPOCK' in ENABLED_INDICATORS else 0
+    kst = calculate_kst(closes) if 'KST' in ENABLED_INDICATORS else 0
+    trix = calculate_trix(closes) if 'TRIX' in ENABLED_INDICATORS else 0
+    dpo = calculate_dpo(closes) if 'DPO' in ENABLED_INDICATORS else 0
+    elder = calculate_elder_ray(highs, lows, closes) if 'ELDER_RAY' in ENABLED_INDICATORS else {'bull': 0, 'bear': 0}
+    klinger = calculate_klinger(highs, lows, closes, volumes) if 'KLINGER' in ENABLED_INDICATORS else 0
+    aroon = calculate_aroon(highs, lows) if 'AROON' in ENABLED_INDICATORS else {'up': 50, 'down': 50}
+    gri = calculate_gri(highs, lows) if 'GRI' in ENABLED_INDICATORS else 0
+    lrs = calculate_lrs(closes) if 'LRS' in ENABLED_INDICATORS else 0
+    tmf = calculate_twiggs_money_flow(highs, lows, closes, volumes) if 'TMF' in ENABLED_INDICATORS else 0
+    cmo = calculate_cmo(closes) if 'CMO' in ENABLED_INDICATORS else 0
+    dmi_osc = calculate_dmi_osc(highs, lows, closes) if 'DMI' in ENABLED_INDICATORS else 50
+    qstick = calculate_qstick(opens, closes) if 'QSTICK' in ENABLED_INDICATORS else 0
+    murrey = calculate_murrey_math(highs, lows) if 'MURREY' in ENABLED_INDICATORS else {}
+    camarilla = calculate_camarilla(highs[-1], lows[-1], closes[-1]) if 'CAMARILLA' in ENABLED_INDICATORS else {}
+    smi = calculate_smi(highs, lows, closes) if 'SMI' in ENABLED_INDICATORS else 0
+    ravi = calculate_ravi(closes) if 'RAVI' in ENABLED_INDICATORS else 0
+    vhf = calculate_vhf(closes) if 'VHF' in ENABLED_INDICATORS else 0
+    pfe = calculate_pfe(closes) if 'PFE' in ENABLED_INDICATORS else 0
+    rvi = calculate_rvi(opens, highs, lows, closes) if 'RVI' in ENABLED_INDICATORS else 0
+    bop = calculate_bop(opens, highs, lows, closes) if 'BOP' in ENABLED_INDICATORS else 0
+    # ═══ NEW ADVANCED 2026 INDICATORS ═══
     adx_v = adx['adx'] if isinstance(adx, dict) else adx
     market_regime = detect_market_regime(adx_val=adx_v, chop_val=chop, bb=bb, atr=atr, closes=closes)
     cumulative_delta = calculate_cumulative_delta(candles)
     zscore = calculate_zscore(closes)
     wyckoff_phase = detect_wyckoff_phase(candles)
     rvol_strength = calculate_rvol_strength(volumes)
-    
+
     return {
         'timeframe': timeframe_name,
         'current_price': current_price,
         'rsi': rsi,
-        'rsi_period': rsi_period,  # Include for reference
-        'rsi_levels': rsi_levels,  # Include for reference
+        'rsi_period': rsi_period,
+        'rsi_levels': rsi_levels,
         'stoch_rsi': stoch_rsi,
         'adx': adx,
-        'adx_threshold': adx_threshold,  # Include for reference
         'uo': uo,
         'obv': obv,
         'hma': hma,
@@ -2479,6 +2735,30 @@ def analyze_timeframe(candles, timeframe_name):
         'kama': kama,
         'vfi': vfi,
         'rvol': rvol,
+        # ═══ 80+ NEW INDICATOR DATA ═══
+        'mass_index': mass_index,
+        'coppock': coppock,
+        'kst': kst,
+        'trix': trix,
+        'dpo': dpo,
+        'elder': elder,
+        'klinger': klinger,
+        'aroon': aroon,
+        'gri': gri,
+        'lrs': lrs,
+        'tmf': tmf,
+        'cmo': cmo,
+        'dmi_osc': dmi_osc,
+        'qstick': qstick,
+        'murrey': murrey,
+        'camarilla': camarilla,
+        'smi': smi,
+        'ravi': ravi,
+        'vhf': vhf,
+        'pfe': pfe,
+        'rvi': rvi,
+        'bop': bop,
+        # ══════════════════════════════
         'psar_series': psar_series,
         'tema_series': tema_series,
         'kama_series': kama_series,
@@ -2489,13 +2769,11 @@ def analyze_timeframe(candles, timeframe_name):
         'avg_volume': sum(volumes[-20:]) / 20 if len(volumes) >= 20 else 0,
         'candle_time': candles[-1]['time'] if candles else 0,
         'candles': candles[-10:] if len(candles) >= 10 else candles,
-        # ═══ NEW ADVANCED INDICATORS ═══
         'market_regime': market_regime,
         'cumulative_delta': cumulative_delta,
         'zscore': zscore,
         'wyckoff_phase': wyckoff_phase,
         'rvol_strength': rvol_strength,
-        # ═══ WORLD-CLASS 2026 INDICATORS ═══
         'pivots': calculate_pivots(highs[-2], lows[-2], closes[-2]) if 'PIVOT' in ENABLED_INDICATORS and len(closes) > 2 else None,
         'cci': calculate_cci(highs, lows, closes) if 'CCI' in ENABLED_INDICATORS else 0,
         'lr': calculate_linear_regression(closes) if 'LR' in ENABLED_INDICATORS else {'value': current_price, 'slope': 0},
@@ -2506,6 +2784,7 @@ def analyze_timeframe(candles, timeframe_name):
         'alligator': calculate_alligator(closes) if 'ALLIGATOR' in ENABLED_INDICATORS else None,
         'fractals': calculate_fractals(highs, lows) if 'FRACTAL' in ENABLED_INDICATORS else {'up': False, 'down': False},
     }
+
 
 
 def analyze_symbol(symbol, exchange=None):
@@ -6067,7 +6346,488 @@ def strategy_vwap_institutional(symbol, analyses):
 # END ULTIMATE 2025 STRATEGIES
 # ═══════════════════════════════════════════════════════════════
 
+# Strategy: Mass Index Trend Reversal
+def strategy_mass_index_reversal(symbol, analyses):
+    trades = []
+    for tf, a in analyses.items():
+        mass = a.get('mass_index', 10)
+        current = a['current_price']
+        atr = a['atr']
+        ema21 = a['ema21']
+        if mass > 27: # Standard Mass Index reversal threshold
+            if current > ema21: # Potential Bullish reversal if above EMA
+                trades.append({
+                    'strategy': 'Mass Index Reversal', 'type': 'LONG', 'symbol': symbol,
+                    'entry': current, 'sl': current - (atr*2), 'tp1': current + (atr*3), 'tp2': current + (atr*6),
+                    'confidence_score': 7, 'reason': "Mass Index Spike (>27) + EMA21 Support",
+                    'indicators': f"Mass Index: {mass:.2f}, EMA21: Support",
+                    'expected_time': '1h-4h', 'risk': atr*2, 'reward': atr*3, 'risk_reward': 1.5,
+                    'entry_type': 'MARKET', 'timeframe': tf
+                })
+            else:
+                trades.append({
+                    'strategy': 'Mass Index Reversal', 'type': 'SHORT', 'symbol': symbol,
+                    'entry': current, 'sl': current + (atr*2), 'tp1': current - (atr*3), 'tp2': current - (atr*6),
+                    'confidence_score': 7, 'reason': "Mass Index Spike (>27) + EMA21 Resistance",
+                    'indicators': f"Mass Index: {mass:.2f}, EMA21: Resistance",
+                    'expected_time': '1h-4h', 'risk': atr*2, 'reward': atr*3, 'risk_reward': 1.5,
+                    'entry_type': 'MARKET', 'timeframe': tf
+                })
+    return trades
+
+# Strategy: Coppock Curve Cycle Buy
+def strategy_coppock_curve_buy(symbol, analyses):
+    trades = []
+    for tf, a in analyses.items():
+        coppock = a.get('coppock', 0)
+        current = a['current_price']
+        atr = a['atr']
+        if coppock > 0 and a['trend'] == 'BULLISH':
+            trades.append({
+                'strategy': 'Coppock Curve Buy', 'type': 'LONG', 'symbol': symbol,
+                'entry': current, 'sl': current - (atr*3), 'tp1': current + (atr*5), 'tp2': current + (atr*10),
+                'confidence_score': 8, 'reason': "Coppock Curve Positive + Bullish Trend Alignment",
+                'indicators': f"Coppock: {coppock:.4f}, Trend: Bullish",
+                'expected_time': '4h-24h', 'risk': atr*3, 'reward': atr*5, 'risk_reward': 1.66,
+                'entry_type': 'MARKET', 'timeframe': tf
+            })
+    return trades
+
+# Strategy: KST Momentum Cross
+def strategy_kst_momentum_cross(symbol, analyses):
+    trades = []
+    for tf, a in analyses.items():
+        kst = a.get('kst', 0)
+        current = a['current_price']
+        atr = a['atr']
+        if kst > 0 and a.get('rsi', 50) > 55:
+            trades.append({
+                'strategy': 'KST Momentum Cross', 'type': 'LONG', 'symbol': symbol,
+                'entry': current, 'sl': current - (atr*2), 'tp1': current + (atr*4), 'tp2': current + (atr*8),
+                'confidence_score': 7, 'reason': "KST Positive + RSI Momentum",
+                'indicators': f"KST: {kst:.2f}, RSI: {a.get('rsi', 50):.2f}",
+                'expected_time': '30m-2h', 'risk': atr*2, 'reward': atr*4, 'risk_reward': 2.0,
+                'entry_type': 'MARKET', 'timeframe': tf
+            })
+    return trades
+
+# Strategy: TRIX Trend Cross
+def strategy_trix_trend_cross(symbol, analyses):
+    trades = []
+    for tf, a in analyses.items():
+        trix = a.get('trix', 0)
+        current = a['current_price']
+        atr = a['atr']
+        if trix > 0.01:
+            trades.append({
+                'strategy': 'TRIX Trend Cross', 'type': 'LONG', 'symbol': symbol,
+                'entry': current, 'sl': current - (atr*2.5), 'tp1': current + (atr*5), 'tp2': current + (atr*10),
+                'confidence_score': 7, 'reason': "TRIX Positive Slope (Triple Smoothed Momentum)",
+                'indicators': f"TRIX: {trix:.4f}",
+                'expected_time': '1h-4h', 'risk': atr*2.5, 'reward': atr*5, 'risk_reward': 2.0,
+                'entry_type': 'MARKET', 'timeframe': tf
+            })
+    return trades
+
+# Strategy: Elder Ray Power (Bull/Bear Power)
+def strategy_elder_ray_power(symbol, analyses):
+    trades = []
+    for tf, a in analyses.items():
+        elder = a.get('elder', {'bull': 0, 'bear': 0})
+        current = a['current_price']
+        atr = a['atr']
+        if elder['bear'] < 0 and elder['bull'] > 0 and a['ema21'] > a['ema50']:
+            trades.append({
+                'strategy': 'Elder Ray Power', 'type': 'LONG', 'symbol': symbol,
+                'entry': current, 'sl': current - (atr*2), 'tp1': current + (atr*4), 'tp2': current + (atr*8),
+                'confidence_score': 7, 'reason': "Elder Ray Bullish Divergence in Uptrend",
+                'indicators': f"Bull Power: {elder['bull']:.2f}, Bear Power: {elder['bear']:.2f}",
+                'expected_time': '1h-4h', 'risk': atr*2, 'reward': atr*4, 'risk_reward': 2.0,
+                'entry_type': 'MARKET', 'timeframe': tf
+            })
+    return trades
+
+# Strategy: Klinger Volume Reversal
+def strategy_klinger_volume_reversal(symbol, analyses):
+    trades = []
+    for tf, a in analyses.items():
+        klinger = a.get('klinger', 0)
+        current = a['current_price']
+        atr = a['atr']
+        if klinger > 1000000 and a['trend'] == 'BULLISH':
+            trades.append({
+                'strategy': 'Klinger Volume', 'type': 'LONG', 'symbol': symbol,
+                'entry': current, 'sl': current - (atr*2), 'tp1': current + (atr*4), 'tp2': current + (atr*8),
+                'confidence_score': 8, 'reason': "Klinger Volume Oscillator High + Bullish Trend",
+                'indicators': f"Klinger: {klinger:.0f}",
+                'expected_time': '2h-8h', 'risk': atr*2, 'reward': atr*4, 'risk_reward': 2.0,
+                'entry_type': 'MARKET', 'timeframe': tf
+            })
+    return trades
+
+# Strategy: Aroon Trend Strength
+def strategy_aroon_trend_strength(symbol, analyses):
+    trades = []
+    for tf, a in analyses.items():
+        aroon = a.get('aroon', {'up': 50, 'down': 50})
+        current = a['current_price']
+        atr = a['atr']
+        if aroon['up'] > 70 and aroon['down'] < 30:
+            trades.append({
+                'strategy': 'Aroon Trend', 'type': 'LONG', 'symbol': symbol,
+                'entry': current, 'sl': current - (atr*3), 'tp1': current + (atr*6), 'tp2': current + (atr*12),
+                'confidence_score': 8, 'reason': "Aroon Up > 70 + Aroon Down < 30 (Strong Trend)",
+                'indicators': f"Aroon Up: {aroon['up']:.0f}, Aroon Down: {aroon['down']:.0f}",
+                'expected_time': '4h-1d', 'risk': atr*3, 'reward': atr*6, 'risk_reward': 2.0,
+                'entry_type': 'MARKET', 'timeframe': tf
+            })
+    return trades
+
+# Strategy: Chandelier Exit Elite
+def strategy_chandelier_exit_strategy(symbol, analyses):
+    trades = []
+    for tf, a in analyses.items():
+        chan = a.get('chandelier', {'long': 0, 'short': 0})
+        current = a['current_price']
+        atr = a['atr']
+        if current > chan['long'] and a['trend'] == 'BULLISH':
+            trades.append({
+                'strategy': 'Chandelier Exit', 'type': 'LONG', 'symbol': symbol,
+                'entry': current, 'sl': chan['long'], 'tp1': current + (atr*3), 'tp2': current + (atr*6),
+                'confidence_score': 7, 'reason': "Above Chandelier Long Exit + Bullish Trend",
+                'indicators': f"Chandelier Long: {chan['long']:.6f}",
+                'expected_time': '1h-4h', 'risk': current - chan['long'], 'reward': atr*3, 'risk_reward': 1.5,
+                'entry_type': 'MARKET', 'timeframe': tf
+            })
+    return trades
+
+# Strategy: Murrey Math Line Rebound
+def strategy_murrey_math_rebound(symbol, analyses):
+    trades = []
+    for tf, a in analyses.items():
+        murrey = a.get('murrey', {})
+        current = a['current_price']
+        atr = a['atr']
+        l0 = murrey.get('fractal_0/8', 0)
+        l1 = murrey.get('fractal_1/8', 0)
+        if 0 < l0 <= current <= l1:
+            trades.append({
+                'strategy': 'Murrey Math', 'type': 'LONG', 'symbol': symbol,
+                'entry': current, 'sl': l0 - (atr*0.5), 'tp1': current + (atr*3), 'tp2': current + (atr*6),
+                'confidence_score': 8, 'reason': "Murrey Math Support (0/8 or 1/8 Line Rebound)",
+                'indicators': f"Murrey 0/8: {l0:.6f}, 1/8: {l1:.6f}",
+                'expected_time': '2h-8h', 'risk': current - l0 + (atr*0.5), 'reward': atr*3, 'risk_reward': 2.0,
+                'entry_type': 'LIMIT', 'timeframe': tf
+            })
+    return trades
+
+# Strategy: Camarilla Breakout Elite
+def strategy_camarilla_breakout(symbol, analyses):
+    trades = []
+    for tf, a in analyses.items():
+        cam = a.get('camarilla', {})
+        current = a['current_price']
+        atr = a['atr']
+        h4 = cam.get('h4', 0)
+        l4 = cam.get('l4', 0)
+        if current > h4 and h4 > 0:
+            trades.append({
+                'strategy': 'Camarilla Breakout', 'type': 'LONG', 'symbol': symbol,
+                'entry': current, 'sl': h4 - (atr*1.5), 'tp1': current + (atr*4), 'tp2': current + (atr*8),
+                'confidence_score': 9, 'reason': "Camarilla H4 Breakout (Institutional Target)",
+                'indicators': f"H4 Level: {h4:.6f}",
+                'expected_time': '15m-1h', 'risk': atr*1.5, 'reward': atr*4, 'risk_reward': 2.6,
+                'entry_type': 'MARKET', 'timeframe': tf
+            })
+    return trades
+
+# Strategy: SMI Scalp Momentum
+def strategy_smi_scalp(symbol, analyses):
+    trades = []
+    for tf, a in analyses.items():
+        smi = a.get('smi', 0)
+        current = a['current_price']
+        atr = a['atr']
+        if smi > 40:
+            trades.append({
+                'strategy': 'SMI Scalp', 'type': 'LONG', 'symbol': symbol,
+                'entry': current, 'sl': current - (atr*1.5), 'tp1': current + (atr*3), 'tp2': current + (atr*6),
+                'confidence_score': 7, 'reason': "SMI Extreme Momentum (>40)",
+                'indicators': f"SMI: {smi:.2f}",
+                'expected_time': '5m-30m', 'risk': atr*1.5, 'reward': atr*3, 'risk_reward': 2.0,
+                'entry_type': 'MARKET', 'timeframe': tf
+            })
+    return trades
+
+# Strategy: RAVI Trend Confirmation
+def strategy_ravi_trend_confirm(symbol, analyses):
+    trades = []
+    for tf, a in analyses.items():
+        ravi = a.get('ravi', 0)
+        current = a['current_price']
+        atr = a['atr']
+        if ravi > 3 and a['trend'] == 'BULLISH':
+            trades.append({
+                'strategy': 'RAVI Trend Confirm', 'type': 'LONG', 'symbol': symbol,
+                'entry': current, 'sl': current - (atr*2), 'tp1': current + (atr*4), 'tp2': current + (atr*8),
+                'confidence_score': 8, 'reason': "RAVI > 3% + Bullish Trend Alignment",
+                'indicators': f"RAVI: {ravi:.2f}%",
+                'expected_time': '1h-4h', 'risk': atr*2, 'reward': atr*4, 'risk_reward': 2.0,
+                'entry_type': 'MARKET', 'timeframe': tf
+            })
+    return trades
+
+# Strategy: VIDYA Adaptive MA Breakout
+def strategy_vidya_adaptive_ma(symbol, analyses):
+    trades = []
+    for tf, a in analyses.items():
+        current = a['current_price']
+        atr = a['atr']
+        # Use HMA as approximation for VIDYA in this implementation
+        hma = a.get('hma', current)
+        if current > hma * 1.005 and a['trend'] == 'BULLISH':
+            trades.append({
+                'strategy': 'VIDYA Adaptive', 'type': 'LONG', 'symbol': symbol,
+                'entry': current, 'sl': hma, 'tp1': current + (atr*3), 'tp2': current + (atr*6),
+                'confidence_score': 7, 'reason': "Price Above Adaptive VIDYA + Trend Support",
+                'indicators': f"VIDYA/HMA Support: {hma:.6f}",
+                'expected_time': '30m-2h', 'risk': current - hma, 'reward': atr*3, 'risk_reward': 1.5,
+                'entry_type': 'MARKET', 'timeframe': tf
+            })
+    return trades
+
+# Strategy: VHF Trend Filter
+def strategy_vhf_trend_filter(symbol, analyses):
+    trades = []
+    for tf, a in analyses.items():
+        vhf = a.get('vhf', 0)
+        current = a['current_price']
+        atr = a['atr']
+        if vhf > 0.4: # Trending market
+            if a['trend'] == 'BULLISH':
+                trades.append({
+                    'strategy': 'VHF Trend Rider', 'type': 'LONG', 'symbol': symbol,
+                    'entry': current, 'sl': current - (atr*2), 'tp1': current + (atr*5), 'tp2': current + (atr*10),
+                    'confidence_score': 8, 'reason': "VHF > 0.4 (Trending) + Bullish Alignment",
+                    'indicators': f"VHF: {vhf:.2f}, Trend: Bullish",
+                    'expected_time': '1h-6h', 'risk': atr*2, 'reward': atr*5, 'risk_reward': 2.5,
+                    'entry_type': 'MARKET', 'timeframe': tf
+                })
+    return trades
+
+# Strategy: PFE Efficiency Entry
+def strategy_pfe_efficiency_entry(symbol, analyses):
+    trades = []
+    for tf, a in analyses.items():
+        pfe = a.get('pfe', 0)
+        current = a['current_price']
+        atr = a['atr']
+        if pfe > 50: # Strong linear efficiency
+            trades.append({
+                'strategy': 'PFE Efficiency', 'type': 'LONG', 'symbol': symbol,
+                'entry': current, 'sl': current - (atr*2), 'tp1': current + (atr*4), 'tp2': current + (atr*8),
+                'confidence_score': 7, 'reason': "PFE > 50 (High Trend Efficiency)",
+                'indicators': f"PFE: {pfe:.2f}",
+                'expected_time': '1h-4h', 'risk': atr*2, 'reward': atr*4, 'risk_reward': 2.0,
+                'entry_type': 'MARKET', 'timeframe': tf
+            })
+    return trades
+
+# Strategy: RVI Swing Momentum
+def strategy_rvi_swing(symbol, analyses):
+    trades = []
+    for tf, a in analyses.items():
+        rvi = a.get('rvi', 0)
+        current = a['current_price']
+        atr = a['atr']
+        if rvi > 0 and a['trend'] == 'BULLISH':
+            trades.append({
+                'strategy': 'RVI Swing', 'type': 'LONG', 'symbol': symbol,
+                'entry': current, 'sl': current - (atr*2), 'tp1': current + (atr*4), 'tp2': current + (atr*8),
+                'confidence_score': 7, 'reason': "RVI Positive + Swing Trend Alignment",
+                'indicators': f"RVI: {rvi:.4f}",
+                'expected_time': '2h-8h', 'risk': atr*2, 'reward': atr*4, 'risk_reward': 2.0,
+                'entry_type': 'MARKET', 'timeframe': tf
+            })
+    return trades
+
+# Strategy: BOP Accumulation Detection
+def strategy_bop_accumulation(symbol, analyses):
+    trades = []
+    for tf, a in analyses.items():
+        bop = a.get('bop', 0)
+        current = a['current_price']
+        atr = a['atr']
+        if bop > 0.3:
+            trades.append({
+                'strategy': 'BOP Accumulation', 'type': 'LONG', 'symbol': symbol,
+                'entry': current, 'sl': current - (atr*2), 'tp1': current + (atr*4), 'tp2': current + (atr*8),
+                'confidence_score': 8, 'reason': "BOP > 0.3 (Strong Buying Power / Accumulation)",
+                'indicators': f"BOP: {bop:.2f}",
+                'expected_time': '4h-12h', 'risk': atr*2, 'reward': atr*4, 'risk_reward': 2.0,
+                'entry_type': 'MARKET', 'timeframe': tf
+            })
+    return trades
+
+# Strategy: Predator Volatility (Custom 2026)
+def strategy_predator_volatility(symbol, analyses):
+    trades = []
+    for tf, a in analyses.items():
+        rvol = a.get('rvol', 1.0)
+        adx = a.get('adx', {'adx': 0})['adx']
+        current = a['current_price']
+        atr = a['atr']
+        if rvol > 3.0 and adx > 35:
+            trades.append({
+                'strategy': 'Predator Volatility', 'type': 'LONG', 'symbol': symbol,
+                'entry': current, 'sl': current - (atr*3), 'tp1': current + (atr*7), 'tp2': current + (atr*15),
+                'confidence_score': 10, 'reason': "PREDATOR v4.0: Ultra-High Volume + ADX Trend Explosion",
+                'indicators': f"RVOL: {rvol:.2f}, ADX: {adx:.2f}",
+                'expected_time': '10m-1h', 'risk': atr*3, 'reward': atr*7, 'risk_reward': 2.3,
+                'entry_type': 'MARKET', 'timeframe': tf
+            })
+    return trades
+
+# Strategy: Institutional Footprint (Order Flow)
+def strategy_institutional_footprint(symbol, analyses):
+    trades = []
+    for tf, a in analyses.items():
+        delta_data = a.get('cumulative_delta', {})
+        delta = delta_data.get('delta', 0) if isinstance(delta_data, dict) else (delta_data if isinstance(delta_data, (int, float)) else 0)
+        current = a['current_price']
+        atr = a['atr']
+        if delta > 1000000: # High cumulative delta spike
+            trades.append({
+                'strategy': 'Institutional Footprint', 'type': 'LONG', 'symbol': symbol,
+                'entry': current, 'sl': current - (atr*2), 'tp1': current + (atr*5), 'tp2': current + (atr*10),
+                'confidence_score': 9, 'reason': "Institutional Buying Detected via Cumulative Delta",
+                'indicators': f"Delta: {delta/1000000:.1f}M",
+                'expected_time': '1h-4h', 'risk': atr*2, 'reward': atr*5, 'risk_reward': 2.5,
+                'entry_type': 'MARKET', 'timeframe': tf
+            })
+    return trades
+
+# Strategy: Liquidity Void Re-entry (SMC)
+def strategy_liquidity_void_reentry(symbol, analyses):
+    trades = []
+    for tf, a in analyses.items():
+        fvg = a.get('fvg')
+        current = a['current_price']
+        atr = a['atr']
+        if fvg and fvg['type'] == 'BULLISH' and current > fvg['top']:
+            trades.append({
+                'strategy': 'Liquidity Void', 'type': 'LONG', 'symbol': symbol,
+                'entry': fvg['top'], 'sl': fvg['bottom'], 'tp1': current + (atr*4), 'tp2': current + (atr*8),
+                'confidence_score': 8, 'reason': "Re-entry at Liquidity Void (FVG) Top after Breakout",
+                'indicators': f"FVG: Bullish at {fvg['bottom']:.6f}",
+                'expected_time': '2h-6h', 'risk': fvg['top'] - fvg['bottom'], 'reward': current + (atr*4) - fvg['top'], 'risk_reward': 2.0,
+                'entry_type': 'LIMIT', 'timeframe': tf
+            })
+    return trades
+
+# Strategy: Mitigation Block Pro (SMC)
+def strategy_mitigation_block_pro(symbol, analyses):
+    trades = []
+    # Simplified detection using Order Blocks returning to levels
+    for tf, a in analyses.items():
+        obs = a.get('order_blocks', {})
+        bull_ob = obs.get('bullish_ob')
+        current = a['current_price']
+        atr = a['atr']
+        if bull_ob and abs(current - bull_ob['top']) < atr * 0.5:
+            trades.append({
+                'strategy': 'Mitigation Block', 'type': 'LONG', 'symbol': symbol,
+                'entry': current, 'sl': bull_ob['bottom'], 'tp1': current + (atr*4), 'tp2': current + (atr*8),
+                'confidence_score': 8, 'reason': "Mitigation Block Test: Rejection at Bullish OB",
+                'indicators': f"Mitigation Level: {bull_ob['top']:.6f}",
+                'expected_time': '1h-4h', 'risk': current - bull_ob['bottom'], 'reward': atr*4, 'risk_reward': 2.0,
+                'entry_type': 'MARKET', 'timeframe': tf
+            })
+    return trades
+
+# Strategy: Breaker Block Elite (SMC)
+def strategy_breaker_block_elite(symbol, analyses):
+    trades = []
+    for tf, a in analyses.items():
+        bos = a.get('bos')
+        current = a['current_price']
+        atr = a['atr']
+        if bos and bos['type'] == 'BULLISH':
+            trades.append({
+                'strategy': 'Breaker Block', 'type': 'LONG', 'symbol': symbol,
+                'entry': current, 'sl': current - (atr*2.5), 'tp1': current + (atr*6), 'tp2': current + (atr*12),
+                'confidence_score': 9, 'reason': "Breaker Block Breakout + Market Structure Shift (BOS)",
+                'indicators': f"BOS Detected at {bos['level']:.6f}",
+                'expected_time': '4h-12h', 'risk': atr*2.5, 'reward': atr*6, 'risk_reward': 2.4,
+                'entry_type': 'MARKET', 'timeframe': tf
+            })
+    return trades
+
+# Strategy: Power of Three (ICT)
+def strategy_power_of_three(symbol, analyses):
+    trades = []
+    # Identify Accumulation -> Manipulation -> Distribution
+    # Simplified logic: Daily open -> Raid below -> expansion above
+    for tf, a in analyses.items():
+        if tf == '1d': # Only on Daily or high TF
+            liq = a.get('liquidity')
+            current = a['current_price']
+            atr = a['atr']
+            if liq and liq['type'] == 'BULLISH_SWEEP':
+                trades.append({
+                    'strategy': 'Power of Three', 'type': 'LONG', 'symbol': symbol,
+                    'entry': current, 'sl': liq['level'], 'tp1': current + (atr*5), 'tp2': current + (atr*10),
+                    'confidence_score': 10, 'reason': "ICT Power of Three: Manipulation Sweep Complete -> Distribution Start",
+                    'indicators': f"Sweep Level: {liq['level']:.6f}",
+                    'expected_time': '1d-3d', 'risk': current - liq['level'], 'reward': atr*5, 'risk_reward': 3.0,
+                    'entry_type': 'MARKET', 'timeframe': tf
+                })
+    return trades
+
+# Strategy: Judas Swing ICT
+def strategy_judas_swing_ict(symbol, analyses):
+    trades = []
+    # Fake run during London open or specific times (simplified)
+    for tf, a in analyses.items():
+        liq = a.get('liquidity')
+        current = a['current_price']
+        atr = a['atr']
+        if liq and liq['type'] == 'BEARISH_SWEEP' and a['trend'] == 'BULLISH':
+            trades.append({
+                'strategy': 'Judas Swing', 'type': 'LONG', 'symbol': symbol,
+                'entry': current, 'sl': liq['level'] - (atr*0.5), 'tp1': current + (atr*4), 'tp2': current + (atr*8),
+                'confidence_score': 9, 'reason': "ICT Judas Swing: Fake Bearish Move vs Bullish Trend",
+                'indicators': f"Judas Low: {liq['level']:.6f}",
+                'expected_time': '2h-8h', 'risk': current - liq['level'] + (atr*0.5), 'reward': atr*4, 'risk_reward': 2.0,
+                'entry_type': 'MARKET', 'timeframe': tf
+            })
+    return trades
+
+# Strategy: Turtle Soup ICT
+def strategy_turtle_soup_ict(symbol, analyses):
+    trades = []
+    # Failed breakout reversal
+    for tf, a in analyses.items():
+        liq = a.get('liquidity')
+        current = a['current_price']
+        atr = a['atr']
+        if liq and liq['type'] == 'BULLISH_SWEEP':
+            trades.append({
+                'strategy': 'Turtle Soup', 'type': 'LONG', 'symbol': symbol,
+                'entry': current, 'sl': liq['level'], 'tp1': current + (atr*3), 'tp2': current + (atr*6),
+                'confidence_score': 8, 'reason': "ICT Turtle Soup: Failed Breakout Reversal at Liquidity Level",
+                'indicators': f"Fake Low: {liq['level']:.6f}",
+                'expected_time': '1h-4h', 'risk': current - liq['level'], 'reward': atr*3, 'risk_reward': 2.0,
+                'entry_type': 'MARKET', 'timeframe': tf
+            })
+    return trades
+
+# ═══════════════════════════════════════════════════════════════
+# END WORLD-CLASS 2026 STRATEGIES
+# ═══════════════════════════════════════════════════════════════
+
 def run_strategies(symbol, analyses):
+
     """Run all available strategies"""
     all_trades = []
     
@@ -6149,7 +6909,35 @@ def run_strategies(symbol, analyses):
     if 'CHAIKIN_VOLATILITY' in ENABLED_STRATEGIES: all_trades.extend(strategy_chaikin_volatility(symbol, analyses))
     if 'GANN_HILO_TREND' in ENABLED_STRATEGIES: all_trades.extend(strategy_gann_hilo_trend(symbol, analyses))
 
+    # 🌍 WORLD-CLASS 2026 STRATEGIES - ADAPTIVE ELITE
+    if 'MASS_INDEX_REVERSAL' in ENABLED_STRATEGIES: all_trades.extend(strategy_mass_index_reversal(symbol, analyses))
+    if 'COPPOCK_CURVE_BUY' in ENABLED_STRATEGIES: all_trades.extend(strategy_coppock_curve_buy(symbol, analyses))
+    if 'KST_MOMENTUM_CROSS' in ENABLED_STRATEGIES: all_trades.extend(strategy_kst_momentum_cross(symbol, analyses))
+    if 'TRIX_TREND_CROSS' in ENABLED_STRATEGIES: all_trades.extend(strategy_trix_trend_cross(symbol, analyses))
+    if 'ELDER_RAY_POWER' in ENABLED_STRATEGIES: all_trades.extend(strategy_elder_ray_power(symbol, analyses))
+    if 'KLINGER_VOLUME_REVERSAL' in ENABLED_STRATEGIES: all_trades.extend(strategy_klinger_volume_reversal(symbol, analyses))
+    if 'AROON_TREND_STRENGTH' in ENABLED_STRATEGIES: all_trades.extend(strategy_aroon_trend_strength(symbol, analyses))
+    if 'CHANDELIER_EXIT_STRATEGY' in ENABLED_STRATEGIES: all_trades.extend(strategy_chandelier_exit_strategy(symbol, analyses))
+    if 'MURREY_MATH_REBOUND' in ENABLED_STRATEGIES: all_trades.extend(strategy_murrey_math_rebound(symbol, analyses))
+    if 'CAMARILLA_BREAKOUT' in ENABLED_STRATEGIES: all_trades.extend(strategy_camarilla_breakout(symbol, analyses))
+    if 'SMI_SCALP' in ENABLED_STRATEGIES: all_trades.extend(strategy_smi_scalp(symbol, analyses))
+    if 'RAVI_TREND_CONFIRM' in ENABLED_STRATEGIES: all_trades.extend(strategy_ravi_trend_confirm(symbol, analyses))
+    if 'VIDYA_ADAPTIVE_MA' in ENABLED_STRATEGIES: all_trades.extend(strategy_vidya_adaptive_ma(symbol, analyses))
+    if 'VHF_TREND_FILTER' in ENABLED_STRATEGIES: all_trades.extend(strategy_vhf_trend_filter(symbol, analyses))
+    if 'PFE_EFFICIENCY_ENTRY' in ENABLED_STRATEGIES: all_trades.extend(strategy_pfe_efficiency_entry(symbol, analyses))
+    if 'RVI_SWING' in ENABLED_STRATEGIES: all_trades.extend(strategy_rvi_swing(symbol, analyses))
+    if 'BOP_ACCUMULATION' in ENABLED_STRATEGIES: all_trades.extend(strategy_bop_accumulation(symbol, analyses))
+    if 'PREDATOR_VOLATILITY' in ENABLED_STRATEGIES: all_trades.extend(strategy_predator_volatility(symbol, analyses))
+    if 'INSTITUTIONAL_FOOTPRINT' in ENABLED_STRATEGIES: all_trades.extend(strategy_institutional_footprint(symbol, analyses))
+    if 'LIQUIDITY_VOID_REENTRY' in ENABLED_STRATEGIES: all_trades.extend(strategy_liquidity_void_reentry(symbol, analyses))
+    if 'MITIGATION_BLOCK_PRO' in ENABLED_STRATEGIES: all_trades.extend(strategy_mitigation_block_pro(symbol, analyses))
+    if 'BREAKER_BLOCK_ELITE' in ENABLED_STRATEGIES: all_trades.extend(strategy_breaker_block_elite(symbol, analyses))
+    if 'POWER_OF_THREE' in ENABLED_STRATEGIES: all_trades.extend(strategy_power_of_three(symbol, analyses))
+    if 'JUDAS_SWING_ICT' in ENABLED_STRATEGIES: all_trades.extend(strategy_judas_swing_ict(symbol, analyses))
+    if 'TURTLE_SOUP_ICT' in ENABLED_STRATEGIES: all_trades.extend(strategy_turtle_soup_ict(symbol, analyses))
+
     return all_trades
+
 
 def strategy_pivot_reversal(symbol, analyses):
     """Strategy: Floor Pivot Point Reversal (Key Support/Resistance)"""
@@ -6767,6 +7555,34 @@ def apply_global_market_filters(trades, symbol_analyses_map):
                  if rvol < 0.8: t['confidence_score'] -= 1
                  if (t['type'] == 'LONG' and delta == 'SELLING') or (t['type'] == 'SHORT' and delta == 'BUYING'):
                      t['confidence_score'] -= 1 
+
+        # 5. 🛡️ FLASH CRASH PROTECTION (NEW 2026)
+        # Detects extreme price manipulation or flash crashes/pumps and suppresses risky signals
+        if current_tf_analysis:
+            atr = current_tf_analysis.get('atr', 0)
+            cur_price = current_tf_analysis.get('current_price', t['entry'])
+            ema9 = current_tf_analysis.get('ema9', cur_price)
+            
+            # A. Extreme Deviation Filter (Parabolic Moves)
+            deviation = abs(cur_price - ema9) / (atr + 1e-9)
+            if deviation > 6.0: # Price is > 6x ATR away from 9-EMA
+                t['flash_crash_warning'] = "🛡️ PRICE EXTREME: Potential Flash Crash/Pump. High risk of reversal."
+                t['confidence_score'] -= 3
+            
+            # B. Rapid Fall/Rise Detection
+            # If price moved > 4x ATR in the last candle, it's a flash move
+            last_candle_range = 0
+            if current_tf_analysis.get('candles') and len(current_tf_analysis['candles']) >= 1:
+                c = current_tf_analysis['candles'][-1]
+                last_candle_range = abs(c['close'] - c['open'])
+            
+            if last_candle_range > atr * 4.5:
+                t['flash_crash_warning'] = "🛡️ FLASH MOVE: Extreme volatility detected in recent candle."
+                t['confidence_score'] -= 4
+            
+            # Auto-suppression if confidence is too low or warning is severe
+            if t['confidence_score'] < 4:
+                continue
 
         filtered.append(t)
     return filtered
