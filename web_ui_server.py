@@ -1440,172 +1440,176 @@ def telegram_worker_loop():
                 # print("  ⚠ Telegram Token Invalid")
                 eventlet.sleep(60)
         except Exception as e:
-            # print(f"Telegram Bot Error: {e}")
+            print(f"Telegram Bot Error: {e}")
             eventlet.sleep(5)
         
         eventlet.sleep(0.1)
 
 def handle_telegram_command(message):
     """Process incoming Telegram commands with support for Groups (@botname)"""
-    raw_text = message.get('text', '').strip()
-    if not raw_text.startswith('/'): return
-    
-    chat_id = str(message['chat']['id'])
-    chat_type = message['chat'].get('type', 'private')
-    user = message.get('from', {}).get('first_name', 'Unknown')
-    
-    print(f"📩 Telegram [{chat_type}] from {user} ({chat_id}): {raw_text}")
-    
-    # Auto-sync chat_id (Always sync if it changes, especially for groups)
-    if config.get('telegram_chat_id') != chat_id:
-        config['telegram_chat_id'] = chat_id
-        print(f"✅ Telegram Chat ID synced to: {chat_id}")
-    
-    parts = raw_text.split()
-    if not parts: return
-    
-    full_cmd = parts[0].lower()
-    cmd = full_cmd.split('@')[0]
-    
-    if cmd == '/start':
-        welcome = (
-            "🔥 *RBot Pro — World's Best AI Trading Bot* 🏆\n"
-            "━━━━━━━━━━━━━━━━━━━━\n"
-            "Welcome to the official controller. Use the commands below to pilot your analysis:\n\n"
-            "🚀 *Analysis Commands:*\n"
-            "• `/analyze elite` — Only the highest conviction signals (Score 9+)\n"
-            "• `/analyze strong` — Professional grade signals (Score 7+)\n"
-            "• `/analyze standard` — All detected signals (Score 5+)\n"
-            "• `/stop` — Immediately kill any active analysis\n\n"
-            "📡 *Data Commands:*\n"
-            "• `/load top [exchange]` — Load top symbols (e.g. `/load top binance`)\n"
-            "• `/load top all` — Load high-volume coins from EVERY exchange\n\n"
-            "⚙️ *Settings Commands:*\n"
-            "• `/confidence [5-10]` — Set score threshold (e.g. `/confidence 8`)\n"
-            "• `/timeframe [tf]` — Set timeframes (e.g. `/timeframe 15m`)\n"
-            "• `/status` — View current bot configuration and active status\n\n"
-            "• **Note:** Avoid trading during improtant news tie or high volatility because technical anlysis usually fails during the mentioned times.\n"
-            "━━━━━━━━━━━━━━━━━━━━\n"
-            "*Pilot Note:* Configure settings first, then run `/analyze`."
-        )
-        send_tg_message(chat_id, welcome)
-
-    elif cmd == '/analyze':
-        quality = parts[1].lower() if len(parts) > 1 else 'elite'
-        if quality not in ['elite', 'strong', 'standard', 'all']:
-            send_tg_message(chat_id, "❌ Invalid quality. Use: elite, strong, standard, all")
-            return
-            
-        config['telegram_quality'] = qual_upper
-        config['telegram_chat_id'] = chat_id # Ensure alerts go to THIS chat
-        send_tg_message(chat_id, f"🚀 *STARTING {qual_upper} ANALYSIS...*")
+    try:
+        raw_text = message.get('text', '').strip()
+        if not raw_text.startswith('/'): return
         
-        # Trigger analysis using the 'telegram' session ID
-        start_telegram_analysis(chat_id)
-
-    elif cmd == '/load':
-        if len(parts) < 3 or parts[1].lower() != 'top':
-            send_tg_message(chat_id, "❌ Usage: /load top [exchange|all]")
-            return
+        chat_id = str(message['chat']['id'])
+        chat_type = message['chat'].get('type', 'private')
+        user = message.get('from', {}).get('first_name', 'Unknown')
         
-        target = parts[2].lower()
-        if target == 'all':
-            send_tg_message(chat_id, "📡 *Scanning ALL exchanges for high-volume coins...* (This takes ~8 seconds)")
-            final_list = []
-            try:
-                # We can reuse the existing API logic safely
-                all_coins_set = {'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT'}
-                exchanges_to_scan = ['MEXC', 'BINANCE', 'BYBIT', 'OKX', 'BITGET', 'KUCOIN', 'GATEIO', 'HTX']
-                
-                with ThreadPoolExecutor(max_workers=len(exchanges_to_scan)) as ex:
-                    fetch_map = {
-                        'MEXC': fetch_mexc_top, 'BINANCE': fetch_binance_top, 
-                        'BYBIT': fetch_bybit_top, 'BITGET': fetch_bitget_top,
-                        'OKX': fetch_okx_top, 'KUCOIN': fetch_kucoin_top,
-                        'GATEIO': fetch_gateio_top, 'HTX': fetch_htx_top
-                    }
-                    futures = {ex.submit(fetch_map[exch]): exch for exch in exchanges_to_scan}
-                    for fut in as_completed(futures):
-                        try:
-                            _, coins = fut.result()
-                            if coins: all_coins_set.update(coins)
-                        except: pass
-                
-                config['symbols'] = sorted(list(all_coins_set))
-                config['telegram_chat_id'] = chat_id # Set target chat
-                send_tg_message(chat_id, f"✅ *Full Market Loaded!* Found {len(config['symbols'])} unique high-volume coins across all exchanges.")
-            except Exception as e:
-                send_tg_message(chat_id, f"❌ Error loading all coins: {e}")
-            return
-
-        exchange = target.upper()
-        send_tg_message(chat_id, f"📡 Loading top 200 coins from {exchange}...")
+        print(f"📩 Telegram [{chat_type}] from {user} ({chat_id}): {raw_text}")
         
-        try:
-            fetch_map = {
-                'MEXC': fetch_mexc_top, 'BINANCE': fetch_binance_top, 
-                'BYBIT': fetch_bybit_top, 'BITGET': fetch_bitget_top,
-                'OKX': fetch_okx_top, 'KUCOIN': fetch_kucoin_top,
-                'GATEIO': fetch_gateio_top, 'HTX': fetch_htx_top
-            }
-            if exchange not in fetch_map:
-                send_tg_message(chat_id, f"❌ Invalid exchange: {exchange}")
+        # Auto-sync chat_id (Always sync if it changes, especially for groups)
+        if config.get('telegram_chat_id') != chat_id:
+            config['telegram_chat_id'] = chat_id
+            print(f"✅ Telegram Chat ID synced to: {chat_id}")
+        
+        parts = raw_text.split()
+        if not parts: return
+        
+        full_cmd = parts[0].lower()
+        cmd = full_cmd.split('@')[0]
+        
+        if cmd == '/start':
+            welcome = (
+                "🔥 *RBot Pro — World's Best AI Trading Bot* 🏆\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                "Welcome to the official controller. Use the commands below to pilot your analysis:\n\n"
+                "🚀 *Analysis Commands:*\n"
+                "• `/analyze elite` — Only the highest conviction signals (Score 9+)\n"
+                "• `/analyze strong` — Professional grade signals (Score 7+)\n"
+                "• `/analyze standard` — All detected signals (Score 5+)\n"
+                "• `/stop` — Immediately kill any active analysis\n\n"
+                "📡 *Data Commands:*\n"
+                "• `/load top [exchange]` — Load top symbols (e.g. `/load top binance`)\n"
+                "• `/load top all` — Load high-volume coins from EVERY exchange\n\n"
+                "⚙️ *Settings Commands:*\n"
+                "• `/confidence [5-10]` — Set score threshold (e.g. `/confidence 8`)\n"
+                "• `/timeframe [tf]` — Set timeframes (e.g. `/timeframe 15m`)\n"
+                "• `/status` — View current bot configuration and active status\n\n"
+                "• **Note:** Avoid trading during improtant news tie or high volatility because technical anlysis usually fails during the mentioned times.\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                "*Pilot Note:* Configure settings first, then run `/analyze`."
+            )
+            send_tg_message(chat_id, welcome)
+
+        elif cmd == '/analyze':
+            quality = parts[1].lower() if len(parts) > 1 else 'elite'
+            if quality not in ['elite', 'strong', 'standard', 'all']:
+                send_tg_message(chat_id, "❌ Invalid quality. Use: elite, strong, standard, all")
                 return
                 
-            _, result = fetch_map[exchange]()
-            if result:
-                config['symbols'] = sorted(list(result))
-                config['telegram_chat_id'] = chat_id # Sync target
-                send_tg_message(chat_id, f"✅ Loaded {len(result)} unique coins from {exchange}.\nYou can now start /analyze")
+            qual_upper = 'STANDARD' if quality == 'all' else quality.upper()
+            config['telegram_quality'] = qual_upper
+            config['telegram_chat_id'] = chat_id # Ensure alerts go to THIS chat
+            send_tg_message(chat_id, f"🚀 *STARTING {qual_upper} ANALYSIS...*")
+            
+            # Trigger analysis using the 'telegram' session ID
+            start_telegram_analysis(chat_id)
+
+        elif cmd == '/load':
+            if len(parts) < 3 or parts[1].lower() != 'top':
+                send_tg_message(chat_id, "❌ Usage: /load top [exchange|all]")
+                return
+            
+            target = parts[2].lower()
+            if target == 'all':
+                send_tg_message(chat_id, "📡 *Scanning ALL exchanges for high-volume coins...* (This takes ~8 seconds)")
+                try:
+                    all_coins_set = {'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT'}
+                    exchanges_to_scan = ['MEXC', 'BINANCE', 'BYBIT', 'OKX', 'BITGET', 'KUCOIN', 'GATEIO', 'HTX']
+                    
+                    with ThreadPoolExecutor(max_workers=len(exchanges_to_scan)) as ex:
+                        fetch_map = {
+                            'MEXC': fetch_mexc_top, 'BINANCE': fetch_binance_top, 
+                            'BYBIT': fetch_bybit_top, 'BITGET': fetch_bitget_top,
+                            'OKX': fetch_okx_top, 'KUCOIN': fetch_kucoin_top,
+                            'GATEIO': fetch_gateio_top, 'HTX': fetch_htx_top
+                        }
+                        futures = {ex.submit(fetch_map[exch]): exch for exch in exchanges_to_scan}
+                        for fut in as_completed(futures):
+                            try:
+                                _, coins = fut.result()
+                                if coins: all_coins_set.update(coins)
+                            except: pass
+                    
+                    config['symbols'] = sorted(list(all_coins_set))
+                    config['telegram_chat_id'] = chat_id # Set target chat
+                    send_tg_message(chat_id, f"✅ *Full Market Loaded!* Found {len(config['symbols'])} unique high-volume coins across all exchanges.")
+                except Exception as e:
+                    send_tg_message(chat_id, f"❌ Error loading all coins: {e}")
+                return
+
+            exchange = target.upper()
+            send_tg_message(chat_id, f"📡 Loading top 200 coins from {exchange}...")
+            
+            try:
+                fetch_map = {
+                    'MEXC': fetch_mexc_top, 'BINANCE': fetch_binance_top, 
+                    'BYBIT': fetch_bybit_top, 'BITGET': fetch_bitget_top,
+                    'OKX': fetch_okx_top, 'KUCOIN': fetch_kucoin_top,
+                    'GATEIO': fetch_gateio_top, 'HTX': fetch_htx_top
+                }
+                if exchange not in fetch_map:
+                    send_tg_message(chat_id, f"❌ Invalid exchange: {exchange}")
+                    return
+                    
+                _, result = fetch_map[exchange]()
+                if result:
+                    config['symbols'] = sorted(list(result))
+                    config['telegram_chat_id'] = chat_id # Sync target
+                    send_tg_message(chat_id, f"✅ Loaded {len(result)} unique coins from {exchange}.\nYou can now start /analyze")
+                else:
+                    send_tg_message(chat_id, f"❌ Failed to load coins from {exchange}. API error or no symbols found.")
+            except Exception as e:
+                send_tg_message(chat_id, f"❌ Error loading coins: {e}")
+
+        elif cmd == '/confidence':
+            if len(parts) < 2:
+                send_tg_message(chat_id, "❌ Usage: /confidence [5-10]")
+                return
+            try:
+                val = int(parts[1])
+                if 1 <= val <= 10:
+                    config['min_confidence'] = val
+                    send_tg_message(chat_id, f"⚙️ *Confidence Set:* Filtering for signals with score {val} and greater.")
+                else:
+                    send_tg_message(chat_id, "❌ Please choose a score between 1 and 10.")
+            except:
+                send_tg_message(chat_id, "❌ Invalid number.")
+
+        elif cmd == '/timeframe':
+            if len(parts) < 2:
+                send_tg_message(chat_id, "❌ Usage: /timeframe [tf1,tf2...]")
+                return
+            tfs = parts[1].replace(' ', '').split(',')
+            valid_tfs = ['1m', '3m', '5m', '15m', '30m', '1h', '4h', '1d']
+            filtered_tfs = [tf for tf in tfs if tf.lower() in valid_tfs]
+            
+            if filtered_tfs:
+                config['timeframes'] = filtered_tfs
+                send_tg_message(chat_id, f"⚙️ *Timeframes Set:* {', '.join(filtered_tfs)}")
             else:
-                send_tg_message(chat_id, f"❌ Failed to load coins from {exchange}. API error or no symbols found.")
-        except Exception as e:
-            send_tg_message(chat_id, f"❌ Error loading coins: {e}")
+                send_tg_message(chat_id, f"❌ No valid timeframes found. Use: {', '.join(valid_tfs)}")
 
-    elif cmd == '/confidence':
-        if len(parts) < 2:
-            send_tg_message(chat_id, "❌ Usage: /confidence [5-10]")
-            return
-        try:
-            val = int(parts[1])
-            if 1 <= val <= 10:
-                config['min_confidence'] = val
-                send_tg_message(chat_id, f"⚙️ *Confidence Set:* Filtering for signals with score {val} and greater.")
-            else:
-                send_tg_message(chat_id, "❌ Please choose a score between 1 and 10.")
-        except:
-            send_tg_message(chat_id, "❌ Invalid number.")
+        elif cmd == '/stop':
+            stop_telegram_analysis()
+            send_tg_message(chat_id, "🛑 Analysis Stopped.")
 
-    elif cmd == '/timeframe':
-        if len(parts) < 2:
-            send_tg_message(chat_id, "❌ Usage: /timeframe [tf1,tf2...]")
-            return
-        tfs = parts[1].replace(' ', '').split(',')
-        valid_tfs = ['1m', '3m', '5m', '15m', '30m', '1h', '4h', '1d']
-        filtered_tfs = [tf for tf in tfs if tf.lower() in valid_tfs]
-        
-        if filtered_tfs:
-            config['timeframes'] = filtered_tfs
-            send_tg_message(chat_id, f"⚙️ *Timeframes Set:* {', '.join(filtered_tfs)}")
-        else:
-            send_tg_message(chat_id, f"❌ No valid timeframes found. Use: {', '.join(valid_tfs)}")
+        elif cmd == '/status':
+            is_active = client_sessions.get('telegram', {}).get('active', False)
+            status = "🟢 ACTIVE" if is_active else "⚪ IDLE"
+            msg = (
+                f"📊 *Bot Status*\n"
+                f"━━━━━━━━━━━━\n"
+                f"Status: {status}\n"
+                f"Quality: {config.get('telegram_quality')}\n"
+                f"Symbols: {len(config.get('symbols', []))}\n"
+                f"Exchanges: {', '.join(config.get('exchanges', []))}"
+            )
+            send_tg_message(chat_id, msg)
 
-    elif cmd == '/stop':
-        stop_telegram_analysis()
-        send_tg_message(chat_id, "🛑 Analysis Stopped.")
-
-    elif cmd == '/status':
-        is_active = client_sessions.get('telegram', {}).get('active', False)
-        status = "🟢 ACTIVE" if is_active else "⚪ IDLE"
-        msg = (
-            f"📊 *Bot Status*\n"
-            f"━━━━━━━━━━━━\n"
-            f"Status: {status}\n"
-            f"Quality: {config.get('telegram_quality')}\n"
-            f"Symbols: {len(config.get('symbols', []))}\n"
-            f"Exchanges: {', '.join(config.get('exchanges', []))}"
-        )
-        send_tg_message(chat_id, msg)
+    except Exception as e:
+        print(f"❌ Error handling Telegram command: {e}")
+        send_tg_message(chat_id, f"❌ Internal Error: {e}")
 
 def start_telegram_analysis(chat_id):
     """Launches analysis in a managed 'telegram' session"""
