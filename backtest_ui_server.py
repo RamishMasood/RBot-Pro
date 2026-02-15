@@ -87,6 +87,24 @@ ALL_STRATEGIES = sorted({
     'MTF-TrendRider',
     'SmartMoney-Trap',
     'Mom-Exhaustion',
+    'Kumo Breakout',
+    'Pinbar Reversal',
+    'TDI Golden Cross',
+    'VWAP Institutional',
+    'Fib Confluence',
+    'Pivot Reversal',
+    'Vortex Cross',
+    'Alligator',
+    'Fractal Breakout',
+    'Woodies CCI',
+    'Darvas Box',
+    'LinReg Reversion',
+    'HMA Scalper',
+    'IOF Prediction',
+    'Agentic Sentiment',
+    'Predictive Momentum',
+    'Chaikin Volatility',
+    'Gann Hi-Lo'
 })
 
 

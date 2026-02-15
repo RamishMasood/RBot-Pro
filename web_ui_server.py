@@ -38,13 +38,13 @@ real_trader = RealTrader()
 app = Flask(__name__, template_folder='templates', static_folder='static')
 app.config['SECRET_KEY'] = 'rbot-pro-analysis-ui-secret'
 
-# SocketIO with explicit threading for stability on Windows
+# SocketIO with Institutional Stability Buffers
 socketio = SocketIO(
     app,
     cors_allowed_origins="*",
     async_mode='eventlet',
-    ping_timeout=120,
-    ping_interval=30,
+    ping_timeout=60,   # 60s timeout for stability
+    ping_interval=20,  # 20s heartbeat to keep connection alive
     logger=False,
     engineio_logger=False
 )
@@ -56,7 +56,7 @@ HEADERS = {
     'Accept': 'application/json'
 }
 
-def safe_request(url, method='GET', params=None, json_data=None, timeout=15, retries=3):
+def safe_request(url, method='GET', params=None, json_data=None, timeout=25, retries=3):
     """Fetch with retries, exponential backoff, cache-busting, and institutional headers."""
     import time
     import random
@@ -605,6 +605,7 @@ class TradeTracker:
         print("💡 Trade Tracking Loop Started", flush=True)
         last_heartbeat = 0
         while self.tracking_active:
+            eventlet.sleep(0.01) # Yield to eventlet hub
             loop_start = time.time()
             try:
                 current_time = loop_start
@@ -1003,7 +1004,7 @@ def market_monitor_loop():
             except:
                 pass  # Silently handle broadcast errors
             
-            time.sleep(2)
+            eventlet.sleep(2) # Green-thread friendly sleep
             
         except Exception as e:
             print(f"Market Monitor Error: {e}")
@@ -1093,6 +1094,8 @@ def run_session_analysis(sid, symbols, indicators, timeframes, min_conf, exchang
                 
                 # Emit standard output line to session
                 socketio.emit('output', {'data': line}, room=sid, namespace='/')
+                # Yield control to event loop to keep heartbeats alive
+                socketio.sleep(0)
         
         # Process finished
         if sid in client_sessions and client_sessions[sid]['active']:
@@ -1173,6 +1176,8 @@ def auto_run_analysis():
                             thread_trade.start()
                     except:
                         pass
+                # Yield control to event loop
+                socketio.sleep(0)
                         
             proc.wait()
             print("✅ Auto-run completed")
@@ -1235,118 +1240,148 @@ def update_config():
 
 @app.route('/api/available-coins', methods=['GET'])
 def get_available_coins():
-    """Get top 100 coins from EACH selected exchange, then merge and deduplicate"""
+    """Get top 100 coins from EACH selected exchange in parallel, then merge and deduplicate"""
+    print("📡 Fetching top coins from all exchanges in parallel...")
     default_top = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT']
     all_coins_set = set(default_top)
     
     selected_exchanges = [e.upper() for e in config.get('exchanges', [])]
     if not selected_exchanges:
         selected_exchanges = ['MEXC', 'BINANCE', 'BYBIT', 'OKX', 'BITGET', 'KUCOIN', 'GATEIO', 'HTX']
-    n = 100 # Top 100 per exchange
     
-    # Try fetching from each selected exchange
-    if 'MEXC' in selected_exchanges:
+    n = 200 # Top 200 per exchange
+    coin_timeout = 8 # Tight timeout for web-speed loading
+
+    def fetch_mexc():
+        coins = set()
         try:
-            data = safe_request('https://contract.mexc.com/api/v1/contract/detail')
+            data = safe_request('https://contract.mexc.com/api/v1/contract/detail', timeout=coin_timeout)
             if data.get('success') and isinstance(data.get('data'), list):
                 contracts = [c for c in data['data'] if c.get('symbol', '').endswith('_USDT')]
                 contracts_sorted = sorted(contracts, key=lambda x: float(x.get('last24hVol', 0)), reverse=True)
                 for item in contracts_sorted[:n]:
                     sym = item.get('symbol', '')
-                    all_coins_set.add(sym.replace('_', ''))
-        except Exception as e:
-            print(f"Error fetching MEXC coins: {e}")
-    
-    if 'BINANCE' in selected_exchanges:
+                    coins.add(sym.replace('_', ''))
+        except Exception as e: print(f"  ⚠ MEXC Coin Fetch Error: {e}")
+        return 'MEXC', coins
+
+    def fetch_binance():
+        coins = set()
         try:
-            data = safe_request('https://api.binance.com/api/v3/ticker/24hr')
-            usdt_pairs = [item for item in data if item.get('symbol', '').endswith('USDT')]
+            data = safe_request('https://api.binance.com/api/v3/ticker/24hr', timeout=coin_timeout)
+            usdt_pairs = [item for item in data if item.get('symbol', '').endswith('USDT') and not item['symbol'].endswith('UPUSDT') and not item['symbol'].endswith('DOWNUSDT')]
             binance_sorted = sorted(usdt_pairs, key=lambda x: float(x.get('quoteVolume', 0)), reverse=True)
             for item in binance_sorted[:n]:
-                all_coins_set.add(item['symbol'])
-        except Exception as e:
-            print(f"Error fetching Binance coins: {e}")
-            
-    if 'BYBIT' in selected_exchanges:
+                coins.add(item['symbol'])
+        except Exception as e: print(f"  ⚠ Binance Coin Fetch Error: {e}")
+        return 'BINANCE', coins
+
+    def fetch_bybit():
+        coins = set()
         try:
-            data = safe_request('https://api.bybit.com/v5/market/tickers?category=linear')
+            data = safe_request('https://api.bybit.com/v5/market/tickers?category=linear', timeout=coin_timeout)
             if data.get('result') and data['result'].get('list'):
                 usdt_pairs = [item for item in data['result']['list'] if item.get('symbol', '').endswith('USDT')]
                 bybit_sorted = sorted(usdt_pairs, key=lambda x: float(x.get('turnover24h', 0)), reverse=True)
                 for item in bybit_sorted[:n]:
-                    all_coins_set.add(item['symbol'])
-        except Exception as e:
-            print(f"Error fetching Bybit coins: {e}")
-    
-    if 'BITGET' in selected_exchanges:
+                    coins.add(item['symbol'])
+        except Exception as e: print(f"  ⚠ Bybit Coin Fetch Error: {e}")
+        return 'BYBIT', coins
+
+    def fetch_bitget():
+        coins = set()
         try:
-            data = safe_request('https://api.bitget.com/api/v2/mix/market/tickers?productType=USDT-FUTURES')
+            data = safe_request('https://api.bitget.com/api/v2/mix/market/tickers?productType=USDT-FUTURES', timeout=coin_timeout)
             if data.get('data'):
-                usdt_pairs = [item for item in data['data'] if item.get('symbol', '').endswith('USDT')]
-                # Sort by USDT volume if available
-                bitget_sorted = sorted(usdt_pairs, key=lambda x: float(x.get('usdtVolume', 0)), reverse=True)
+                bitget_sorted = sorted(data['data'], key=lambda x: float(x.get('usdtVolume', 0)), reverse=True)
                 for item in bitget_sorted[:n]:
-                    all_coins_set.add(item['symbol'])
-        except Exception as e:
-            print(f"Error fetching Bitget coins: {e}")
-    
-    if 'OKX' in selected_exchanges:
+                    sym = item.get('symbol', '')
+                    if sym.endswith('USDT'):
+                        coins.add(sym)
+        except Exception as e: print(f"  ⚠ Bitget Coin Fetch Error: {e}")
+        return 'BITGET', coins
+
+    def fetch_okx():
+        coins = set()
         try:
-            # Fallback domains for OKX
             domains = ['https://www.okx.com', 'https://www.okx.net']
             for base in domains:
                 try:
-                    data = safe_request(f'{base}/api/v5/market/tickers?instType=SWAP')
+                    data = safe_request(f'{base}/api/v5/market/tickers?instType=SWAP', timeout=coin_timeout)
                     if data.get('data'):
-                        usdt_pairs = [item for item in data['data'] if '-USDT-' in item.get('instId', '')]
-                        for item in usdt_pairs[:n]:
+                        okx_sorted = sorted(data['data'], key=lambda x: float(x.get('vol24h', 0)), reverse=True)
+                        for item in okx_sorted[:n]:
                             inst_id = item.get('instId', '')
-                            sym = inst_id.replace('-', '').replace('SWAP', '').strip()
-                            all_coins_set.add(sym)
-                        break
+                            if '-USDT-' in inst_id:
+                                sym = inst_id.split('-USDT-')[0] + 'USDT'
+                                coins.add(sym)
+                        return 'OKX', coins
                 except: continue
-        except Exception as e:
-            print(f"Error fetching OKX coins: {e}")
-    
-    if 'KUCOIN' in selected_exchanges:
+        except Exception as e: print(f"  ⚠ OKX Coin Fetch Error: {e}")
+        return 'OKX', coins
+
+    def fetch_kucoin():
+        coins = set()
         try:
-            data = safe_request('https://api.kucoin.com/api/v1/market/allTickers')
+            data = safe_request('https://api.kucoin.com/api/v1/market/allTickers', timeout=coin_timeout)
             if data.get('data') and data['data'].get('ticker'):
                 usdt_pairs = [item for item in data['data']['ticker'] if item.get('symbol', '').endswith('-USDT')]
                 kucoin_sorted = sorted(usdt_pairs, key=lambda x: float(x.get('volValue', 0)), reverse=True)
                 for item in kucoin_sorted[:n]:
                     sym = item.get('symbol', '')
-                    all_coins_set.add(sym.replace('-', ''))
-        except Exception as e:
-            print(f"Error fetching KuCoin coins: {e}")
-    
-    if 'GATEIO' in selected_exchanges:
+                    coins.add(sym.replace('-', ''))
+        except Exception as e: print(f"  ⚠ KuCoin Coin Fetch Error: {e}")
+        return 'KUCOIN', coins
+
+    def fetch_gateio():
+        coins = set()
         try:
-            data = safe_request('https://api.gateio.ws/api/v4/futures/usdt/contracts')
-            for item in data[:n]:
-                name = item.get('name', '')
-                if name.endswith('_USDT'):
-                    all_coins_set.add(name.replace('_', ''))
-        except Exception as e:
-            print(f"Error fetching Gate.io coins: {e}")
-    
-    if 'HTX' in selected_exchanges:
+            data = safe_request('https://api.gateio.ws/api/v4/futures/usdt/tickers', timeout=coin_timeout)
+            gate_sorted = sorted(data, key=lambda x: float(x.get('volume_24h_quote', 0)), reverse=True)
+            for item in gate_sorted[:n]:
+                sym = item.get('contract', '')
+                if sym.endswith('_USDT'):
+                    coins.add(sym.replace('_', ''))
+        except Exception as e: print(f"  ⚠ Gate.io Coin Fetch Error: {e}")
+        return 'GATEIO', coins
+
+    def fetch_htx():
+        coins = set()
         try:
-            data = safe_request('https://api.huobi.pro/v2/settings/common/symbols')
+            data = safe_request('https://api.huobi.pro/market/tickers', timeout=coin_timeout)
             if data.get('data'):
-                for item in data['data'][:200]:
-                    sym = item.get('sc', '')
-                    if sym.endswith('usdt'):
-                        all_coins_set.add(sym.upper())
-                        if len(all_coins_set) > 1000: break
-        except Exception as e:
-            print(f"Error fetching HTX coins: {e}")
+                usdt_pairs = [item for item in data['data'] if item.get('symbol', '').endswith('usdt')]
+                htx_sorted = sorted(usdt_pairs, key=lambda x: float(x.get('vol', 0)), reverse=True)
+                for item in htx_sorted[:n]:
+                    sym = item.get('symbol', '').upper()
+                    coins.add(sym)
+        except Exception as e: print(f"  ⚠ HTX Coin Fetch Error: {e}")
+        return 'HTX', coins
+
+    fetchers = {
+        'MEXC': fetch_mexc,
+        'BINANCE': fetch_binance,
+        'BYBIT': fetch_bybit,
+        'BITGET': fetch_bitget,
+        'OKX': fetch_okx,
+        'KUCOIN': fetch_kucoin,
+        'GATEIO': fetch_gateio,
+        'HTX': fetch_htx
+    }
+
+    with ThreadPoolExecutor(max_workers=len(selected_exchanges)) as ex:
+        futures = {ex.submit(fetchers[exch]): exch for exch in selected_exchanges if exch in fetchers}
+        for fut in as_completed(futures):
+            exch_name, coins = fut.result()
+            if coins:
+                all_coins_set.update(coins)
+                print(f"  ✨ {exch_name}: Added {len(coins)} top coins")
     
     if not all_coins_set:
         return jsonify({'coins': default_top})
     
-    # Sort the final list alphabetically for the UI
     final_list = sorted(list(all_coins_set))
+    print(f"✅ Loaded {len(final_list)} unique coins from {len(selected_exchanges)} exchanges (Top 200 scan).")
     return jsonify({'coins': final_list})
 
 @socketio.on('connect', namespace='/')
@@ -1550,8 +1585,7 @@ def server_error(e):
 
 if __name__ == '__main__':
     # Start Market Monitor (News + Volatility)
-    market_thread = threading.Thread(target=market_monitor_loop, daemon=True)
-    market_thread.start()
+    eventlet.spawn(market_monitor_loop)
 
     # Apply initial scheduler config
     update_scheduler()
@@ -1562,8 +1596,7 @@ if __name__ == '__main__':
     print("✓ Using queue-based streaming for stability")
     
     # Start Trade Tracking loop
-    tracker_thread = threading.Thread(target=trade_tracker.update_loop, daemon=True)
-    tracker_thread.start()
+    eventlet.spawn(trade_tracker.update_loop)
     
     try:
         socketio.run(

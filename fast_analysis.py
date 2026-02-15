@@ -93,7 +93,7 @@ COMMON_HEADERS = {
     'Cache-Control': 'no-cache'
 }
 
-def safe_request(url, method='GET', params=None, json_data=None, timeout=15, retries=3):
+def safe_request(url, method='GET', params=None, json_data=None, timeout=25, retries=3):
     """Fetch with retries, exponential backoff, cache-busting, and institutional headers."""
     import time
     import random
@@ -118,109 +118,129 @@ def safe_request(url, method='GET', params=None, json_data=None, timeout=15, ret
     raise last_err
 
 def get_top_symbols(n=200):
-    """Fetch top `n` USDT symbols by volume from enabled exchanges."""
+    """Fetch top `n` USDT symbols by volume from enabled exchanges in parallel (Institutional Grade)."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     default_top = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT']
     all_coins = set(default_top)
+    fetch_n = 200 # Scan top 200 from each exchange for maximum coverage
+    coin_timeout = 8 # Tight timeout for speed
     
-    # Try fetching from each enabled exchange
-    if 'MEXC' in ENABLED_EXCHANGES:
+    def fetch_mexc():
+        coins = set()
         try:
-            data = safe_request('https://contract.mexc.com/api/v1/contract/detail')
+            data = safe_request('https://contract.mexc.com/api/v1/contract/detail', timeout=coin_timeout)
             if data.get('success') and isinstance(data.get('data'), list):
                 contracts = data['data']
                 contracts_sorted = sorted(contracts, key=lambda x: float(x.get('last24hVol', 0)), reverse=True)
-                for item in contracts_sorted[:n]:
+                for item in contracts_sorted[:fetch_n]:
                     sym = item.get('symbol', '')
-                    if sym.endswith('_USDT'):
-                        all_coins.add(sym.replace('_', ''))
-        except Exception as e:
-            print(f"  ⚠ MEXC symbol fetch error: {e}")
-    
-    if 'BINANCE' in ENABLED_EXCHANGES:
+                    if sym.endswith('_USDT'): coins.add(sym.replace('_', ''))
+        except Exception as e: print(f"  ⚠ MEXC symbol fetch error: {e}")
+        return coins
+
+    def fetch_binance():
+        coins = set()
         try:
-            data = safe_request('https://api.binance.com/api/v3/ticker/24hr')
-            binance_sorted = sorted(data, key=lambda x: float(x.get('quoteVolume', 0)), reverse=True)
-            for item in binance_sorted[:n]:
-                sym = item.get('symbol', '')
-                if sym.endswith('USDT'):
-                    all_coins.add(sym)
-        except Exception as e:
-            print(f"  ⚠ Binance symbol fetch error: {e}")
-    
-    if 'BYBIT' in ENABLED_EXCHANGES:
+            data = safe_request('https://api.binance.com/api/v3/ticker/24hr', timeout=coin_timeout)
+            # Filter for USDT and excludes UP/DOWN tokens
+            usdt_pairs = [item for item in data if item.get('symbol', '').endswith('USDT') and not item['symbol'].endswith('UPUSDT') and not item['symbol'].endswith('DOWNUSDT')]
+            binance_sorted = sorted(usdt_pairs, key=lambda x: float(x.get('quoteVolume', 0)), reverse=True)
+            for item in binance_sorted[:fetch_n]: coins.add(item['symbol'])
+        except Exception as e: print(f"  ⚠ Binance symbol fetch error: {e}")
+        return coins
+
+    def fetch_bybit():
+        coins = set()
         try:
-            data = safe_request('https://api.bybit.com/v5/market/tickers?category=linear')
+            data = safe_request('https://api.bybit.com/v5/market/tickers?category=linear', timeout=coin_timeout)
             if data.get('result') and data['result'].get('list'):
                 bybit_sorted = sorted(data['result']['list'], key=lambda x: float(x.get('turnover24h', 0)), reverse=True)
-                for item in bybit_sorted[:n]:
+                for item in bybit_sorted[:fetch_n]:
                     sym = item.get('symbol', '')
-                    if sym.endswith('USDT'):
-                        all_coins.add(sym)
-        except Exception as e:
-            print(f"  ⚠ Bybit symbol fetch error: {e}")
-    
-    if 'BITGET' in ENABLED_EXCHANGES:
+                    if sym.endswith('USDT'): coins.add(sym)
+        except Exception as e: print(f"  ⚠ Bybit symbol fetch error: {e}")
+        return coins
+
+    def fetch_bitget():
+        coins = set()
         try:
-            data = safe_request('https://api.bitget.com/api/v2/mix/market/tickers?productType=USDT-FUTURES')
+            data = safe_request('https://api.bitget.com/api/v2/mix/market/tickers?productType=USDT-FUTURES', timeout=coin_timeout)
             if data.get('data'):
-                for item in data['data'][:n]:
+                bitget_sorted = sorted(data['data'], key=lambda x: float(x.get('usdtVolume', 0)), reverse=True)
+                for item in bitget_sorted[:fetch_n]:
                     sym = item.get('symbol', '')
-                    if sym.endswith('USDT'):
-                        all_coins.add(sym)
-        except Exception as e:
-            print(f"  ⚠ Bitget symbol fetch error: {e}")
-    
-    if 'OKX' in ENABLED_EXCHANGES:
+                    if sym.endswith('USDT'): coins.add(sym)
+        except Exception as e: print(f"  ⚠ Bitget symbol fetch error: {e}")
+        return coins
+
+    def fetch_okx():
+        coins = set()
         try:
-            # OKX DNS Fallback
             domains = ['https://www.okx.com', 'https://www.okx.net']
             for base in domains:
                 try:
-                    data = safe_request(f'{base}/api/v5/market/tickers?instType=SWAP')
+                    data = safe_request(f'{base}/api/v5/market/tickers?instType=SWAP', timeout=coin_timeout)
                     if data.get('data'):
-                        for item in data['data'][:n]:
+                        okx_sorted = sorted(data['data'], key=lambda x: float(x.get('vol24h', 0)), reverse=True)
+                        for item in okx_sorted[:fetch_n]:
                             inst_id = item.get('instId', '')
-                            if 'USDT' in inst_id:
-                                sym = inst_id.replace('-', '').replace('SWAP', '').strip()
-                                if sym.endswith('USDT'):
-                                    all_coins.add(sym)
-                        break
+                            if '-USDT-' in inst_id:
+                                sym = inst_id.split('-USDT-')[0] + 'USDT'
+                                coins.add(sym)
+                        return coins
                 except: continue
-        except Exception as e:
-            print(f"  ⚠ OKX symbol fetch error: {e}")
-    
-    if 'KUCOIN' in ENABLED_EXCHANGES:
+        except Exception as e: print(f"  ⚠ OKX symbol fetch error: {e}")
+        return coins
+
+    def fetch_kucoin():
+        coins = set()
         try:
-            data = safe_request('https://api.kucoin.com/api/v1/market/allTickers')
+            data = safe_request('https://api.kucoin.com/api/v1/market/allTickers', timeout=coin_timeout)
             if data.get('data') and data['data'].get('ticker'):
-                for item in data['data']['ticker'][:n*2]:
+                usdt_pairs = [item for item in data['data']['ticker'] if item.get('symbol', '').endswith('-USDT')]
+                kucoin_sorted = sorted(usdt_pairs, key=lambda x: float(x.get('volValue', 0)), reverse=True)
+                for item in kucoin_sorted[:fetch_n]:
                     sym = item.get('symbol', '')
-                    if sym.endswith('-USDT'):
-                        all_coins.add(sym.replace('-', ''))
-        except Exception as e:
-            print(f"  ⚠ KuCoin symbol fetch error: {e}")
-    
-    if 'GATEIO' in ENABLED_EXCHANGES:
+                    coins.add(sym.replace('-', ''))
+        except Exception as e: print(f"  ⚠ KuCoin symbol fetch error: {e}")
+        return coins
+
+    def fetch_gateio():
+        coins = set()
         try:
-            data = safe_request('https://api.gateio.ws/api/v4/futures/usdt/contracts')
-            for item in data[:n]:
-                name = item.get('name', '')
-                if name.endswith('_USDT'):
-                    all_coins.add(name.replace('_', ''))
-        except Exception as e:
-            print(f"  ⚠ Gate.io symbol fetch error: {e}")
-    
-    if 'HTX' in ENABLED_EXCHANGES:
+            data = safe_request('https://api.gateio.ws/api/v4/futures/usdt/tickers', timeout=coin_timeout)
+            gate_sorted = sorted(data, key=lambda x: float(x.get('volume_24h_quote', 0)), reverse=True)
+            for item in gate_sorted[:fetch_n]:
+                sym = item.get('contract', '')
+                if sym.endswith('_USDT'): coins.add(sym.replace('_', ''))
+        except Exception as e: print(f"  ⚠ Gate.io symbol fetch error: {e}")
+        return coins
+
+    def fetch_htx():
+        coins = set()
         try:
-            data = safe_request('https://api.huobi.pro/v2/settings/common/symbols')
+            data = safe_request('https://api.huobi.pro/market/tickers', timeout=coin_timeout)
             if data.get('data'):
-                for item in data['data'][:n*2]:
-                    sym = item.get('sc', '')
-                    if sym.endswith('usdt'):
-                        all_coins.add(sym.upper())
-        except Exception as e:
-            print(f"  ⚠ HTX symbol fetch error: {e}")
-    
+                usdt_pairs = [item for item in data['data'] if item.get('symbol', '').endswith('usdt')]
+                htx_sorted = sorted(usdt_pairs, key=lambda x: float(x.get('vol', 0)), reverse=True)
+                for item in htx_sorted[:fetch_n]: coins.add(item.get('symbol', '').upper())
+        except Exception as e: print(f"  ⚠ HTX symbol fetch error: {e}")
+        return coins
+
+    fetchers = {
+        'MEXC': fetch_mexc, 'BINANCE': fetch_binance, 'BYBIT': fetch_bybit,
+        'BITGET': fetch_bitget, 'OKX': fetch_okx, 'KUCOIN': fetch_kucoin,
+        'GATEIO': fetch_gateio, 'HTX': fetch_htx
+    }
+
+    results = []
+    with ThreadPoolExecutor(max_workers=len(ENABLED_EXCHANGES)) as ex:
+        futures = {ex.submit(fetchers[exch]): exch for exch in ENABLED_EXCHANGES if exch in fetchers}
+        for fut in as_completed(futures):
+            results.append(fut.result())
+
+    for res in results: all_coins.update(res)
+
     # Combine with default at front, deduplicate
     combined = default_top + [c for c in sorted(all_coins) if c not in default_top]
     return combined[:n]
