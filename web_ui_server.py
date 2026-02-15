@@ -912,21 +912,39 @@ config = {
     'auto_run_interval': 300,
     'risk_profile': 'moderate',
     'telegram_token': '',
-    'telegram_chat_id': ''
+    'telegram_chat_id': '',
+    'telegram_quality': 'ELITE', # Filter: ELITE, STRONG, STANDARD, ALL
+    'telegram_enabled': True
 }
 
 def send_telegram_alert(trade):
-    """Send trade alert to Telegram if configured"""
+    """Send trade alert to Telegram if configured and meets quality filter"""
     token = config.get('telegram_token')
     chat_id = config.get('telegram_chat_id')
     if not token or not chat_id: return
     
+    # 1. Apply Quality Filter
+    target_quality = config.get('telegram_quality', 'ELITE').upper()
+    trade_quality = trade.get('signal_quality', 'STANDARD').upper()
+    
+    # Logical Hierarchy: ELITE > STRONG > STANDARD
+    quality_map = {'ELITE': 3, 'STRONG': 2, 'STANDARD': 1, 'ALL': 0}
+    
+    target_rank = quality_map.get(target_quality, 3)
+    trade_rank = quality_map.get(trade_quality, 1)
+    
+    if trade_rank < target_rank:
+        # If user wants ELITE (3) and trade is STRONG (2), skip.
+        # If user wants STRONG (2) and trade is ELITE (3), allow.
+        return
+    
     action = "🚀 BUY" if trade['type'] == 'LONG' else "🔻 SELL"
+    entry_type_label = trade.get('entry_type', 'MARKET').upper()
     msg = f"""🔥 *[RBot Pro] TRADE ALERT*
 ━━━━━━━━━━━━━━━━━━━━
 🏢 *Exchange:* {trade.get('exchange', 'N/A')}
 📈 *Signal:* {action} {trade['symbol']} ({trade['timeframe']})
-📍 *Entry:* ${trade['entry']:.6f}
+📍 *Entry:* ${trade['entry']:.6f} ({entry_type_label})
 🛑 *SL:* ${trade['sl']:.6f}
 🎯 *TP:* ${trade['tp1']:.6f}
 💎 *R/R:* {trade['risk_reward']}:1
@@ -1103,6 +1121,11 @@ def run_session_analysis(sid, symbols, indicators, timeframes, min_conf, exchang
              socketio.emit('status', {'status': 'completed'}, room=sid, namespace='/')
              client_sessions[sid]['active'] = False
              client_sessions[sid]['process'] = None
+             
+             if sid == 'telegram':
+                 chat_id = config.get('telegram_chat_id')
+                 if chat_id:
+                     send_tg_message(chat_id, "✅ *Analysis Completed*")
 
     except Exception as e:
         error_msg = str(e)
@@ -1238,10 +1261,114 @@ def update_config():
     socketio.emit('config_updated', config, namespace='/')
     return jsonify({'status': 'ok', 'config': config})
 
+# --- Helper fetchers for Exchange Ticker Discovery ---
+def fetch_mexc_top():
+    coins = set()
+    n = 200
+    try:
+        data = safe_request('https://contract.mexc.com/api/v1/contract/detail', timeout=8)
+        if data.get('success') and isinstance(data.get('data'), list):
+            contracts = [c for c in data['data'] if c.get('symbol', '').endswith('_USDT')]
+            contracts_sorted = sorted(contracts, key=lambda x: float(x.get('last24hVol', 0)), reverse=True)
+            for item in contracts_sorted[:n]: coins.add(item.get('symbol', '').replace('_', ''))
+    except Exception as e: print(f"  ⚠ MEXC Fetch Error: {e}")
+    return 'MEXC', coins
+
+def fetch_binance_top():
+    coins = set()
+    n = 200
+    try:
+        data = safe_request('https://api.binance.com/api/v3/ticker/24hr', timeout=8)
+        usdt_pairs = [item for item in data if item.get('symbol', '').endswith('USDT') and not item['symbol'].endswith('UPUSDT') and not item['symbol'].endswith('DOWNUSDT')]
+        binance_sorted = sorted(usdt_pairs, key=lambda x: float(x.get('quoteVolume', 0)), reverse=True)
+        for item in binance_sorted[:n]: coins.add(item['symbol'])
+    except Exception as e: print(f"  ⚠ Binance Fetch Error: {e}")
+    return 'BINANCE', coins
+
+def fetch_bybit_top():
+    coins = set()
+    n = 200
+    try:
+        data = safe_request('https://api.bybit.com/v5/market/tickers?category=linear', timeout=8)
+        if data.get('result') and data['result'].get('list'):
+            usdt_pairs = [item for item in data['result']['list'] if item.get('symbol', '').endswith('USDT')]
+            bybit_sorted = sorted(usdt_pairs, key=lambda x: float(x.get('turnover24h', 0)), reverse=True)
+            for item in bybit_sorted[:n]: coins.add(item['symbol'])
+    except Exception as e: print(f"  ⚠ Bybit Fetch Error: {e}")
+    return 'BYBIT', coins
+
+def fetch_bitget_top():
+    coins = set()
+    n = 200
+    try:
+        data = safe_request('https://api.bitget.com/api/v2/mix/market/tickers?productType=USDT-FUTURES', timeout=8)
+        if data.get('data'):
+            bitget_sorted = sorted(data['data'], key=lambda x: float(x.get('usdtVolume', 0)), reverse=True)
+            for item in bitget_sorted[:n]:
+                sym = item.get('symbol', '')
+                if sym.endswith('USDT'): coins.add(sym)
+    except Exception as e: print(f"  ⚠ Bitget Fetch Error: {e}")
+    return 'BITGET', coins
+
+def fetch_okx_top():
+    coins = set()
+    n = 200
+    try:
+        domains = ['https://www.okx.com', 'https://www.okx.net']
+        for base in domains:
+            try:
+                data = safe_request(f'{base}/api/v5/market/tickers?instType=SWAP', timeout=8)
+                if data.get('data'):
+                    okx_sorted = sorted(data['data'], key=lambda x: float(x.get('vol24h', 0)), reverse=True)
+                    for item in okx_sorted[:n]:
+                        inst_id = item.get('instId', '')
+                        if '-USDT-' in inst_id:
+                            coins.add(inst_id.split('-USDT-')[0] + 'USDT')
+                    return 'OKX', coins
+            except: continue
+    except Exception as e: print(f"  ⚠ OKX Fetch Error: {e}")
+    return 'OKX', coins
+
+def fetch_kucoin_top():
+    coins = set()
+    n = 200
+    try:
+        data = safe_request('https://api.kucoin.com/api/v1/market/allTickers', timeout=8)
+        if data.get('data') and data['data'].get('ticker'):
+            usdt_pairs = [item for item in data['data']['ticker'] if item.get('symbol', '').endswith('-USDT')]
+            kucoin_sorted = sorted(usdt_pairs, key=lambda x: float(x.get('volValue', 0)), reverse=True)
+            for item in kucoin_sorted[:n]: coins.add(item.get('symbol', '').replace('-', ''))
+    except Exception as e: print(f"  ⚠ KuCoin Fetch Error: {e}")
+    return 'KUCOIN', coins
+
+def fetch_gateio_top():
+    coins = set()
+    n = 200
+    try:
+        data = safe_request('https://api.gateio.ws/api/v4/futures/usdt/tickers', timeout=8)
+        gate_sorted = sorted(data, key=lambda x: float(x.get('volume_24h_quote', 0)), reverse=True)
+        for item in gate_sorted[:n]:
+            sym = item.get('contract', '')
+            if sym.endswith('_USDT'): coins.add(sym.replace('_', ''))
+    except Exception as e: print(f"  ⚠ Gate.io Fetch Error: {e}")
+    return 'GATEIO', coins
+
+def fetch_htx_top():
+    coins = set()
+    n = 200
+    try:
+        data = safe_request('https://api.huobi.pro/market/tickers', timeout=8)
+        if data.get('data'):
+            usdt_pairs = [item for item in data['data'] if item.get('symbol', '').endswith('usdt')]
+            htx_sorted = sorted(usdt_pairs, key=lambda x: float(x.get('vol', 0)), reverse=True)
+            for item in htx_sorted[:n]: coins.add(item.get('symbol', '').upper())
+    except Exception as e: print(f"  ⚠ HTX Fetch Error: {e}")
+    return 'HTX', coins
+
 @app.route('/api/available-coins', methods=['GET'])
 def get_available_coins():
-    """Get top 100 coins from EACH selected exchange in parallel, then merge and deduplicate"""
-    print("📡 Fetching top coins from all exchanges in parallel...")
+    """Get top symbols from selected exchanges using parallel fetchers"""
+    print("📡 Fetching top coins in parallel (Web API)...")
     default_top = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT']
     all_coins_set = set(default_top)
     
@@ -1249,141 +1376,277 @@ def get_available_coins():
     if not selected_exchanges:
         selected_exchanges = ['MEXC', 'BINANCE', 'BYBIT', 'OKX', 'BITGET', 'KUCOIN', 'GATEIO', 'HTX']
     
-    n = 200 # Top 200 per exchange
-    coin_timeout = 8 # Tight timeout for web-speed loading
-
-    def fetch_mexc():
-        coins = set()
-        try:
-            data = safe_request('https://contract.mexc.com/api/v1/contract/detail', timeout=coin_timeout)
-            if data.get('success') and isinstance(data.get('data'), list):
-                contracts = [c for c in data['data'] if c.get('symbol', '').endswith('_USDT')]
-                contracts_sorted = sorted(contracts, key=lambda x: float(x.get('last24hVol', 0)), reverse=True)
-                for item in contracts_sorted[:n]:
-                    sym = item.get('symbol', '')
-                    coins.add(sym.replace('_', ''))
-        except Exception as e: print(f"  ⚠ MEXC Coin Fetch Error: {e}")
-        return 'MEXC', coins
-
-    def fetch_binance():
-        coins = set()
-        try:
-            data = safe_request('https://api.binance.com/api/v3/ticker/24hr', timeout=coin_timeout)
-            usdt_pairs = [item for item in data if item.get('symbol', '').endswith('USDT') and not item['symbol'].endswith('UPUSDT') and not item['symbol'].endswith('DOWNUSDT')]
-            binance_sorted = sorted(usdt_pairs, key=lambda x: float(x.get('quoteVolume', 0)), reverse=True)
-            for item in binance_sorted[:n]:
-                coins.add(item['symbol'])
-        except Exception as e: print(f"  ⚠ Binance Coin Fetch Error: {e}")
-        return 'BINANCE', coins
-
-    def fetch_bybit():
-        coins = set()
-        try:
-            data = safe_request('https://api.bybit.com/v5/market/tickers?category=linear', timeout=coin_timeout)
-            if data.get('result') and data['result'].get('list'):
-                usdt_pairs = [item for item in data['result']['list'] if item.get('symbol', '').endswith('USDT')]
-                bybit_sorted = sorted(usdt_pairs, key=lambda x: float(x.get('turnover24h', 0)), reverse=True)
-                for item in bybit_sorted[:n]:
-                    coins.add(item['symbol'])
-        except Exception as e: print(f"  ⚠ Bybit Coin Fetch Error: {e}")
-        return 'BYBIT', coins
-
-    def fetch_bitget():
-        coins = set()
-        try:
-            data = safe_request('https://api.bitget.com/api/v2/mix/market/tickers?productType=USDT-FUTURES', timeout=coin_timeout)
-            if data.get('data'):
-                bitget_sorted = sorted(data['data'], key=lambda x: float(x.get('usdtVolume', 0)), reverse=True)
-                for item in bitget_sorted[:n]:
-                    sym = item.get('symbol', '')
-                    if sym.endswith('USDT'):
-                        coins.add(sym)
-        except Exception as e: print(f"  ⚠ Bitget Coin Fetch Error: {e}")
-        return 'BITGET', coins
-
-    def fetch_okx():
-        coins = set()
-        try:
-            domains = ['https://www.okx.com', 'https://www.okx.net']
-            for base in domains:
-                try:
-                    data = safe_request(f'{base}/api/v5/market/tickers?instType=SWAP', timeout=coin_timeout)
-                    if data.get('data'):
-                        okx_sorted = sorted(data['data'], key=lambda x: float(x.get('vol24h', 0)), reverse=True)
-                        for item in okx_sorted[:n]:
-                            inst_id = item.get('instId', '')
-                            if '-USDT-' in inst_id:
-                                sym = inst_id.split('-USDT-')[0] + 'USDT'
-                                coins.add(sym)
-                        return 'OKX', coins
-                except: continue
-        except Exception as e: print(f"  ⚠ OKX Coin Fetch Error: {e}")
-        return 'OKX', coins
-
-    def fetch_kucoin():
-        coins = set()
-        try:
-            data = safe_request('https://api.kucoin.com/api/v1/market/allTickers', timeout=coin_timeout)
-            if data.get('data') and data['data'].get('ticker'):
-                usdt_pairs = [item for item in data['data']['ticker'] if item.get('symbol', '').endswith('-USDT')]
-                kucoin_sorted = sorted(usdt_pairs, key=lambda x: float(x.get('volValue', 0)), reverse=True)
-                for item in kucoin_sorted[:n]:
-                    sym = item.get('symbol', '')
-                    coins.add(sym.replace('-', ''))
-        except Exception as e: print(f"  ⚠ KuCoin Coin Fetch Error: {e}")
-        return 'KUCOIN', coins
-
-    def fetch_gateio():
-        coins = set()
-        try:
-            data = safe_request('https://api.gateio.ws/api/v4/futures/usdt/tickers', timeout=coin_timeout)
-            gate_sorted = sorted(data, key=lambda x: float(x.get('volume_24h_quote', 0)), reverse=True)
-            for item in gate_sorted[:n]:
-                sym = item.get('contract', '')
-                if sym.endswith('_USDT'):
-                    coins.add(sym.replace('_', ''))
-        except Exception as e: print(f"  ⚠ Gate.io Coin Fetch Error: {e}")
-        return 'GATEIO', coins
-
-    def fetch_htx():
-        coins = set()
-        try:
-            data = safe_request('https://api.huobi.pro/market/tickers', timeout=coin_timeout)
-            if data.get('data'):
-                usdt_pairs = [item for item in data['data'] if item.get('symbol', '').endswith('usdt')]
-                htx_sorted = sorted(usdt_pairs, key=lambda x: float(x.get('vol', 0)), reverse=True)
-                for item in htx_sorted[:n]:
-                    sym = item.get('symbol', '').upper()
-                    coins.add(sym)
-        except Exception as e: print(f"  ⚠ HTX Coin Fetch Error: {e}")
-        return 'HTX', coins
-
-    fetchers = {
-        'MEXC': fetch_mexc,
-        'BINANCE': fetch_binance,
-        'BYBIT': fetch_bybit,
-        'BITGET': fetch_bitget,
-        'OKX': fetch_okx,
-        'KUCOIN': fetch_kucoin,
-        'GATEIO': fetch_gateio,
-        'HTX': fetch_htx
+    fetch_map = {
+        'MEXC': fetch_mexc_top, 'BINANCE': fetch_binance_top, 
+        'BYBIT': fetch_bybit_top, 'BITGET': fetch_bitget_top,
+        'OKX': fetch_okx_top, 'KUCOIN': fetch_kucoin_top,
+        'GATEIO': fetch_gateio_top, 'HTX': fetch_htx_top
     }
 
     with ThreadPoolExecutor(max_workers=len(selected_exchanges)) as ex:
-        futures = {ex.submit(fetchers[exch]): exch for exch in selected_exchanges if exch in fetchers}
+        futures = {ex.submit(fetch_map[exch]): exch for exch in selected_exchanges if exch in fetch_map}
         for fut in as_completed(futures):
-            exch_name, coins = fut.result()
-            if coins:
-                all_coins_set.update(coins)
-                print(f"  ✨ {exch_name}: Added {len(coins)} top coins")
-    
-    if not all_coins_set:
-        return jsonify({'coins': default_top})
+            try:
+                exch_name, coins = fut.result()
+                if coins:
+                    all_coins_set.update(coins)
+                    print(f"  ✨ {exch_name}: Added {len(coins)} symbols")
+            except: pass
     
     final_list = sorted(list(all_coins_set))
-    print(f"✅ Loaded {len(final_list)} unique coins from {len(selected_exchanges)} exchanges (Top 200 scan).")
     return jsonify({'coins': final_list})
 
+# --- Telegram Bot Functionality (Internal Implementation) ---
+def send_tg_message(chat_id, text):
+    """Helper to send text messages to Telegram with Markdown support"""
+    token = config.get('telegram_token')
+    if not token or not chat_id: return
+    try:
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        payload = {
+            "chat_id": chat_id, 
+            "text": text, 
+            "parse_mode": "Markdown",
+            "disable_web_page_preview": True
+        }
+        r = requests.post(url, json=payload, timeout=12)
+        if r.status_code != 200:
+            print(f"  ⚠ Telegram Send Error ({r.status_code}): {r.text}")
+    except Exception as e:
+        print(f"  ⚠ Telegram Send Exception: {e}")
+
+def telegram_worker_loop():
+    """Background thread to listen for Telegram commands (Synchronous Polling for Eventlet compatibility)"""
+    print("📡 Telegram Bot Listener started...")
+    last_update_id = 0
+    while True:
+        token = config.get('telegram_token')
+        if not token:
+            eventlet.sleep(10)
+            continue
+            
+        try:
+            url = f"https://api.telegram.org/bot{token}/getUpdates"
+            params = {'offset': last_update_id + 1, 'timeout': 30}
+            r = requests.get(url, params=params, timeout=35)
+            if r.status_code == 200:
+                data = r.json()
+                if data.get('ok'):
+                    for update in data.get('result', []):
+                        last_update_id = update['update_id']
+                        if 'message' in update and 'text' in update['message']:
+                            handle_telegram_command(update['message'])
+            elif r.status_code == 401:
+                # print("  ⚠ Telegram Token Invalid")
+                eventlet.sleep(60)
+        except Exception as e:
+            # print(f"Telegram Bot Error: {e}")
+            eventlet.sleep(5)
+        
+        eventlet.sleep(0.1)
+
+def handle_telegram_command(message):
+    """Process incoming Telegram commands with support for Groups (@botname)"""
+    raw_text = message.get('text', '').strip()
+    if not raw_text.startswith('/'): return
+    
+    chat_id = str(message['chat']['id'])
+    chat_type = message['chat'].get('type', 'private')
+    user = message.get('from', {}).get('first_name', 'Unknown')
+    
+    print(f"📩 Telegram [{chat_type}] from {user} ({chat_id}): {raw_text}")
+    
+    # Auto-sync chat_id (Always sync if it changes, especially for groups)
+    if config.get('telegram_chat_id') != chat_id:
+        config['telegram_chat_id'] = chat_id
+        print(f"✅ Telegram Chat ID synced to: {chat_id}")
+    
+    parts = raw_text.split()
+    if not parts: return
+    
+    full_cmd = parts[0].lower()
+    cmd = full_cmd.split('@')[0]
+    
+    if cmd == '/start':
+        welcome = (
+            "🔥 *RBot Pro — World's Best AI Trading Bot* 🏆\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "Welcome to the official controller. Use the commands below to pilot your analysis:\n\n"
+            "🚀 *Analysis Commands:*\n"
+            "• `/analyze elite` — Only the highest conviction signals (Score 9+)\n"
+            "• `/analyze strong` — Professional grade signals (Score 7+)\n"
+            "• `/analyze standard` — All detected signals (Score 5+)\n"
+            "• `/stop` — Immediately kill any active analysis\n\n"
+            "📡 *Data Commands:*\n"
+            "• `/load top [exchange]` — Load top symbols (e.g. `/load top binance`)\n"
+            "• `/load top all` — Load high-volume coins from EVERY exchange\n\n"
+            "⚙️ *Settings Commands:*\n"
+            "• `/confidence [5-10]` — Set score threshold (e.g. `/confidence 8`)\n"
+            "• `/timeframe [tf]` — Set timeframes (e.g. `/timeframe 15m`)\n"
+            "• `/status` — View current bot configuration and active status\n\n"
+            "• **Note:** Avoid trading during improtant news tie or high volatility because technical anlysis usually fails during the mentioned times.\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "*Pilot Note:* Configure settings first, then run `/analyze`."
+        )
+        send_tg_message(chat_id, welcome)
+
+    elif cmd == '/analyze':
+        quality = parts[1].lower() if len(parts) > 1 else 'elite'
+        if quality not in ['elite', 'strong', 'standard', 'all']:
+            send_tg_message(chat_id, "❌ Invalid quality. Use: elite, strong, standard, all")
+            return
+            
+        config['telegram_quality'] = qual_upper
+        config['telegram_chat_id'] = chat_id # Ensure alerts go to THIS chat
+        send_tg_message(chat_id, f"🚀 *STARTING {qual_upper} ANALYSIS...*")
+        
+        # Trigger analysis using the 'telegram' session ID
+        start_telegram_analysis(chat_id)
+
+    elif cmd == '/load':
+        if len(parts) < 3 or parts[1].lower() != 'top':
+            send_tg_message(chat_id, "❌ Usage: /load top [exchange|all]")
+            return
+        
+        target = parts[2].lower()
+        if target == 'all':
+            send_tg_message(chat_id, "📡 *Scanning ALL exchanges for high-volume coins...* (This takes ~8 seconds)")
+            final_list = []
+            try:
+                # We can reuse the existing API logic safely
+                all_coins_set = {'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT'}
+                exchanges_to_scan = ['MEXC', 'BINANCE', 'BYBIT', 'OKX', 'BITGET', 'KUCOIN', 'GATEIO', 'HTX']
+                
+                with ThreadPoolExecutor(max_workers=len(exchanges_to_scan)) as ex:
+                    fetch_map = {
+                        'MEXC': fetch_mexc_top, 'BINANCE': fetch_binance_top, 
+                        'BYBIT': fetch_bybit_top, 'BITGET': fetch_bitget_top,
+                        'OKX': fetch_okx_top, 'KUCOIN': fetch_kucoin_top,
+                        'GATEIO': fetch_gateio_top, 'HTX': fetch_htx_top
+                    }
+                    futures = {ex.submit(fetch_map[exch]): exch for exch in exchanges_to_scan}
+                    for fut in as_completed(futures):
+                        try:
+                            _, coins = fut.result()
+                            if coins: all_coins_set.update(coins)
+                        except: pass
+                
+                config['symbols'] = sorted(list(all_coins_set))
+                config['telegram_chat_id'] = chat_id # Set target chat
+                send_tg_message(chat_id, f"✅ *Full Market Loaded!* Found {len(config['symbols'])} unique high-volume coins across all exchanges.")
+            except Exception as e:
+                send_tg_message(chat_id, f"❌ Error loading all coins: {e}")
+            return
+
+        exchange = target.upper()
+        send_tg_message(chat_id, f"📡 Loading top 200 coins from {exchange}...")
+        
+        try:
+            fetch_map = {
+                'MEXC': fetch_mexc_top, 'BINANCE': fetch_binance_top, 
+                'BYBIT': fetch_bybit_top, 'BITGET': fetch_bitget_top,
+                'OKX': fetch_okx_top, 'KUCOIN': fetch_kucoin_top,
+                'GATEIO': fetch_gateio_top, 'HTX': fetch_htx_top
+            }
+            if exchange not in fetch_map:
+                send_tg_message(chat_id, f"❌ Invalid exchange: {exchange}")
+                return
+                
+            _, result = fetch_map[exchange]()
+            if result:
+                config['symbols'] = sorted(list(result))
+                config['telegram_chat_id'] = chat_id # Sync target
+                send_tg_message(chat_id, f"✅ Loaded {len(result)} unique coins from {exchange}.\nYou can now start /analyze")
+            else:
+                send_tg_message(chat_id, f"❌ Failed to load coins from {exchange}. API error or no symbols found.")
+        except Exception as e:
+            send_tg_message(chat_id, f"❌ Error loading coins: {e}")
+
+    elif cmd == '/confidence':
+        if len(parts) < 2:
+            send_tg_message(chat_id, "❌ Usage: /confidence [5-10]")
+            return
+        try:
+            val = int(parts[1])
+            if 1 <= val <= 10:
+                config['min_confidence'] = val
+                send_tg_message(chat_id, f"⚙️ *Confidence Set:* Filtering for signals with score {val} and greater.")
+            else:
+                send_tg_message(chat_id, "❌ Please choose a score between 1 and 10.")
+        except:
+            send_tg_message(chat_id, "❌ Invalid number.")
+
+    elif cmd == '/timeframe':
+        if len(parts) < 2:
+            send_tg_message(chat_id, "❌ Usage: /timeframe [tf1,tf2...]")
+            return
+        tfs = parts[1].replace(' ', '').split(',')
+        valid_tfs = ['1m', '3m', '5m', '15m', '30m', '1h', '4h', '1d']
+        filtered_tfs = [tf for tf in tfs if tf.lower() in valid_tfs]
+        
+        if filtered_tfs:
+            config['timeframes'] = filtered_tfs
+            send_tg_message(chat_id, f"⚙️ *Timeframes Set:* {', '.join(filtered_tfs)}")
+        else:
+            send_tg_message(chat_id, f"❌ No valid timeframes found. Use: {', '.join(valid_tfs)}")
+
+    elif cmd == '/stop':
+        stop_telegram_analysis()
+        send_tg_message(chat_id, "🛑 Analysis Stopped.")
+
+    elif cmd == '/status':
+        is_active = client_sessions.get('telegram', {}).get('active', False)
+        status = "🟢 ACTIVE" if is_active else "⚪ IDLE"
+        msg = (
+            f"📊 *Bot Status*\n"
+            f"━━━━━━━━━━━━\n"
+            f"Status: {status}\n"
+            f"Quality: {config.get('telegram_quality')}\n"
+            f"Symbols: {len(config.get('symbols', []))}\n"
+            f"Exchanges: {', '.join(config.get('exchanges', []))}"
+        )
+        send_tg_message(chat_id, msg)
+
+def start_telegram_analysis(chat_id):
+    """Launches analysis in a managed 'telegram' session"""
+    sid = 'telegram'
+    if sid in client_sessions and client_sessions[sid].get('active'):
+        stop_telegram_analysis()
+        eventlet.sleep(1) # Wait for cleanup
+        
+    client_sessions[sid] = {'active': True, 'process': None}
+    
+    # Notify user that analysis is starting
+    send_tg_message(chat_id, "⏳ *Analysis in progress...*\nIt may take a few minutes depending on market conditions and loaded symbols.")
+    
+    # Run in a separate thread so it doesn't block the command listener
+    def run_analysis_task():
+        run_session_analysis(
+            sid, 
+            config['symbols'], 
+            config['indicators'], 
+            config['timeframes'], 
+            config['min_confidence'], 
+            config['exchanges'], 
+            config['strategies']
+        )
+    
+    eventlet.spawn(run_analysis_task)
+
+def stop_telegram_analysis():
+    """Kills any active analysis process owned by the Telegram user"""
+    sid = 'telegram'
+    if sid in client_sessions:
+        proc = client_sessions[sid].get('process')
+        if proc:
+            try:
+                import signal
+                os.kill(proc.pid, signal.SIGTERM)
+                client_sessions[sid]['active'] = False
+                client_sessions[sid]['process'] = None
+            except: pass
+
+# --- Helper fetchers for Telegram (extracted from get_available_coins) ---
 @socketio.on('connect', namespace='/')
 def handle_connect():
     """Client connected"""
@@ -1586,6 +1849,9 @@ def server_error(e):
 if __name__ == '__main__':
     # Start Market Monitor (News + Volatility)
     eventlet.spawn(market_monitor_loop)
+
+    # Start Telegram Bot Listener
+    eventlet.spawn(telegram_worker_loop)
 
     # Apply initial scheduler config
     update_scheduler()
