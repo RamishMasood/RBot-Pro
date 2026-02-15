@@ -25,10 +25,12 @@ for (const path of possiblePaths) {
     }
 }
 
+// 🚀 SECURITY ENHANCEMENT: Removed LocalAuth to prevent disk persistence.
+// Session is now temporary and will require a fresh scan when the bridge restarts,
+// matching the user's request for "browser-cache style" non-permanent login.
 const client = new Client({
-    authStrategy: new LocalAuth(),
     puppeteer: {
-        executablePath: chromePath, // Use system Chrome if found
+        executablePath: chromePath,
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -39,6 +41,19 @@ const client = new Client({
             '--disable-gpu'
         ],
         headless: true
+    }
+});
+
+// CRITICAL: Force clear any existing persistent sessions on startup
+const sessionFolders = ['.wwebjs_auth', '.wwebjs_cache'];
+sessionFolders.forEach(folder => {
+    if (fs.existsSync(folder)) {
+        try {
+            fs.rmSync(folder, { recursive: true, force: true });
+            console.log(`🧹 Cleared legacy session folder: ${folder}`);
+        } catch (e) {
+            console.error(`⚠️ Could not clear ${folder}: ${e.message}`);
+        }
     }
 });
 
@@ -109,7 +124,6 @@ client.on('message', async (msg) => {
     }
 });
 
-// Endpoint for Python to send messages OUT (Alerts/Trades)
 const express = require('express');
 const app = express();
 app.use(express.json());
@@ -123,6 +137,20 @@ app.post('/send', async (req, res) => {
         res.send({ success: true });
     } catch (err) {
         console.error(`❌ Failed to send message to ${to}:`, err.message);
+        res.status(500).send({ error: err.message });
+    }
+});
+
+app.post('/logout', async (req, res) => {
+    try {
+        console.log('🛑 Logout requested via API...');
+        await client.logout();
+        await client.destroy();
+        res.send({ success: true, message: 'Logged out and destroyed session.' });
+        // Optional: Exit process to force a fresh restart by the Python watcher
+        setTimeout(() => process.exit(0), 1000);
+    } catch (err) {
+        console.error('❌ Failed to logout:', err.message);
         res.status(500).send({ error: err.message });
     }
 });

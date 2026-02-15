@@ -1581,6 +1581,20 @@ def send_whatsapp_message(to, text):
         print(f"  ⚠ WhatsApp Send Error: {e}")
         return False
 
+@app.route('/api/whatsapp/logout', methods=['POST'])
+def whatsapp_logout():
+    """Request the Node.js bridge to logout and clear session"""
+    try:
+        url = 'http://127.0.0.1:3001/logout'
+        r = requests.post(url, timeout=15)
+        if r.status_code == 200:
+            return jsonify({'status': 'ok', 'msg': 'WhatsApp logged out successfully.'})
+        else:
+            return jsonify({'status': 'error', 'msg': f'Logout failed: {r.text}'}), r.status_code
+    except Exception as e:
+        print(f"  ⚠ WhatsApp Logout Error: {e}")
+        return jsonify({'status': 'error', 'msg': str(e)}), 500
+
 @app.route('/api/whatsapp/qr', methods=['POST'])
 def whatsapp_qr_update():
     """Endpoint for Node.js bridge to send QR or Status"""
@@ -1616,36 +1630,38 @@ def whatsapp_incoming_command():
     return jsonify({'reply': reply})
 
 def start_whatsapp_bridge():
-    """Launches the Node.js WhatsApp Bridge in the background"""
-    if whatsapp_state.get('bridge_process'):
-        if whatsapp_state['bridge_process'].poll() is None:
-            print("🟢 WhatsApp Bridge is already running.")
-            return
+    """Launches the Node.js WhatsApp Bridge and keeps it alive"""
+    def _watchdog():
+        while True:
+            if not whatsapp_state.get('bridge_process') or whatsapp_state['bridge_process'].poll() is not None:
+                print("🚀 Launching/Restarting WhatsApp Web Bridge (Node.js)...")
+                
+                if not os.path.exists('node_modules'):
+                    print("❌ 'node_modules' missing. Bridge cannot start.")
+                    eventlet.sleep(30)
+                    continue
 
-    print("🚀 Launching WhatsApp Web Bridge (Node.js)...")
-    
-    if not os.path.exists('node_modules'):
-        print("❌ 'node_modules' missing. Please run: npm install")
-        return
+                try:
+                    import shutil
+                    node_path = shutil.which('node') or 'node'
+                    startupinfo = None
+                    if sys.platform == 'win32':
+                        startupinfo = subprocess.STARTUPINFO()
+                        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                    
+                    proc = subprocess.Popen(
+                        [node_path, 'whatsapp_bridge.js'], 
+                        cwd=os.getcwd(), 
+                        shell=(sys.platform == 'win32'),
+                        startupinfo=startupinfo
+                    )
+                    whatsapp_state['bridge_process'] = proc
+                except Exception as e:
+                    print(f"❌ Failed to start WhatsApp Bridge: {e}")
+            
+            eventlet.sleep(5) # Check every 5s
 
-    try:
-        import shutil
-        node_path = shutil.which('node') or 'node'
-        
-        # Prevent window popup on Windows
-        startupinfo = None
-        if sys.platform == 'win32':
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            # startupinfo.wShowWindow = subprocess.SW_HIDE # SW_HIDE is 0
-
-        proc = subprocess.Popen([node_path, 'whatsapp_bridge.js'], 
-                               cwd=os.getcwd(), 
-                               shell=(sys.platform == 'win32'),
-                               startupinfo=startupinfo)
-        whatsapp_state['bridge_process'] = proc
-    except Exception as e:
-        print(f"❌ Failed to start WhatsApp Bridge: {e}")
+    eventlet.spawn(_watchdog)
 
 def telegram_worker_loop():
     """Background thread to listen for Telegram commands with institutional session stability"""

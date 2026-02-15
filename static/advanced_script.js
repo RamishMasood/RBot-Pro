@@ -1931,7 +1931,6 @@ function updateWhatsAppUI(status, qr = null) {
 
 function updateWhatsAppConfig() {
     const quality = document.getElementById('waQualitySelect').value;
-
     fetch('/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1939,6 +1938,31 @@ function updateWhatsAppConfig() {
             whatsapp_quality: quality
         })
     });
+}
+
+function logoutWhatsApp() {
+    if (!confirm('Are you sure you want to log out from WhatsApp? This will terminate the connection and clear all saved session data.')) return;
+
+    // Show loading
+    document.getElementById('wa-loading').style.display = 'block';
+    document.getElementById('wa-connected').style.display = 'none';
+
+    fetch('/api/whatsapp/logout', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'ok') {
+                alert('WhatsApp successfully logged out. The bridge will restart shortly for a fresh scan.');
+                checkWhatsAppStatus();
+            } else {
+                alert('Error logging out: ' + data.msg);
+                checkWhatsAppStatus();
+            }
+        })
+        .catch(e => {
+            console.error('Logout failed', e);
+            alert('Logout request failed. Please check server logs.');
+            checkWhatsAppStatus();
+        });
 }
 
 // Socket.IO Events for WhatsApp
