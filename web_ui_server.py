@@ -1043,18 +1043,26 @@ def run_session_analysis(sid, symbols, indicators, timeframes, min_conf, exchang
                         if 'registration_time' not in signal_data:
                             signal_data['registration_time'] = time.time()
 
-                        # 3. Handle UI update - Only send brand new ones OR major updates
-                        if track_status == 'NEW':
+                        # 3. Handle UI update
+                        # Check if this is a post-processed signal (has agreeing_strategies_details)
+                        is_final_merged = 'agreeing_strategies_details' in signal_data
+                        
+                        if track_status == 'NEW' or is_final_merged:
+                            # Emit NEW signals immediately for quick feedback
+                            # Also emit FINAL merged signals to update cards with complete details
                             socketio.emit('trade_signal', signal_data, room=sid, namespace='/')
-                            # Forward to Telegram
-                            thread = threading.Thread(target=send_telegram_alert, args=(signal_data,), daemon=True)
-                            thread.start()
                             
-                            # Execute Auto-Trade
-                            thread_trade = threading.Thread(target=execute_auto_trade, args=(signal_data, sid), daemon=True)
-                            thread_trade.start()
+                            # Only send Telegram/Auto-trade for NEW signals (not updates)
+                            if track_status == 'NEW':
+                                # Forward to Telegram
+                                thread = threading.Thread(target=send_telegram_alert, args=(signal_data,), daemon=True)
+                                thread.start()
+                                
+                                # Execute Auto-Trade
+                                thread_trade = threading.Thread(target=execute_auto_trade, args=(signal_data, sid), daemon=True)
+                                thread_trade.start()
                         else:
-                            # For existing signals, don't re-emit 'trade_signal' unless we want to refresh UI card
+                            # For existing signals without final data, don't re-emit
                             # Usually tracking_update handles the live updates
                             pass
                     except Exception as e:

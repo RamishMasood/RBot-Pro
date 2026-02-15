@@ -214,11 +214,24 @@ function addTradeSignal(trade) {
         card = document.createElement('div');
         card.id = signalId;
         card.dataset.agreeingStrategies = JSON.stringify([trade.strategy]);
+        // Store complete trade object for modal access
+        card.dataset.tradeData = JSON.stringify(trade);
+        // Initialize strategy details array with first strategy
+        const initialDetails = [{
+            strategy: trade.strategy,
+            timeframe: trade.timeframe || 'N/A',
+            entry: trade.entry,
+            sl: trade.sl,
+            tp1: trade.tp1,
+            confidence: trade.confidence_score || 0
+        }];
+        card.dataset.strategyDetails = JSON.stringify(initialDetails);
         signalsCount++;
         // Count update is now handled by filterSignalsByQuality()
     } else {
         // Build agreement list incrementally during live scan
         let existing = JSON.parse(card.dataset.agreeingStrategies || '[]');
+        let existingDetails = JSON.parse(card.dataset.strategyDetails || '[]');
 
         // Strategy label with timeframe for better detail
         const currentStratLabel = `${trade.strategy} (${trade.timeframe || '?'})`;
@@ -229,8 +242,30 @@ function addTradeSignal(trade) {
         } else if (!existing.includes(currentStratLabel) && !existing.includes(trade.strategy)) {
             // Check if we already have it in either simple or TF-enriched form
             existing.push(currentStratLabel);
+
+            // CRITICAL: Add this strategy's details to the array
+            const newDetail = {
+                strategy: trade.strategy,
+                timeframe: trade.timeframe || 'N/A',
+                entry: trade.entry,
+                sl: trade.sl,
+                tp1: trade.tp1,
+                confidence: trade.confidence_score || 0
+            };
+            existingDetails.push(newDetail);
         }
         card.dataset.agreeingStrategies = JSON.stringify(existing);
+        card.dataset.strategyDetails = JSON.stringify(existingDetails);
+
+        // CRITICAL: Update trade data if this is a final merged signal with details from backend
+        if (trade.agreeing_strategies_details) {
+            card.dataset.tradeData = JSON.stringify(trade);
+            // Use backend details if available (they are post-processed and more accurate)
+            card.dataset.strategyDetails = JSON.stringify(trade.agreeing_strategies_details);
+        } else if (!card.dataset.tradeData) {
+            // Store initial trade data if not already stored
+            card.dataset.tradeData = JSON.stringify(trade);
+        }
     }
 
     // Get final agreement list for this render
@@ -1431,11 +1466,45 @@ window.showAgreementDetails = function (signalId) {
         return;
     }
 
-    let strategies = [];
+    // Get Trade Data from the card's dataset (primary source)
+    let trade = {};
     try {
-        strategies = JSON.parse(card.dataset.agreeingStrategies || '[]');
+        if (card.dataset.tradeData) {
+            trade = JSON.parse(card.dataset.tradeData);
+        } else {
+            // Fallback: Try copy button
+            const copyBtn = card.querySelector('.copy-btn');
+            if (copyBtn && copyBtn.dataset.trade) {
+                trade = JSON.parse(decodeURIComponent(copyBtn.dataset.trade));
+            }
+        }
+    } catch (e) {
+        console.error("Error parsing trade data:", e);
+    }
+
+    // Use detailed list if available
+    // Priority: 1. Real-time incremental details (dataset.strategyDetails)
+    //           2. Backend post-processed details (trade.agreeing_strategies_details)
+    //           3. Simple string list (fallback)
+    let strategies = [];
+
+    try {
+        // First try: Real-time incremental details built on frontend
+        if (card.dataset.strategyDetails) {
+            strategies = JSON.parse(card.dataset.strategyDetails);
+        }
+        // Second try: Backend post-processed details (if analysis completed)
+        else if (trade.agreeing_strategies_details && Array.isArray(trade.agreeing_strategies_details)) {
+            strategies = trade.agreeing_strategies_details;
+        }
+        // Fallback: Simple string list
+        else {
+            strategies = trade.agreeing_strategies || JSON.parse(card.dataset.agreeingStrategies || '[]');
+        }
     } catch (e) {
         console.error("Error parsing strategies:", e);
+        // Ultimate fallback
+        strategies = [];
     }
 
     const symbol = signalId.replace('signal-', '').split('-')[0].toUpperCase();
@@ -1450,10 +1519,20 @@ window.showAgreementDetails = function (signalId) {
         return;
     }
 
-    titleEl.innerText = `🤝 ${symbol} Confluence`;
+    titleEl.innerText = `🤝 ${trade.symbol || symbol} Confluence`;
     subtitleEl.innerText = `${strategies.length} Strategies Aligning`;
 
     list.innerHTML = '';
+
+    // Helper for formatting prices
+    const f = (val) => {
+        const n = parseFloat(val);
+        if (isNaN(n)) return '0.000000';
+        if (n < 0.00001) return n.toFixed(10);
+        if (n < 0.01) return n.toFixed(8);
+        if (n < 1) return n.toFixed(6);
+        return n.toFixed(2);
+    };
 
     if (strategies.length === 0) {
         list.innerHTML = '<div style="color: #666; padding: 10px;">No specific strategies recorded yet.</div>';
@@ -1466,12 +1545,31 @@ window.showAgreementDetails = function (signalId) {
             item.style.borderLeft = '3px solid #00ff88';
             item.style.borderRadius = '0 4px 4px 0';
             item.style.fontSize = '0.9em';
-            item.innerHTML = `
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span style="font-weight: bold; color: #fff;">${strat}</span>
-                    <span style="font-size: 0.8em; color: #00ff88;">✅ Active</span>
-                </div>
-            `;
+
+            if (typeof strat === 'string') {
+                // Legacy / Simple String View
+                item.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-weight: bold; color: #fff;">${strat}</span>
+                        <span style="font-size: 0.8em; color: #00ff88;">✅ Active</span>
+                    </div>
+                `;
+            } else {
+                // Detailed Object View
+                item.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div>
+                            <span style="font-weight: bold; color: #fff; display:block;">${strat.strategy}</span>
+                            <span style="font-size: 0.8em; color: #888;">${strat.timeframe} • Conf: <span style="color:#00d4ff">${strat.confidence}/10</span></span>
+                        </div>
+                        <div style="text-align: right; font-family: monospace; font-size: 0.9em; line-height: 1.4;">
+                            <div style="color: #aaa;">Entry: <span style="color: #fff;">$${f(strat.entry)}</span></div>
+                            <div style="color: #aaa;">TP: <span style="color: #00ff88;">$${f(strat.tp1)}</span></div>
+                            <div style="color: #aaa;">SL: <span style="color: #ff4444;">$${f(strat.sl)}</span></div>
+                        </div>
+                    </div>
+                `;
+            }
             list.appendChild(item);
         });
     }

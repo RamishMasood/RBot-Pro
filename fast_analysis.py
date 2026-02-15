@@ -5822,16 +5822,31 @@ def deduplicate_signals(trades):
         
         # Combine strategy names with timeframes and deduplicate
         strategy_list = []
+        strategy_details_list = []
         seen_pairs = set()
+        
         for t in group:
             st_name = f"{t['strategy']} ({t.get('timeframe', 'N/A')})"
             if st_name not in seen_pairs:
                 strategy_list.append(st_name)
+                
+                # Create detail object for UI
+                detail_obj = {
+                    'strategy': t['strategy'],
+                    'timeframe': t.get('timeframe', 'N/A'),
+                    'entry': t['entry'],
+                    'sl': t['sl'],
+                    'tp1': t['tp1'],
+                    'confidence': t.get('confidence_score', 0)
+                }
+                strategy_details_list.append(detail_obj)
+                
                 seen_pairs.add(st_name)
         
         # Enrich with agreement data
         best['agreement_count'] = len(strategy_list)
         best['agreeing_strategies'] = strategy_list
+        best['agreeing_strategies_details'] = strategy_details_list
 
         # Boost confidence for agreement (+1 per extra strategy, capped at 10)
         original_conf = best.get('confidence_score', 0)
@@ -6411,6 +6426,10 @@ def run_analysis():
 
             # Print to terminal for final summary
             print(f"SIGNAL_SUMMARY: {trade['symbol']} {trade['type']} (Score: {trade['confidence_score']})")
+            
+            # CRITICAL: Re-emit the FINAL merged signal with complete data (including agreeing_strategies_details)
+            # This ensures the UI receives the post-processed version with all agreement details
+            print(f"SIGNAL_DATA:{json.dumps(trade, default=str)}")
     else:
         print("\n")
         print("⏳ No trades meeting the configured confidence threshold found at this moment.")
