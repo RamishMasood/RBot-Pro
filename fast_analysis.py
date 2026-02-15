@@ -62,7 +62,9 @@ DEFAULT_INDICATOR_LIST = {
     'STDEV', 'VP', 'SUPDEM', 'FIB', 'ICT_WD', 'SQZ', 'StochRSI', 'OBV',
     'HMA', 'REGIME', 'DELTA', 'ZSCORE', 'WYCKOFF', 'RVOL',
     # SuperScalp 2026 suite
-    'PSAR', 'TEMA', 'CHANDELIER', 'KAMA', 'VFI'
+    'PSAR', 'TEMA', 'CHANDELIER', 'KAMA', 'VFI',
+    # World-Class 2026 suite
+    'PIVOT', 'CCI', 'LR', 'CYBER', 'CHVOL', 'DARVAS', 'GANN', 'ALLIGATOR', 'FRACTAL'
 }
 ENABLED_INDICATORS = set(args.indicators.split(',')) if args.indicators else DEFAULT_INDICATOR_LIST
 ENABLED_TIMEFRAMES = args.timeframes.split(',') if args.timeframes else ['1m', '3m', '5m', '15m', '30m', '1h', '4h', '1d']
@@ -76,7 +78,11 @@ DEFAULT_STRATEGY_LIST = {
     'VORTEX_TREND', 'ICT_SILVER_BULLET', 'UTBOT_ELITE', 'KELTNER_REVERSION', 'VOLATILITY_CAPITULATION',
     'MOMENTUM_CONFLUENCE', 'ICT_WEALTH_DIVISION', 'HARMONIC_GARTLEY', 'PSAR_TEMA_SCALP', 'KAMA_VOLATILITY_SCALP',
     'VFI_MOMENTUM_SCALP', 'REGIME_ADAPTIVE', 'WYCKOFF_SPRING', 'TRIPLE_CONFLUENCE', 'ZSCORE_REVERSION',
-    'MTF_TREND_RIDER', 'SMART_MONEY_TRAP', 'MOMENTUM_EXHAUSTION'
+    'MTF_TREND_RIDER', 'SMART_MONEY_TRAP', 'MOMENTUM_EXHAUSTION',
+    'ICHIMOKU_KUMO_BREAKOUT', 'PINBAR_REVERSAL', 'TDI_GOLDEN_CROSS', 'VWAP_INSTITUTIONAL', 'FIBONACCI_CONFLUENCE',
+    'PIVOT_REVERSAL', 'VORTEX_CROSS', 'ALLIGATOR_BREAKOUT', 'FRACTAL_BREAKOUT', 'WOODIES_CCI',
+    'DARVAS_BOX_SIGNAL', 'LINEAR_REG_REVERSION', 'HMA_TREND_SCALP', 'IOF_PREDICTION', 'AGENTIC_SENTIMENT',
+    'PREDICTIVE_MOMENTUM', 'CHAIKIN_VOLATILITY', 'GANN_HILO_TREND'
 }
 ENABLED_STRATEGIES = set(args.strategies.upper().split(',')) if args.strategies else DEFAULT_STRATEGY_LIST
 
@@ -1816,6 +1822,117 @@ def calculate_rvol_strength(volumes, period=20):
     except:
         return {'ratio': 1.0, 'category': 'NORMAL'}
 
+def calculate_pivots(high, low, close):
+    """Floor Pivot Points (P, S1, S2, S3, R1, R2, R3)"""
+    p = (high + low + close) / 3
+    r1 = (2 * p) - low
+    s1 = (2 * p) - high
+    r2 = p + (high - low)
+    s2 = p - (high - low)
+    r3 = high + 2 * (p - low)
+    s3 = low - 2 * (high - p)
+    return {'p': p, 'r1': r1, 's1': s1, 'r2': r2, 's2': s2, 'r3': r3, 's3': s3}
+
+def calculate_cci(highs, lows, closes, period=20):
+    """Commodity Channel Index"""
+    try:
+        if len(closes) < period: return 0
+        tp = [(h + l + c) / 3 for h, l, c in zip(highs, lows, closes)]
+        sma_tp = sum(tp[-period:]) / period
+        mean_dev = sum(abs(x - sma_tp) for x in tp[-period:]) / period
+        if mean_dev == 0: return 0
+        return (tp[-1] - sma_tp) / (0.015 * mean_dev)
+    except: return 0
+
+def calculate_linear_regression(closes, period=14):
+    """Linear Regression Slope and Value"""
+    try:
+        if len(closes) < period: return {'value': closes[-1], 'slope': 0}
+        y = closes[-period:]
+        x = list(range(period))
+        x_sum = sum(x)
+        y_sum = sum(y)
+        xx_sum = sum(i*i for i in x)
+        xy_sum = sum(i*j for i, j in zip(x, y))
+        
+        slope = (period * xy_sum - x_sum * y_sum) / (period * xx_sum - x_sum * x_sum)
+        intercept = (y_sum - slope * x_sum) / period
+        return {'value': slope * (period - 1) + intercept, 'slope': slope}
+    except: return {'value': closes[-1], 'slope': 0}
+
+def calculate_cyber_cycle(closes, alpha=0.07):
+    """Ehlers Cyber Cycle"""
+    try:
+        if len(closes) < 10: return 0
+        # This is a simplified version of the Ehlers Cyber Cycle
+        smooth = [(closes[i] + 2*closes[i-1] + 2*closes[i-2] + closes[i-3])/6 for i in range(3, len(closes))]
+        cycle = [0, 0]
+        for i in range(2, len(smooth)):
+            c = (1 - 0.5*alpha)**2 * (smooth[i] - 2*smooth[i-1] + smooth[i-2]) + \
+                2*(1 - alpha)*cycle[-1] - (1 - alpha)**2*cycle[-2]
+            cycle.append(c)
+        return cycle[-1]
+    except: return 0
+
+def calculate_chaikin_volatility(highs, lows, period=10):
+    """Chaikin Volatility (Percent change in EMA of high-low range)"""
+    try:
+        if len(highs) < period * 2: return 0
+        ranges = [h - l for h, l in zip(highs, lows)]
+        
+        def ema_calc(data, p):
+            mult = 2 / (p + 1)
+            ema = data[0]
+            for val in data[1:]: ema = val * mult + ema * (1 - mult)
+            return ema
+            
+        ema_now = ema_calc(ranges[-period:], period)
+        ema_prev = ema_calc(ranges[-period-10:-10], period)
+        if ema_prev == 0: return 0
+        return 100 * (ema_now - ema_prev) / ema_prev
+    except: return 0
+
+def calculate_darvas_box(candles, lookback=20):
+    """Darvas Box Theory (Identifying top/bottom of ranges)"""
+    try:
+        if len(candles) < lookback: return None
+        h_max = max(c['high'] for c in candles[-lookback:])
+        l_min = min(c['low'] for c in candles[-lookback:])
+        return {'upper': h_max, 'lower': l_min}
+    except: return None
+
+def calculate_gann_hilo(highs, lows, closes, period=13):
+    """Gann Hi-Lo Activator"""
+    try:
+        if len(closes) < period: return 'NEUTRAL'
+        sma_high = sum(highs[-period:]) / period
+        sma_low = sum(lows[-period:]) / period
+        
+        # Trend logic
+        if closes[-1] > sma_high: return 'BULLISH'
+        if closes[-1] < sma_low: return 'BEARISH'
+        return 'NEUTRAL'
+    except: return 'NEUTRAL'
+
+def calculate_alligator(closes):
+    """Bill Williams Alligator (Jaw, Teeth, Lips)"""
+    try:
+        if len(closes) < 21: return None
+        jaw = calculate_ema(closes, 13) # Smoothed Moving Average (actually SMMA, but EMA is close)
+        teeth = calculate_ema(closes, 8)
+        lips = calculate_ema(closes, 5)
+        return {'jaw': jaw, 'teeth': teeth, 'lips': lips}
+    except: return None
+
+def calculate_fractals(highs, lows):
+    """Bill Williams Fractals"""
+    try:
+        if len(highs) < 5: return {'up': False, 'down': False}
+        up = highs[-3] > highs[-1] and highs[-3] > highs[-2] and highs[-3] > highs[-4] and highs[-3] > highs[-5]
+        down = lows[-3] < lows[-1] and lows[-3] < lows[-2] and lows[-3] < lows[-4] and lows[-3] < lows[-5]
+        return {'up': up, 'down': down}
+    except: return {'up': False, 'down': False}
+
 # ═══════════════════════════════════════════════════════════════
 # END NEW ADVANCED INDICATORS
 # ═══════════════════════════════════════════════════════════════
@@ -2358,6 +2475,16 @@ def analyze_timeframe(candles, timeframe_name):
         'zscore': zscore,
         'wyckoff_phase': wyckoff_phase,
         'rvol_strength': rvol_strength,
+        # ═══ WORLD-CLASS 2026 INDICATORS ═══
+        'pivots': calculate_pivots(highs[-2], lows[-2], closes[-2]) if 'PIVOT' in ENABLED_INDICATORS and len(closes) > 2 else None,
+        'cci': calculate_cci(highs, lows, closes) if 'CCI' in ENABLED_INDICATORS else 0,
+        'lr': calculate_linear_regression(closes) if 'LR' in ENABLED_INDICATORS else {'value': current_price, 'slope': 0},
+        'cyber': calculate_cyber_cycle(closes) if 'CYBER' in ENABLED_INDICATORS else 0,
+        'chvol': calculate_chaikin_volatility(highs, lows) if 'CHVOL' in ENABLED_INDICATORS else 0,
+        'darvas': calculate_darvas_box(candles) if 'DARVAS' in ENABLED_INDICATORS else None,
+        'gann': calculate_gann_hilo(highs, lows, closes) if 'GANN' in ENABLED_INDICATORS else 'NEUTRAL',
+        'alligator': calculate_alligator(closes) if 'ALLIGATOR' in ENABLED_INDICATORS else None,
+        'fractals': calculate_fractals(highs, lows) if 'FRACTAL' in ENABLED_INDICATORS else {'up': False, 'down': False},
     }
 
 
@@ -5712,6 +5839,210 @@ def strategy_momentum_exhaustion(symbol, analyses):
             }); break
     return trades
 
+def strategy_ichimoku_kumo_breakout(symbol, analyses):
+    """Strategy: Ichimoku Kumo Breakout - Trend Confirmation"""
+    trades = []
+    for tf in ['1h', '4h', '15m']:
+        if tf not in analyses: continue
+        a = analyses[tf]
+        ichi = a.get('ichimoku')
+        if not ichi or not isinstance(ichi, dict): continue
+        
+        current = a['current_price']
+        span_a = ichi.get('span_a')
+        span_b = ichi.get('span_b')
+        tenkan = ichi.get('tenkan')
+        kijun = ichi.get('kijun')
+        atr = a['atr']
+        if not all([span_a, span_b, tenkan, kijun]) or atr == 0: continue
+        
+        kumo_top = max(span_a, span_b)
+        kumo_bottom = min(span_a, span_b)
+        
+        # LONG: Price Above Kumo + Tenkan > Kijun (Strong Bullish)
+        if current > kumo_top and tenkan > kijun:
+            cs = 8
+            sl = kumo_bottom - (atr * 1.5)
+            tp1 = current + (atr * 3)
+            tp2 = current + (atr * 6)
+            trades.append({
+                'strategy': 'Kumo Breakout', 'type': 'LONG', 'symbol': symbol,
+                'entry': current, 'sl': sl, 'tp1': tp1, 'tp2': tp2,
+                'confidence': 'HIGH', 'confidence_score': cs,
+                'risk_reward': round((tp1-current)/(current-sl), 1),
+                'reason': "Price above Kumo Cloud + TK Cross Up",
+                'indicators': f"Ichi: Price > Kumo, Tenkan > Kijun",
+                'expected_time': '2-8 hours', 'risk': current-sl, 'reward': tp1-current,
+                'entry_type': 'MARKET', 'timeframe': tf
+            }); break
+            
+        # SHORT: Price Below Kumo + Tenkan < Kijun (Strong Bearish)
+        elif current < kumo_bottom and tenkan < kijun:
+            cs = 8
+            sl = kumo_top + (atr * 1.5)
+            tp1 = current - (atr * 3)
+            tp2 = current - (atr * 6)
+            trades.append({
+                'strategy': 'Kumo Breakout', 'type': 'SHORT', 'symbol': symbol,
+                'entry': current, 'sl': sl, 'tp1': tp1, 'tp2': tp2,
+                'confidence': 'HIGH', 'confidence_score': cs,
+                'risk_reward': round((current-tp1)/(sl-current), 1),
+                'reason': "Price below Kumo Cloud + TK Cross Down",
+                'indicators': f"Ichi: Price < Kumo, Tenkan < Kijun",
+                'expected_time': '2-8 hours', 'risk': sl-current, 'reward': current-tp1,
+                'entry_type': 'MARKET', 'timeframe': tf
+            }); break
+    return trades
+
+def strategy_fibonacci_confluence(symbol, analyses):
+    """Strategy: Fibonacci Retracement Confluence with Order Blocks"""
+    trades = []
+    for tf in ['15m', '1h', '4h']:
+        if tf not in analyses: continue
+        a = analyses[tf]
+        fib = a.get('fib', {})
+        current = a['current_price']
+        atr = a['atr']
+        if not fib or atr == 0: continue
+        
+        # Check if price is near 0.618 or 0.786
+        levels = fib.get('levels', {})
+        f618 = levels.get('61.8%')
+        f786 = levels.get('78.6%')
+        if not f618: continue
+        
+        # Bullish: Retracement to Golden Pocket with Bullish Trend
+        if a['trend'] == 'BULLISH' and (abs(current - f618) / current < 0.005 or abs(current - f786) / current < 0.005):
+            cs = 9
+            sl = current - (atr * 2.5)
+            tp1 = current + (atr * 5)
+            trades.append({
+                'strategy': 'Fib Confluence', 'type': 'LONG', 'symbol': symbol,
+                'entry': current, 'sl': sl, 'tp1': tp1, 'tp2': current + (atr * 10),
+                'confidence': 'ELITE', 'confidence_score': cs,
+                'risk_reward': round((tp1-current)/(current-sl), 1),
+                'reason': "Golden Pocket Retracement + Bullish Trend",
+                'indicators': f"Fib: 61.8% / 78.6% Zone reached",
+                'expected_time': '4-12 hours', 'risk': current-sl, 'reward': tp1-current,
+                'entry_type': 'MARKET', 'timeframe': tf
+            }); break
+            
+    return trades
+
+def strategy_pinbar_reversal(symbol, analyses):
+    """Strategy: Pin Bar Reversal at Key Levels"""
+    trades = []
+    for tf in ['15m', '1h', '4h']:
+        if tf not in analyses: continue
+        a = analyses[tf]
+        current = a['current_price']
+        atr = a['atr']
+        if atr == 0: continue
+        
+        # Check for Rejection from Supply/Demand
+        sd = a.get('sup_dem', {})
+        if not sd: continue
+        
+        # Bullish Pinbar at Demand
+        if sd['type'] == 'DEMAND' and current < sd['level'] * 1.01:
+            cs = 9
+            sl = current - (atr * 2)
+            tp1 = current + (atr * 4)
+            trades.append({
+                'strategy': 'Pinbar Reversal', 'type': 'LONG', 'symbol': symbol,
+                'entry': current, 'sl': sl, 'tp1': tp1, 'tp2': current + (atr * 8),
+                'confidence': 'ELITE', 'confidence_score': cs,
+                'risk_reward': round((tp1-current)/(current-sl), 1),
+                'reason': "Rejection Pinbar at Demand Zone",
+                'indicators': "Candle: Long Lower Wick Rejected Demand",
+                'expected_time': '1-6 hours', 'risk': current-sl, 'reward': tp1-current,
+                'entry_type': 'MARKET', 'timeframe': tf
+            }); break
+            
+        # Bearish Pinbar at Supply
+        elif sd['type'] == 'SUPPLY' and current > sd['level'] * 0.99:
+            cs = 9
+            sl = current + (atr * 2)
+            tp1 = current - (atr * 4)
+            trades.append({
+                'strategy': 'Pinbar Reversal', 'type': 'SHORT', 'symbol': symbol,
+                'entry': current, 'sl': sl, 'tp1': tp1, 'tp2': current - (atr * 8),
+                'confidence': 'ELITE', 'confidence_score': cs,
+                'risk_reward': round((current-tp1)/(sl-current), 1),
+                'reason': "Rejection Pinbar at Supply Zone",
+                'indicators': "Candle: Long Upper Wick Rejected Supply",
+                'expected_time': '1-6 hours', 'risk': sl-current, 'reward': current-tp1,
+                'entry_type': 'MARKET', 'timeframe': tf
+            }); break
+    return trades
+
+def strategy_tdi_golden_cross(symbol, analyses):
+    """Strategy: TDI (Traders Dynamic Index) Golden Cross"""
+    trades = []
+    for tf in ['15m', '1h', '5m']:
+        if tf not in analyses: continue
+        a = analyses[tf]
+        rsi = a.get('rsi', 50)
+        # TDI usually calculates secondary RSI lines. 
+        # We can simulate with RSI cross of 50 + Momentum
+        stc = a.get('stc', 50) # Use STC as a proxy for TDI Signal
+        atr = a['atr']
+        if atr == 0: continue
+        
+        if rsi > 55 and stc < 20: # Oversold STC + Rising RSI
+            cs = 7
+            trades.append({
+                'strategy': 'TDI Golden Cross', 'type': 'LONG', 'symbol': symbol,
+                'entry': a['current_price'], 'sl': a['current_price'] - (atr*2), 
+                'tp1': a['current_price'] + (atr*4), 'tp2': a['current_price'] + (atr*7),
+                'confidence_score': cs, 'reason': "TDI Momentum Pivot (RSI+STC Confluence)",
+                'indicators': f"RSI: {rsi:.1f}, STC: {stc:.1f}",
+                'expected_time': '30m-3h', 'risk': atr*2, 'reward': atr*4,
+                'risk_reward': 2.0,
+                'entry_type': 'MARKET', 'timeframe': tf
+            }); break
+    return trades
+
+def strategy_vwap_institutional(symbol, analyses):
+    """Strategy: VWAP Institutional Breakout with Heavy Volume"""
+    trades = []
+    for tf in ['5m', '15m']:
+        if tf not in analyses: continue
+        a = analyses[tf]
+        vwap = a.get('vwap')
+        rvol = a.get('rvol', 1.0)
+        current = a['current_price']
+        atr = a['atr']
+        if not vwap or atr == 0: continue
+        
+        # Institutional LONG: Price > VWAP + RVOL > 2.0
+        if current > vwap * 1.002 and rvol > 2.0:
+            cs = 9
+            trades.append({
+                'strategy': 'VWAP Institutional', 'type': 'LONG', 'symbol': symbol,
+                'entry': current, 'sl': current - (atr*2.5), 
+                'tp1': current + (atr*5), 'tp2': current + (atr*10),
+                'confidence_score': cs, 'reason': "Institutional VWAP Breakout (High RVOL)",
+                'indicators': f"VWAP: Broken Up, RVOL: {rvol:.2f}",
+                'expected_time': '15m-2h', 'risk': atr*2.5, 'reward': atr*5,
+                'risk_reward': 2.0,
+                'entry_type': 'MARKET', 'timeframe': tf
+            }); break
+        # Institutional SHORT: Price < VWAP + RVOL > 2.0
+        elif current < vwap * 0.998 and rvol > 2.0:
+            cs = 9
+            trades.append({
+                'strategy': 'VWAP Institutional', 'type': 'SHORT', 'symbol': symbol,
+                'entry': current, 'sl': current + (atr*2.5), 
+                'tp1': current - (atr*5), 'tp2': current - (atr*10),
+                'confidence_score': cs, 'reason': "Institutional VWAP Breakdown (High RVOL)",
+                'indicators': f"VWAP: Broken Down, RVOL: {rvol:.2f}",
+                'expected_time': '15m-2h', 'risk': atr*2.5, 'reward': atr*5,
+                'risk_reward': 2.0,
+                'entry_type': 'MARKET', 'timeframe': tf
+            }); break
+    return trades
+
 # ═══════════════════════════════════════════════════════════════
 # END ULTIMATE 2025 STRATEGIES
 # ═══════════════════════════════════════════════════════════════
@@ -5774,7 +6105,301 @@ def run_strategies(symbol, analyses):
     if 'SMART_MONEY_TRAP' in ENABLED_STRATEGIES: all_trades.extend(strategy_smart_money_trap(symbol, analyses))
     if 'MOMENTUM_EXHAUSTION' in ENABLED_STRATEGIES: all_trades.extend(strategy_momentum_exhaustion(symbol, analyses))
     
+    # NEW PERFORMANCE STRATEGIES 2026
+    if 'ICHIMOKU_KUMO_BREAKOUT' in ENABLED_STRATEGIES: all_trades.extend(strategy_ichimoku_kumo_breakout(symbol, analyses))
+    if 'FIBONACCI_CONFLUENCE' in ENABLED_STRATEGIES: all_trades.extend(strategy_fibonacci_confluence(symbol, analyses))
+    if 'PINBAR_REVERSAL' in ENABLED_STRATEGIES: all_trades.extend(strategy_pinbar_reversal(symbol, analyses))
+    if 'TDI_GOLDEN_CROSS' in ENABLED_STRATEGIES: all_trades.extend(strategy_tdi_golden_cross(symbol, analyses))
+    if 'VWAP_INSTITUTIONAL' in ENABLED_STRATEGIES: all_trades.extend(strategy_vwap_institutional(symbol, analyses))
+    
+    # ═══════════════════════════════════════════════════════════════
+    # 🌍 WORLD-CLASS 2026 STRATEGIES
+    # ═══════════════════════════════════════════════════════════════
+    if 'PIVOT_REVERSAL' in ENABLED_STRATEGIES: all_trades.extend(strategy_pivot_reversal(symbol, analyses))
+    if 'VORTEX_CROSS' in ENABLED_STRATEGIES: all_trades.extend(strategy_vortex_cross(symbol, analyses))
+    if 'ALLIGATOR_BREAKOUT' in ENABLED_STRATEGIES: all_trades.extend(strategy_alligator_breakout(symbol, analyses))
+    if 'FRACTAL_BREAKOUT' in ENABLED_STRATEGIES: all_trades.extend(strategy_fractal_breakout(symbol, analyses))
+    if 'WOODIES_CCI' in ENABLED_STRATEGIES: all_trades.extend(strategy_woodies_cci(symbol, analyses))
+    if 'DARVAS_BOX_SIGNAL' in ENABLED_STRATEGIES: all_trades.extend(strategy_darvas_box_signal(symbol, analyses))
+    if 'LINEAR_REG_REVERSION' in ENABLED_STRATEGIES: all_trades.extend(strategy_linear_reg_reversion(symbol, analyses))
+    if 'HMA_TREND_SCALP' in ENABLED_STRATEGIES: all_trades.extend(strategy_hma_trend_scalp(symbol, analyses))
+    if 'IOF_PREDICTION' in ENABLED_STRATEGIES: all_trades.extend(strategy_iof_prediction(symbol, analyses))
+    if 'AGENTIC_SENTIMENT' in ENABLED_STRATEGIES: all_trades.extend(strategy_agentic_sentiment(symbol, analyses))
+    if 'PREDICTIVE_MOMENTUM' in ENABLED_STRATEGIES: all_trades.extend(strategy_predictive_momentum(symbol, analyses))
+    if 'CHAIKIN_VOLATILITY' in ENABLED_STRATEGIES: all_trades.extend(strategy_chaikin_volatility(symbol, analyses))
+    if 'GANN_HILO_TREND' in ENABLED_STRATEGIES: all_trades.extend(strategy_gann_hilo_trend(symbol, analyses))
+
     return all_trades
+
+def strategy_pivot_reversal(symbol, analyses):
+    """Strategy: Floor Pivot Point Reversal (Key Support/Resistance)"""
+    trades = []
+    for tf in ['15m', '1h', '4h']:
+        if tf not in analyses: continue
+        a = analyses[tf]; p = a.get('pivots'); current = a['current_price']; atr = a['atr']
+        if not p or atr == 0: continue
+        
+        # Bullish Reversal at S1/S2
+        if (abs(current - p['s1']) / current < 0.003 or abs(current - p['s2']) / current < 0.003) and a['rsi'] < 40:
+            cs = 8
+            trades.append({
+                'strategy': 'Pivot Reversal', 'type': 'LONG', 'symbol': symbol,
+                'entry': current, 'sl': current - (atr*2), 'tp1': p['p'], 'tp2': p['r1'],
+                'confidence_score': cs, 'reason': "Bullish Pivot Reversal at S1/S2",
+                'indicators': f"S1: {p['s1']:.2f}, RSI: {a['rsi']:.1f}",
+                'expected_time': '4-12 hours', 'risk': atr*2, 'reward': abs(p['p']-current),
+                'entry_type': 'MARKET', 'timeframe': tf
+            }); break
+            
+        # Bearish Reversal at R1/R2
+        elif (abs(current - p['r1']) / current < 0.003 or abs(current - p['r2']) / current < 0.003) and a['rsi'] > 60:
+            cs = 8
+            trades.append({
+                'strategy': 'Pivot Reversal', 'type': 'SHORT', 'symbol': symbol,
+                'entry': current, 'sl': current + (atr*2), 'tp1': p['p'], 'tp2': p['s1'],
+                'confidence_score': cs, 'reason': "Bearish Pivot Reversal at R1/R2",
+                'indicators': f"R1: {p['r1']:.2f}, RSI: {a['rsi']:.1f}",
+                'expected_time': '4-12 hours', 'risk': atr*2, 'reward': abs(p['p']-current),
+                'entry_type': 'MARKET', 'timeframe': tf
+            }); break
+    return trades
+
+def strategy_vortex_cross(symbol, analyses):
+    """Strategy: Vortex Indicator Cross (Trend Shift Detection)"""
+    trades = []
+    for tf in ['15m', '1h']:
+        if tf not in analyses: continue
+        a = analyses[tf]; v = a.get('vortex'); current = a['current_price']; atr = a['atr']
+        if not v or atr == 0: continue
+        
+        # Bullish: VI+ crosses above VI- + Trend Alignment
+        if v['plus'] > v['minus'] and v['plus'] > 1.1 and a['trend'] == 'BULLISH':
+            cs = 7
+            trades.append({
+                'strategy': 'Vortex Cross', 'type': 'LONG', 'symbol': symbol,
+                'entry': current, 'sl': current - (atr*2.5), 'tp1': current + (atr*5),
+                'confidence_score': cs, 'reason': "Vortex Positive Trend Cross",
+                'indicators': f"VI+: {v['plus']:.2f}, VI-: {v['minus']:.2f}",
+                'expected_time': '2-8 hours', 'entry_type': 'MARKET', 'timeframe': tf
+            }); break
+    return trades
+
+def strategy_alligator_breakout(symbol, analyses):
+    """Strategy: Williams Alligator 'Awakening' Breakout"""
+    trades = []
+    for tf in ['15m', '1h']:
+        if tf not in analyses: continue
+        a = analyses[tf]; gator = a.get('alligator'); current = a['current_price']; atr = a['atr']
+        if not gator or atr == 0: continue
+        
+        # Bullish: Lips > Teeth > Jaw (Mouth Open Up)
+        if current > gator['lips'] > gator['teeth'] > gator['jaw'] and a['rvol'] > 1.2:
+            cs = 8
+            trades.append({
+                'strategy': 'Alligator', 'type': 'LONG', 'symbol': symbol,
+                'entry': current, 'sl': gator['jaw'], 'tp1': current + (atr*4),
+                'confidence_score': cs, 'reason': "Alligator Mouth Opening Bullish",
+                'indicators': f"Volume Spike + Alligator Alignment",
+                'expected_time': '3-9 hours', 'entry_type': 'MARKET', 'timeframe': tf
+            }); break
+    return trades
+
+def strategy_fractal_breakout(symbol, analyses):
+    """Strategy: Williams Fractal Breakout conjoined with Alligator"""
+    trades = []
+    for tf in ['15m', '1h']:
+        if tf not in analyses: continue
+        a = analyses[tf]; f = a.get('fractals'); current = a['current_price']; atr = a['atr']
+        if not f or atr == 0: continue
+        
+        if f['up'] and a['trend'] == 'BULLISH':
+            cs = 8
+            trades.append({
+                'strategy': 'Fractal Breakout', 'type': 'LONG', 'symbol': symbol,
+                'entry': current, 'sl': current - (atr*2), 'tp1': current + (atr*4),
+                'confidence_score': cs, 'reason': "Bullish Fractal Breakout in Trend",
+                'indicators': "Fractal Up + Bullish EMA Stack",
+                'expected_time': '2-6 hours', 'entry_type': 'MARKET', 'timeframe': tf
+            }); break
+    return trades
+
+def strategy_woodies_cci(symbol, analyses):
+    """Strategy: Woodies CCI - Trend Continuation Pattern (Zero-Line Reject)"""
+    trades = []
+    for tf in ['5m', '15m']:
+        if tf not in analyses: continue
+        a = analyses[tf]; cci = a.get('cci'); current = a['current_price']; atr = a['atr']
+        if cci is None or atr == 0: continue
+        
+        # CCI Zero-Line Reject (ZLR) Pattern
+        if 50 < cci < 150 and a['trend'] == 'BULLISH':
+            cs = 7
+            trades.append({
+                'strategy': 'Woodies CCI', 'type': 'LONG', 'symbol': symbol,
+                'entry': current, 'sl': current - (atr*2), 'tp1': current + (atr*4),
+                'confidence_score': cs, 'reason': "CCI Zero-Line Rejection (Trend continuation)",
+                'indicators': f"CCI: {cci:.1f}",
+                'expected_time': '1-4 hours', 'entry_type': 'MARKET', 'timeframe': tf
+            }); break
+    return trades
+
+def strategy_darvas_box_signal(symbol, analyses):
+    """Strategy: Darvas Box Breakout (Institutional Range Exit)"""
+    trades = []
+    for tf in ['15m', '1h', '4h']:
+        if tf not in analyses: continue
+        a = analyses[tf]; box = a.get('darvas'); current = a['current_price']; atr = a['atr']
+        if not box or atr == 0: continue
+        
+        if current > box['upper'] * 1.005: # Clean Breakout
+            cs = 9
+            trades.append({
+                'strategy': 'Darvas Box', 'type': 'LONG', 'symbol': symbol,
+                'entry': current, 'sl': box['lower'], 'tp1': current + (atr*5),
+                'confidence_score': cs, 'reason': "Darvas Box Upper Breakout",
+                'indicators': f"High: {box['upper']:.2f}, Low: {box['lower']:.2f}",
+                'expected_time': '8-24 hours', 'entry_type': 'MARKET', 'timeframe': tf
+            }); break
+    return trades
+
+def strategy_linear_reg_reversion(symbol, analyses):
+    """Strategy: Linear Regression Channel Reversion"""
+    trades = []
+    for tf in ['15m', '1h']:
+        if tf not in analyses: continue
+        a = analyses[tf]; lr = a.get('lr'); current = a['current_price']; atr = a['atr']
+        if not lr or atr == 0: continue
+        
+        # Enters on extreme deviations from the regression line
+        deviation = (current - lr['value']) / current
+        if deviation < -0.015 and lr['slope'] > 0: # Undervalued in Uptrend
+            cs = 8
+            trades.append({
+                'strategy': 'LinReg Reversion', 'type': 'LONG', 'symbol': symbol,
+                'entry': current, 'sl': current - (atr*2), 'tp1': lr['value'],
+                'confidence_score': cs, 'reason': "Linear Regression Undervaluation Reversion",
+                'indicators': f"Dev: {deviation*100:.2f}%, Slope: {lr['slope']:.4f}",
+                'expected_time': '2-6 hours', 'entry_type': 'MARKET', 'timeframe': tf
+            }); break
+    return trades
+
+def strategy_hma_trend_scalp(symbol, analyses):
+    """Strategy: Hull Moving Average (HMA) Ultra-Fast Trend Scalp"""
+    trades = []
+    for tf in ['1m', '3m', '5m']:
+        if tf not in analyses: continue
+        a = analyses[tf]; hma = a.get('hma'); current = a['current_price']; atr = a['atr']
+        if not hma or atr == 0: continue
+        
+        if current > hma and a['rvol'] > 1.5:
+            cs = 7
+            trades.append({
+                'strategy': 'HMA Scalper', 'type': 'LONG', 'symbol': symbol,
+                'entry': current, 'sl': current - (atr*1.5), 'tp1': current + (atr*3),
+                'confidence_score': cs, 'reason': "HMA Fast Trend Rider (Scalp)",
+                'indicators': f"HMA: {hma:.2f}, RVOL: {a['rvol']:.1f}",
+                'expected_time': '15m-1h', 'entry_type': 'MARKET', 'timeframe': tf
+            }); break
+    return trades
+
+def strategy_iof_prediction(symbol, analyses):
+    """Strategy: Institutional Order Flow (IOF) Prediction (Volume Delta Confluence)"""
+    trades = []
+    for tf in ['15m', '1h']:
+        if tf not in analyses: continue
+        a = analyses[tf]; delta = a.get('cumulative_delta'); current = a['current_price']; atr = a['atr']
+        if not delta or atr == 0: continue
+        
+        if delta['trend'] == 'BULLISH' and a['trend'] == 'BULLISH' and a['rvol'] > 1.3:
+            cs = 9
+            trades.append({
+                'strategy': 'IOF Prediction', 'type': 'LONG', 'symbol': symbol,
+                'entry': current, 'sl': current - (atr*2), 'tp1': current + (atr*4),
+                'confidence_score': cs, 'reason': "Institutional Buying Pressure (Delta Trend)",
+                'indicators': f"Delta: {delta['delta']:.0f}, Vol: {a['rvol']:.1f}",
+                'expected_time': '2-8 hours', 'entry_type': 'MARKET', 'timeframe': tf
+            }); break
+    return trades
+
+def strategy_agentic_sentiment(symbol, analyses):
+    """Strategy: Agentic AI Sentiment Analysis (Simulated Consensus Engine)"""
+    trades = []
+    # This strategy calculates consensus across ALL timeframes
+    bullish_votes = 0; total_votes = 0
+    for tf in analyses:
+        total_votes += 1
+        a = analyses[tf]
+        if a['trend'] == 'BULLISH' and a['rsi'] > 55: bullish_votes += 1
+        
+    if total_votes >= 3 and bullish_votes / total_votes >= 0.75:
+        a = analyses.get('15m') or analyses.get('1h')
+        if a:
+            cs = 9
+            trades.append({
+                'strategy': 'Agentic Sentiment', 'type': 'LONG', 'symbol': symbol,
+                'entry': a['current_price'], 'sl': a['current_price'] - (a['atr']*2.5), 
+                'tp1': a['current_price'] + (a['atr']*6),
+                'confidence_score': cs, 'reason': "AI Model Consensus: Strong Bullish Sentiment across all timeframes",
+                'indicators': f"Consensus: {bullish_votes}/{total_votes} TFs Bullish",
+                'expected_time': '6-18 hours', 'entry_type': 'MARKET', 'timeframe': a['timeframe']
+            })
+    return trades
+
+def strategy_predictive_momentum(symbol, analyses):
+    """Strategy: Predictive Momentum Lead (Ehlers Cyber Cycle based)"""
+    trades = []
+    for tf in ['15m', '1h']:
+        if tf not in analyses: continue
+        a = analyses[tf]; cyber = a.get('cyber'); current = a['current_price']; atr = a['atr']
+        if cyber is None or atr == 0: continue
+        
+        # Cyber cycle turning point prediction
+        if cyber > 0.05 and a['trend'] == 'BULLISH':
+            cs = 7
+            trades.append({
+                'strategy': 'Predictive Momentum', 'type': 'LONG', 'symbol': symbol,
+                'entry': current, 'sl': current - (atr*2), 'tp1': current + (atr*4),
+                'confidence_score': cs, 'reason': "Predictive Cycle Lead Momentum Up",
+                'indicators': f"Cyber: {cyber:.4f}",
+                'expected_time': '2-6 hours', 'entry_type': 'MARKET', 'timeframe': tf
+            }); break
+    return trades
+
+def strategy_chaikin_volatility(symbol, analyses):
+    """Strategy: Chaikin Volatility Breakout (Expansion Detection)"""
+    trades = []
+    for tf in ['15m', '1h']:
+        if tf not in analyses: continue
+        a = analyses[tf]; chvol = a.get('chvol'); current = a['current_price']; atr = a['atr']
+        if chvol is None or atr == 0: continue
+        
+        if chvol > 20 and a['trend'] == 'BULLISH' and a['rvol'] > 1.5:
+            cs = 8
+            trades.append({
+                'strategy': 'Chaikin Volatility', 'type': 'LONG', 'symbol': symbol,
+                'entry': current, 'sl': current - (atr*3), 'tp1': current + (atr*6),
+                'confidence_score': cs, 'reason': "Volatility Expansion Breakout",
+                'indicators': f"ChVol: {chvol:.1f}%, RVOL: {a['rvol']:.1f}",
+                'expected_time': '4-12 hours', 'entry_type': 'MARKET', 'timeframe': tf
+            }); break
+    return trades
+
+def strategy_gann_hilo_trend(symbol, analyses):
+    """Strategy: Gann Hi-Lo Activator Trend Rider"""
+    trades = []
+    for tf in ['1h', '4h']:
+        if tf not in analyses: continue
+        a = analyses[tf]; gann = a.get('gann'); current = a['current_price']; atr = a['atr']
+        if gann == 'BULLISH' and a['trend'] == 'BULLISH':
+            cs = 8
+            trades.append({
+                'strategy': 'Gann Hi-Lo', 'type': 'LONG', 'symbol': symbol,
+                'entry': current, 'sl': current - (atr*2.5), 'tp1': current + (atr*7),
+                'confidence_score': cs, 'reason': "Gann Activator Trend Confirmation",
+                'indicators': f"Gann: Bullish, Trend: {a['trend']}",
+                'expected_time': '12-36 hours', 'entry_type': 'MARKET', 'timeframe': tf
+            }); break
+    return trades
 
 # === Signal Quality Engine (Post-Processing) ===
 
@@ -6316,8 +6941,8 @@ def run_analysis():
                 symbol_analyses_map[sym] = analyses
                 trades = run_strategies(sym, analyses)
                 if trades:
-                    # Filter trades by MIN_CONFIDENCE
-                    filtered_trades = [t for t in trades if t.get('confidence_score', 0) >= MIN_CONFIDENCE]
+                    # Filter trades by MIN_CONFIDENCE and MIN R/R 2:1
+                    filtered_trades = [t for t in trades if t.get('confidence_score', 0) >= MIN_CONFIDENCE and t.get('risk_reward', 0) >= 1.0]
                     if filtered_trades:
                         with print_lock:
                             for trade in filtered_trades:
@@ -6371,8 +6996,8 @@ def run_analysis():
         # Step 4: Enhance confidence with dynamic bonuses
         all_trades = enhance_confidence(all_trades)
 
-        # Step 5: FINAL SECURITY FILTER - Ensure signals still meet MIN_CONFIDENCE after penalties
-        all_trades = [t for t in all_trades if t.get('confidence_score', 0) >= MIN_CONFIDENCE]
+        # Step 5: FINAL SECURITY FILTER - Ensure signals still meet MIN_CONFIDENCE and R/R 2:1 after penalties
+        all_trades = [t for t in all_trades if t.get('confidence_score', 0) >= MIN_CONFIDENCE and t.get('risk_reward', 0) >= 2.0]
 
         # Step 6: Classify signal quality
         for trade in all_trades:

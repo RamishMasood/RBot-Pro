@@ -42,9 +42,11 @@ app.config['SECRET_KEY'] = 'rbot-pro-analysis-ui-secret'
 socketio = SocketIO(
     app,
     cors_allowed_origins="*",
-    async_mode='threading',
+    async_mode='eventlet',
     ping_timeout=120,
-    ping_interval=30
+    ping_interval=30,
+    logger=False,
+    engineio_logger=False
 )
 
 # --- Exchange Specific Kline Fetchers (Ported from fast_analysis.py) ---
@@ -58,6 +60,7 @@ def safe_request(url, method='GET', params=None, json_data=None, timeout=15, ret
     """Fetch with retries, exponential backoff, cache-busting, and institutional headers."""
     import time
     import random
+    from requests.exceptions import SSLError, ConnectionError, Timeout
     
     # 1. Institutional Cache-Busting (Suppressed for strict exchanges)
     strict_exchanges = ['binance', 'mexc', 'bybit', 'okx', 'bitget', 'kucoin', 'gate.io', 'huobi', 'gateio']
@@ -76,12 +79,21 @@ def safe_request(url, method='GET', params=None, json_data=None, timeout=15, ret
     last_err = None
     for attempt in range(retries):
         try:
-            r = requests.request(method, url, params=params, json=json_data, headers=headers, timeout=timeout)
+            r = requests.request(method, url, params=params, json=json_data, headers=headers, timeout=timeout, verify=True)
             r.raise_for_status()
             return r.json()
-        except Exception as e:
+        except (SSLError, ConnectionError, Timeout) as e:
+            # Network/SSL errors - retry with exponential backoff
             last_err = e
-            time.sleep(2 + attempt * 2) 
+            if attempt < retries - 1:
+                time.sleep(1 + attempt * 1.5)
+            continue
+        except Exception as e:
+            # Other errors (JSON decode, HTTP errors, etc.)
+            last_err = e
+            if attempt < retries - 1:
+                time.sleep(2 + attempt * 2)
+            continue
     raise last_err
 
 # --- Exchange Specific Kline Fetchers (Enriched with Fallbacks) ---
@@ -498,11 +510,12 @@ class TradeTracker:
     def _fetch_bulk_bitget(self):
         try:
             url = "https://api.bitget.com/api/v2/mix/market/ticker?productType=USDT-FUTURES"
-            data = safe_request(url, timeout=5)
+            data = safe_request(url, timeout=5, retries=2)
             if data and data.get('data'):
                 return {t['symbol']: {'last': float(t['lastPr']), 'fair': float(t.get('bidPr', t['lastPr']))} for t in data['data']}
         except Exception as e:
-            print(f"  ⚠ Bulk Bitget ticker error: {e}")
+            # Silently handle Bitget errors - they're common due to SSL issues
+            pass
         return {}
 
     def _fetch_bulk_okx(self):
@@ -970,16 +983,25 @@ def market_monitor_loop():
             current_time = time.time()
             
             # check volatility every 5 seconds
-            news_manager.check_btc_volatility()
+            try:
+                news_manager.check_btc_volatility()
+            except:
+                pass  # Silently handle volatility check errors
             
             # fetch news every 5 seconds
             if current_time - last_news_time >= 5:
-                news_manager.fetch_news()
-                last_news_time = current_time
+                try:
+                    news_manager.fetch_news()
+                    last_news_time = current_time
+                except:
+                    pass  # Silently handle news fetch errors
                 
             # Broadcast status to ALL clients
-            status = news_manager.get_market_status()
-            socketio.emit('market_status', status, namespace='/')
+            try:
+                status = news_manager.get_market_status()
+                socketio.emit('market_status', status, namespace='/')
+            except:
+                pass  # Silently handle broadcast errors
             
             time.sleep(2)
             

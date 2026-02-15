@@ -1,7 +1,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/RBot%20Pro-v3.2-00ff00?style=for-the-badge&logo=bitcoin&logoColor=white&labelColor=0a0a0a" alt="Version" />
-  <img src="https://img.shields.io/badge/Indicators-43-00d4ff?style=for-the-badge&labelColor=0a0a0a" alt="Indicators" />
-  <img src="https://img.shields.io/badge/Strategies-42-ff3e3e?style=for-the-badge&labelColor=0a0a0a" alt="Strategies" />
+  <img src="https://img.shields.io/badge/Indicators-52-00d4ff?style=for-the-badge&labelColor=0a0a0a" alt="Indicators" />
+  <img src="https://img.shields.io/badge/Strategies-55-ff3e3e?style=for-the-badge&labelColor=0a0a0a" alt="Strategies" />
   <img src="https://img.shields.io/badge/Timeframes-8-ffaa00?style=for-the-badge&labelColor=0a0a0a" alt="Timeframes" />
   <img src="https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white&labelColor=0a0a0a" alt="Python" />
   <img src="https://img.shields.io/badge/License-Proprietary-888888?style=for-the-badge&labelColor=0a0a0a" alt="License" />
@@ -11,7 +11,7 @@
 
 <p align="center">
   <b>The World's Most Advanced Real-Time Cryptocurrency Technical Analysis System</b><br/>
-    <i>43 Indicators · 42 Strategies · 8 Timeframes · 200+ Coins · 8 Exchanges Live Data</i>
+    <i>52 Indicators · 55 Strategies · 8 Timeframes · 200+ Coins · 8 Exchanges Live Data</i>
 </p>
 
 <p align="center">
@@ -30,8 +30,8 @@
 - [Overview](#-overview)
 - [Key Features](#-key-features)
 - [Live Trade Tracker](#-live-institutional-trade-tracker-new)
-- [Intelligence Suite (43)](#-elite-2026-intelligence-suite--43-indicators)
-- [Strategy Core (42)](#-proprietary-strategy-core--42-power-strategies)
+- [Intelligence Suite (52)](#-elite-2026-intelligence-suite--52-indicators)
+- [Strategy Core (55)](#-proprietary-strategy-core--55-power-strategies)
 - [Trade Engine](#-institutional-trade-engine-architecture)
 - [Installation](#-installation)
 - [Usage](#-usage)
@@ -47,7 +47,7 @@
 
 ## 🌟 Overview
 
-**RBot Pro** is a professional-grade, real-time cryptocurrency technical analysis and trading signal generation system. It connects directly to **8 major exchanges** (**MEXC, Binance, Bitget, Bybit, OKX, KuCoin, Gate.io, and HTX**), fetches live candlestick (kline) data, computes **43 advanced technical indicators** across **8 timeframes**, and runs **42 proprietary trading strategies** to identify high-confidence trade setups with precise entry, stop-loss, and take-profit levels.
+**RBot Pro** is a professional-grade, real-time cryptocurrency technical analysis and trading signal generation system. It connects directly to **8 major exchanges** (**MEXC, Binance, Bitget, Bybit, OKX, KuCoin, Gate.io, and HTX**), fetches live candlestick (kline) data, computes **52 advanced technical indicators** across **8 timeframes**, and runs **55 proprietary trading strategies** to identify high-confidence trade setups with precise entry, stop-loss, and take-profit levels.
 
 Fully automated quantitative analysis on **200+ coins simultaneously** in under 2 minutes, scanning for institutional-grade setups using Smart Money Concepts (SMC), ICT methodology, and classical technical analysis.
 
@@ -55,8 +55,8 @@ Fully automated quantitative analysis on **200+ coins simultaneously** in under 
 
 | Feature | RBot Pro | Typical Bots |
 |---------|----------|--------------|
-| Indicators | **43** | 5–10 |
-| Strategies | **42** | 1–3 |
+| Indicators | **52** | 5–10 |
+| Strategies | **55** | 1–3 |
 | Timeframes | **8** simultaneous | 1–2 |
 | Coins scanned | **200+** concurrent | 5–20 |
 | ICT / SMC concepts | ✅ Full support | ❌ None |
@@ -135,9 +135,9 @@ Fully automated quantitative analysis on **200+ coins simultaneously** in under 
 
 ---
 
-## 📊 Elite 2026 Intelligence Suite — 43 Indicators
+## 📊 Elite 2026 Intelligence Suite — 52 Indicators
 
-RBot Pro computes **43 technical indicators** on every timeframe for every coin. Each indicator is implemented from scratch in pure Python with zero external TA library dependencies.
+RBot Pro computes **52 technical indicators** on every timeframe for every coin. Each indicator is implemented from scratch in pure Python with zero external TA library dependencies.
 
 ### 🚀 SuperScalp 2026 Scalping Suite (5)
 
@@ -166,6 +166,20 @@ RBot Pro computes **43 technical indicators** on every timeframe for every coin.
 | 11 | **Supply/Demand Zones** | `SUPDEM` | Institutional supply/demand zones from volume clusters | Demand = Buy zone, Supply = Sell zone |
 | 12 | **Fibonacci Retracement** | `FIB` | Auto-calculated Fibonacci levels (0.236, 0.382, 0.5, 0.618, 0.786) | Golden ratio levels for S/R |
 | 13 | **ICT Wealth Division** | `ICT_WD` | Institutional phase detection (Accumulation, Markup, Distribution, Markdown) | Phase = current market cycle stage |
+
+### 🌍 World-Class 2026 Strategy Indicators (9)
+
+| # | Indicator | Code | Description | Key Levels |
+|---|-----------|------|-------------|------------|
+| 1 | **Pivot Points** | `PIVOT` | Floor Pivot Points (P, S1, S2, R1, R2) | S1/R1 = Key Reversal Levels |
+| 2 | **CCI** | `CCI` | Commodity Channel Index for cycle identification | +/- 100 = Overbought/Oversold |
+| 3 | **Linear Reg** | `LR` | Linear Regression Slope and Value | Slope > 0 = Bullish Bias |
+| 4 | **Cyber Cycle** | `CYBER` | Ehlers Cyber Cycle for leading momentum | Cycle peaks/troughs predict turns |
+| 5 | **Chaikin Vol** | `CHVOL` | Volatility expansion/contraction detector | Expansion = Breakout Prep |
+| 6 | **Darvas Box** | `DARVAS` | Institutional range-bound breakout boxes | Box Exit = Entry Trigger |
+| 7 | **Gann Hi-Lo** | `GANN` | Gann Activator for trend direction | Above = Bullish, Below = Bearish |
+| 8 | **Alligator** | `ALLIGATOR` | Williams Alligator (Jaw, Teeth, Lips) | Mouth Open = Strong Trend |
+| 9 | **Fractals** | `FRACTAL` | Williams Fractals for high/low identification | Up/Down Fractal = Pivot Point |
 
 ### 📈 Standard Indicators (25)
 
@@ -209,7 +223,7 @@ In addition to the 38 core indicators, the engine also computes:
 
 ---
 
-## 🎯 Proprietary Strategy Core — 42 Power Strategies
+## 🎯 Proprietary Strategy Core — 55 Power Strategies
 
 Every strategy produces trade signals with precise **Entry**, **Stop Loss**, **TP1**, **TP2**, **Risk/Reward Ratio**, **Confidence Score (1–10)**, and **Expected Resolution Time**.
 
@@ -280,6 +294,24 @@ Every strategy produces trade signals with precise **Entry**, **Stop Loss**, **T
 | 41 | **KAMA-Vol Scalp** | `strategy_kama_volatility_scalp` | 3m / 5m | Scalp | Adaptive KAMA trend combined with Chandelier Exit for ultra-reliable volatility scalping. |
 | 42 | **VFI Perfect Scalper** | `strategy_vfi_momentum_scalp` | 1m / 5m | Scalp | THE "PERFECT" SCALPER: Multi-indicator confluence (VFI + RSI + UO + ZLSMA) for institutional-grade accuracy. |
 
+### 🌍 World-Class 2026 Elite Strategies (13)
+
+| # | Strategy | Function | Timeframe | Style | Description |
+|---|----------|----------|-----------|-------|-------------|
+| 43 | **Pivot Reversal** | `strategy_pivot_reversal` | 15m-4h | Reversal | Catches floor pivot reversals at S1/S2/R1/R2 with RSI confluence. |
+| 44 | **Vortex Cross** | `strategy_vortex_cross` | 15m-1h | Trend | High-probability trend shifts detected via Vortex VI+/VI- crossovers. |
+| 45 | **Alligator Awake** | `strategy_alligator_breakout` | 15m-1h | Breakout | Bill Williams Alligator mouth opening combined with RVOL spike. |
+| 46 | **Fractal Rider** | `strategy_fractal_breakout` | 15m-1h | Trend | Clean trend continuation entries using Williams Fractals + EMA alignment. |
+| 47 | **Woodies CCI** | `strategy_woodies_cci` | 5m-15m | Pullback | CCI Zero-Line Reject (ZLR) pattern for catching trend continuations. |
+| 48 | **Darvas Hub** | `strategy_darvas_box_signal` | 15m-4h | Breakout | Institutional range breakout detection using Darvas Box Theory. |
+| 49 | **LinReg Reversion**| `strategy_linear_reg_reversion`| 15m-1h | Reversal | Reversion to the mean based on extreme Linear Regression deviations. |
+| 50 | **HMA Scalper** | `strategy_hma_trend_scalp` | 1m-5m | Scalp | Ultra-fast Hull Moving Average trend tracking for HFT-style scalping. |
+| 51 | **IOF Prediction** | `strategy_iof_prediction` | 15m-1h | Order Flow | Predicts price moves using Cumulative Volume Delta (CVD) trends. |
+| 52 | **Agentic AI Mod** | `strategy_agentic_sentiment` | Multi-TF | Sentiment | AI Consensus Engine that requires >75% bullish/bearish agreement across TFs. |
+| 53 | **Predictive Lead** | `strategy_predictive_momentum` | 15m-1h | Lead | Uses Ehlers Cyber Cycle to predict price turning points before they happen. |
+| 54 | **ChVol Breakout** | `strategy_chaikin_volatility` | 15m-1h | Volatility| Catches massive price expansion using Chaikin Volatility spikes. |
+| 55 | **Gann Activator** | `strategy_gann_hilo_trend` | 1h-4h | Trend | Solid trend riding using the Gann Hi-Lo Activator + HTF EMA stack. |
+
 ### 🏗️ Institutional Trade Engine (Architecture)
 
 ```
@@ -288,7 +320,7 @@ Every strategy produces trade signals with precise **Entry**, **Stop Loss**, **T
 ├──────────────────────────────────────────────────────────────────────┤
 │                                                                      │
 │  ┌─────────────────┐    ┌──────────────┐    ┌────────────────────────┐   │
-│  │ 8 Live Exchanges │───▶│  Data Layer  │───▶│  Indicator Engine (43) │   │
+│  │ 8 Live Exchanges │───▶│  Data Layer  │───▶│  Indicator Engine (52) │   │
 │  │ MEXC, Binance,   │    │  get_klines  │    │  RSI, MACD, BB, ADX,  │   │
 │  │ Bybit, Bitget,   │    │  200 candles  │    │  PSAR, TEMA, KAMA, ...│   │
 │  │ OKX, KuCoin,     │    │  per TF       │    │  Ichimoku, FVG, ...   │   │
@@ -613,7 +645,7 @@ A: Python 3.10+, 2GB RAM, stable internet connection. Works on Windows, macOS, a
 
 <p align="center">
   <b>RBot Pro v3.2</b> — Built with 🔥 for elite traders<br/>
-  <i>43 Indicators · 35 Strategies · 8 Timeframes · 200+ Coins · Zero Compromise</i><br/><br/>
+  <i>52 Indicators · 55 Strategies · 8 Timeframes · 200+ Coins · Zero Compromise</i><br/><br/>
   <img src="https://img.shields.io/badge/Made%20with-Python-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python" />
   <img src="https://img.shields.io/badge/UI-Flask%20%2B%20SocketIO-00ff00?style=flat-square" alt="Flask" />
   <img src="https://img.shields.io/badge/Data-MEXC%20Live-ff3e3e?style=flat-square" alt="MEXC" />

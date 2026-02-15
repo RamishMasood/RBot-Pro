@@ -12,15 +12,24 @@ HEADERS = {
 def safe_request(url, method='GET', params=None, json_data=None, timeout=12, retries=2):
     """Fetch with retries and institutional headers."""
     import time
+    from requests.exceptions import SSLError, ConnectionError, Timeout, RequestException
     last_err = None
     for attempt in range(retries):
         try:
-            r = requests.request(method, url, params=params, json=json_data, headers=HEADERS, timeout=timeout)
+            r = requests.request(method, url, params=params, json=json_data, headers=HEADERS, timeout=timeout, verify=True)
             r.raise_for_status()
             return r
+        except (SSLError, ConnectionError, Timeout) as e:
+            # Network/SSL errors - retry with exponential backoff
+            last_err = e
+            if attempt < retries - 1:
+                time.sleep(1 + attempt * 1.5)
+            continue
         except Exception as e:
             last_err = e
-            time.sleep(1 + attempt)
+            if attempt < retries - 1:
+                time.sleep(1 + attempt)
+            continue
     raise last_err
 
 class NewsManager:
@@ -123,7 +132,8 @@ class NewsManager:
                         self.news_warning = None
                         
         except Exception as e:
-            print(f"Error fetching news: {e}")
+            # Silently handle news fetch errors to avoid terminal clutter
+            pass
 
     def check_btc_volatility(self):
         """Check BTC price movement for sudden volatility"""
@@ -174,7 +184,8 @@ class NewsManager:
                             self.volatility_warning = None
                             
         except Exception as e:
-            print(f"Error checking volatility: {e}")
+            # Silently handle volatility check errors
+            pass
 
     def get_market_status(self):
         """Get the current aggregated market status"""

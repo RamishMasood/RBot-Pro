@@ -201,6 +201,13 @@ function addTradeSignal(trade) {
     const noMsg = document.getElementById('noSignalsMsg');
     if (noMsg) noMsg.style.display = 'none';
 
+    // STRICTOR FILTER: Only show trades with R/R >= 2:1 as requested
+    const rrValue = parseFloat(trade.risk_reward);
+    if (!isNaN(rrValue) && rrValue < 2.0) {
+        console.log(`⚠️ Hiding low R/R signal: ${trade.symbol} (${rrValue}:1)`);
+        return;
+    }
+
     // Normalize symbol and exchange for ID
     const cleanSymbol = trade.symbol.replace(/_/g, '').toUpperCase();
     const exch = trade.exchange ? trade.exchange.toUpperCase().replace(/\./g, '') : 'BINANCE';
