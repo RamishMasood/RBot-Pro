@@ -1969,41 +1969,74 @@ socket.on('config_updated', (config) => {
         }
     }
 });
-// --- Telegram Local Storage Logic ---
+// --- Local Storage Logic for Sensitive Credentials (Privacy/Security) ---
 function updateTelegramConfig() {
     const token = document.getElementById('tgToken').value;
     const chatId = document.getElementById('tgChatId').value;
 
-    // Save to Local Storage only (Client-side)
     localStorage.setItem('rbot_tg_token', token);
     localStorage.setItem('rbot_tg_chat_id', chatId);
 
-    // Notify user (optional visual feedback)
-    console.log("Telegram credentials saved to browser storage.");
-
-    // Send to server ONLY for the active session (optional, if you want it to work immediately)
-    // The user requested: "code mein nahi save karna", implying persistence in file.
-    // However, for the bot to work, the server NEEDS these values in memory.
-    // We will emit them to update the CONFIG in memory, but the server won't write them to disk.
     socket.emit('update_config', {
         telegram_token: token,
         telegram_chat_id: chatId
     });
 }
 
-// Load Telegram Config on Startup
+function updateWhatsAppConfig() {
+    const chatId = document.getElementById('waChatId').value;
+    const quality = document.getElementById('waQualitySelect').value;
+
+    if (chatId) localStorage.setItem('rbot_wa_chat_id', chatId);
+    localStorage.setItem('rbot_wa_quality', quality);
+
+    socket.emit('update_config', {
+        whatsapp_chat_id: chatId,
+        whatsapp_quality: quality
+    });
+}
+
+function syncCredentialsToServer() {
+    // Collect all stored credentials
+    const credentials = {
+        telegram_token: localStorage.getItem('rbot_tg_token') || '',
+        telegram_chat_id: localStorage.getItem('rbot_tg_chat_id') || '',
+        whatsapp_chat_id: localStorage.getItem('rbot_wa_chat_id') || '',
+        whatsapp_quality: localStorage.getItem('rbot_wa_quality') || 'ELITE',
+        // Exchange keys are handled via specialized API but can be synced here too for memory-only persistence
+        exchange_keys: JSON.parse(localStorage.getItem('rbot_exchange_keys') || '{}')
+    };
+
+    socket.emit('update_config', credentials);
+    console.log("🔐 Credentials synced to bot memory from browser storage.");
+}
+
+// Load Config on Startup
 document.addEventListener('DOMContentLoaded', () => {
+    // Telegram
     const savedToken = localStorage.getItem('rbot_tg_token');
     const savedChatId = localStorage.getItem('rbot_tg_chat_id');
+    if (savedToken) document.getElementById('tgToken').value = savedToken;
+    if (savedChatId) document.getElementById('tgChatId').value = savedChatId;
 
-    if (savedToken) {
-        document.getElementById('tgToken').value = savedToken;
-        // Pushing to server so it knows about it immediately on refresh
-        socket.emit('update_config', { telegram_token: savedToken });
-    }
+    // WhatsApp
+    const savedWaChatId = localStorage.getItem('rbot_wa_chat_id');
+    const savedWaQuality = localStorage.getItem('rbot_wa_quality');
+    if (savedWaChatId) document.getElementById('waChatId').value = savedWaChatId;
+    if (savedWaQuality) document.getElementById('waQualitySelect').value = savedWaQuality;
 
-    if (savedChatId) {
-        document.getElementById('tgChatId').value = savedChatId;
-        socket.emit('update_config', { telegram_chat_id: savedChatId });
-    }
+    // Push everything to server when socket connects
+    socket.on('connect', () => {
+        syncCredentialsToServer();
+    });
+
+    // Handle updates from server (e.g. auto-synced WhatsApp ID)
+    socket.on('config_updated', (newConfig) => {
+        if (newConfig.whatsapp_chat_id) {
+            localStorage.setItem('rbot_wa_chat_id', newConfig.whatsapp_chat_id);
+            if (document.getElementById('waChatId')) {
+                document.getElementById('waChatId').value = newConfig.whatsapp_chat_id;
+            }
+        }
+    });
 });
