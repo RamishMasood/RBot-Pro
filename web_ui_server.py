@@ -1257,10 +1257,9 @@ def run_session_analysis(sid, symbols, indicators, timeframes, min_conf, exchang
                     msg += f"\n🎯 Found {signals_sent} matching signals!"
                 else:
                     # Inform user if nothing matched their filter
-                    m_conf = messenger_configs.get(source_messenger, config)
-                    # Check for either key (telegram_quality or whatsapp_quality) or just use 'ELITE'
-                    qual = m_conf.get(f'{source_messenger}_quality', 'ELITE')
-                    msg += f"\n⏳ No signals found matching the {qual} filter at this moment."
+                    m_conf = messenger_configs.get(source_messenger or messenger_label, config)
+                    qual = m_conf.get(f'{source_messenger or messenger_label}_quality', 'ELITE')
+                    msg += f"\n🎯 Found 0 matching signals for {qual} filter."
 
                 if source_messenger == 'telegram':
                     tg_chat = config.get('telegram_chat_id')
@@ -1980,6 +1979,9 @@ def start_bot_analysis(chat_id, messenger, override_conf=None):
 def kill_analysis_process(sid):
     """Unified helper to kill analysis process by session ID"""
     if sid in client_sessions:
+        # Set inactive IMMEDIATELY to prevent "Completion" alerts from firing
+        client_sessions[sid]['active'] = False
+        
         proc = client_sessions[sid].get('process')
         if proc:
             try:
@@ -1999,7 +2001,6 @@ def kill_analysis_process(sid):
                 try: proc.kill()
                 except: pass
         client_sessions[sid]['process'] = None
-        client_sessions[sid]['active'] = False
 
 def stop_bot_analysis(messenger=None):
     """Kills active analysis process owned by bots"""
