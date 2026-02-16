@@ -4,11 +4,46 @@ Advanced Web UI Server for RBot Pro Multi-Exchange Real-Time Analysis
 Features: Multi-Exchange Support, Symbol/Indicator Selection, Auto-Run, Customizable Strategies
 """
 
-import eventlet
-eventlet.monkey_patch()
+import os
+import sys
+
+# Detection for Vercel/Serverless
+is_vercel = os.environ.get('VERCEL') == '1'
+
+if not is_vercel:
+    try:
+        import eventlet
+        eventlet.monkey_patch()
+    except ImportError:
+        pass
 
 from flask import Flask, render_template, jsonify, request
 from flask_socketio import SocketIO, emit
+
+def safe_spawn(func, *args, **kwargs):
+    """Universal task spawner for both Eventlet and Threading environments"""
+    if not is_vercel:
+        try:
+            import eventlet
+            return eventlet.spawn(func, *args, **kwargs)
+        except (ImportError, AttributeError):
+            pass
+    import threading
+    t = threading.Thread(target=func, args=args, kwargs=kwargs, daemon=True)
+    t.start()
+    return t
+
+def safe_sleep(seconds):
+    """Universal sleep for both Eventlet and Threading environments"""
+    if not is_vercel:
+        try:
+            import eventlet
+            eventlet.sleep(seconds)
+            return
+        except (ImportError, AttributeError):
+            pass
+    import time
+    time.sleep(seconds)
 import subprocess
 import os
 import sys
@@ -55,10 +90,13 @@ app = Flask(__name__, template_folder='templates', static_folder='static')
 app.config['SECRET_KEY'] = 'rbot-pro-analysis-ui-secret'
 
 # SocketIO with Institutional Stability Buffers
+# Auto-switch async_mode for Vercel compatibility
+socket_async_mode = 'threading' if is_vercel else 'eventlet'
+
 socketio = SocketIO(
     app,
     cors_allowed_origins="*",
-    async_mode='eventlet',
+    async_mode=socket_async_mode,
     ping_timeout=60,   # 60s timeout for stability
     ping_interval=20,  # 20s heartbeat to keep connection alive
     logger=False,
@@ -621,7 +659,7 @@ class TradeTracker:
         print("💡 Trade Tracking Loop Started", flush=True)
         last_heartbeat = 0
         while self.tracking_active:
-            eventlet.sleep(0.01) # Yield to eventlet hub
+            safe_sleep(0.01) # Yield to eventlet hub
             loop_start = time.time()
             try:
                 current_time = loop_start
@@ -631,7 +669,7 @@ class TradeTracker:
                         if current_time - last_heartbeat > 10:
                             print("😴 Tracking loop idle (no active trades)", flush=True)
                             last_heartbeat = current_time
-                        eventlet.sleep(2)
+                        safe_sleep(2)
                         continue
                     current_trades = list(self.active_trades)
 
@@ -1102,11 +1140,11 @@ def market_monitor_loop():
             except:
                 pass  # Silently handle broadcast errors
             
-            eventlet.sleep(2) # Green-thread friendly sleep
+            safe_sleep(2) # Green-thread friendly sleep
             
         except Exception as e:
             print(f"Market Monitor Error: {e}")
-            eventlet.sleep(10)
+            safe_sleep(10)
 
 def run_session_analysis(sid, symbols, indicators, timeframes, min_conf, exchanges, strategies, source_messenger=None):
     """Run analysis for a specific session"""
@@ -1164,7 +1202,7 @@ def run_session_analysis(sid, symbols, indicators, timeframes, min_conf, exchang
             finally:
                 queue.put(None)
         
-        eventlet.spawn(_pipe_reader_task, proc.stdout, output_q)
+        safe_spawn(_pipe_reader_task, proc.stdout, output_q)
         
         output_buffer = []
         last_flush = time.time()
@@ -1214,19 +1252,19 @@ def run_session_analysis(sid, symbols, indicators, timeframes, min_conf, exchang
                                 # Telegram bot triggered this analysis
                                 m_conf = messenger_configs.get('telegram', config)
                                 q = m_conf.get('telegram_quality', 'ELITE')
-                                eventlet.spawn(send_telegram_alert, signal_data, q)
+                                safe_spawn(send_telegram_alert, signal_data, q)
                                 signals_sent += 1
                                 
                             elif source_messenger == 'whatsapp':
                                 # WhatsApp bot triggered this analysis
                                 m_conf = messenger_configs.get('whatsapp', config)
                                 q = m_conf.get('whatsapp_quality', 'ELITE')
-                                eventlet.spawn(send_whatsapp_alert, signal_data, q)
+                                safe_spawn(send_whatsapp_alert, signal_data, q)
                                 signals_sent += 1
                             
                             # Auto-trade only for web UI or if explicitly enabled for bots
                             if not source_messenger:
-                                eventlet.spawn(execute_auto_trade, signal_data, sid)
+                                safe_spawn(execute_auto_trade, signal_data, sid)
                 except Exception as e:
                     print(f"Error processing trade signal: {e}")
                 continue
@@ -1241,7 +1279,7 @@ def run_session_analysis(sid, symbols, indicators, timeframes, min_conf, exchang
                 socketio.emit('output', {'data': "".join(output_buffer)}, room=sid, namespace='/')
                 output_buffer = []
                 last_flush = now
-                eventlet.sleep(0) # Standard yielding
+                safe_sleep(0) # Standard yielding
         
         # Final flush
         if output_buffer:
@@ -1345,7 +1383,7 @@ def auto_run_analysis():
                         
                         # Auto-run is WEB ONLY - no messenger alerts
                         if track_status == 'NEW':
-                            eventlet.spawn(execute_auto_trade, signal_data, None)
+                            safe_spawn(execute_auto_trade, signal_data, None)
                             
                             # Micro-delay to avoid saturation
                             socketio.sleep(0.01)
@@ -1360,7 +1398,7 @@ def auto_run_analysis():
         except Exception as e:
             print(f"Auto-run error: {e}")
 
-    eventlet.spawn(_run_auto)
+    safe_spawn(_run_auto)
 
 @app.route('/')
 def index():
@@ -1659,7 +1697,7 @@ def start_whatsapp_bridge():
                 
                 if not os.path.exists('node_modules'):
                     print("❌ 'node_modules' missing. Bridge cannot start.")
-                    eventlet.sleep(30)
+                    safe_sleep(30)
                     continue
 
                 try:
@@ -1680,9 +1718,9 @@ def start_whatsapp_bridge():
                 except Exception as e:
                     print(f"❌ Failed to start WhatsApp Bridge: {e}")
             
-            eventlet.sleep(5) # Check every 5s
+            safe_sleep(5) # Check every 5s
 
-    eventlet.spawn(_watchdog)
+    safe_spawn(_watchdog)
 
 def telegram_worker_loop():
     """Background thread to listen for Telegram commands with institutional session stability"""
@@ -1692,7 +1730,7 @@ def telegram_worker_loop():
     while True:
         token = config.get('telegram_token')
         if not token:
-            eventlet.sleep(10)
+            safe_sleep(10)
             continue
             
         try:
@@ -1708,17 +1746,17 @@ def telegram_worker_loop():
                         if 'message' in update and 'text' in update['message']:
                             handle_telegram_command(update['message'])
             elif r.status_code == 401:
-                eventlet.sleep(60)
+                safe_sleep(60)
             elif r.status_code >= 500:
-                eventlet.sleep(10)
+                safe_sleep(10)
         except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
             # Routine network blips handled by global session adapter and this loop
-            eventlet.sleep(5)
+            safe_sleep(5)
         except Exception as e:
             print(f"  ⚠ Telegram Polling Exception: {e}")
-            eventlet.sleep(5)
+            safe_sleep(5)
         
-        eventlet.sleep(0.5)
+        safe_sleep(0.5)
 
 def handle_telegram_command(message):
     """Process incoming Telegram commands"""
@@ -1819,7 +1857,7 @@ def handle_bot_logic(messenger, chat_id, raw_text, user="User"):
             target = parts[2].lower()
             if target == 'all':
                 # Trigger background loading
-                eventlet.spawn(sync_load_all_coins, messenger, chat_id)
+                safe_spawn(sync_load_all_coins, messenger, chat_id)
                 return "📡 *Scanning ALL exchanges...* (Please wait ~8s)"
             return "❌ Exchange specific load coming soon. Use 'all'."
 
@@ -1941,7 +1979,7 @@ def start_bot_analysis(chat_id, messenger, override_conf=None):
     sid = f'bot_{messenger}'
     if sid in client_sessions and client_sessions[sid].get('active'):
         stop_bot_analysis()
-        eventlet.sleep(1)
+        safe_sleep(1)
     
     # Use messenger specific config or override
     m_conf = override_conf if override_conf else messenger_configs.get(messenger, config)
@@ -1966,7 +2004,7 @@ def start_bot_analysis(chat_id, messenger, override_conf=None):
             source_messenger=messenger
         )
     
-    eventlet.spawn(run_analysis_task)
+    safe_spawn(run_analysis_task)
 
 def kill_analysis_process(sid):
     """Unified helper to kill analysis process by session ID"""
@@ -1987,7 +2025,7 @@ def kill_analysis_process(sid):
                     # Wait a bit then force if needed
                     for _ in range(10):
                         if proc.poll() is not None: break
-                        eventlet.sleep(0.1)
+                        safe_sleep(0.1)
                     if proc.poll() is None: proc.kill()
             except:
                 try: proc.kill()
@@ -2051,7 +2089,7 @@ def handle_start(data):
     emit('status', {'status': 'started'})
     
     # Launch session-specific greenthread
-    eventlet.spawn(
+    safe_spawn(
         run_session_analysis,
         sid, symbols, indicators, timeframes, min_conf, exchanges, strategies
     )
@@ -2207,10 +2245,10 @@ def server_error(e):
 
 if __name__ == '__main__':
     # Start Market Monitor (News + Volatility)
-    eventlet.spawn(market_monitor_loop)
+    safe_spawn(market_monitor_loop)
 
     # Start Telegram Bot Listener
-    eventlet.spawn(telegram_worker_loop)
+    safe_spawn(telegram_worker_loop)
 
     # Start WhatsApp Web Bridge
     start_whatsapp_bridge()
@@ -2224,7 +2262,7 @@ if __name__ == '__main__':
     print("✓ Using queue-based streaming for stability")
     
     # Start Trade Tracking loop
-    eventlet.spawn(trade_tracker.update_loop)
+    safe_spawn(trade_tracker.update_loop)
     
     # Fast Exit Handler for Windows (Ctrl+C)
     def fast_exit_handler(sig, frame):

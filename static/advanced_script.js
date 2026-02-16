@@ -6,7 +6,7 @@ const socket = io(window.location.origin, {
     reconnectionDelay: 1000,
     reconnectionDelayMax: 5000,
     reconnectionAttempts: 10,
-    transports: ['websocket', 'polling']
+    transports: ['polling', 'websocket']
 });
 
 let lineCount = 0;
