@@ -95,7 +95,7 @@ socket_async_mode = 'threading' if is_vercel else 'eventlet'
 
 # Performance tuning for Vercel/Serverless
 # We use standard timeouts but disable session management to tolerate SID mismatches across lambdas.
-ping_timeout = 60 if is_vercel else 60
+ping_timeout = 120 if is_vercel else 60
 ping_interval = 25 if is_vercel else 20
 
 socketio = SocketIO(
@@ -109,9 +109,7 @@ socketio = SocketIO(
     manage_session=False, 
     cookie=None,
     allow_upgrades=not is_vercel,
-    max_http_buffer_size=10e6, # 10MB to handle large trade payloads
-    ping_timeout=120 if is_vercel else 60,
-    ping_interval=25 if is_vercel else 20
+    max_http_buffer_size=10e6 # 10MB to handle large trade payloads
 )
 
 @app.route('/')
