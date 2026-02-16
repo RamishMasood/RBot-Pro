@@ -12,6 +12,9 @@
     <!-- TradingView Lightweight Charts -->
     <script
         src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+    <script>
+        window.IS_VERCEL = {{ 'true' if is_vercel else 'false' }};
+    </script>
 </head>
 
 <body>

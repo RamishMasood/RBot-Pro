@@ -93,15 +93,31 @@ app.config['SECRET_KEY'] = 'rbot-pro-analysis-ui-secret'
 # Auto-switch async_mode for Vercel compatibility
 socket_async_mode = 'threading' if is_vercel else 'eventlet'
 
+# Performance tuning for Vercel/Serverless
+# Vercel kills functions quickly, but aggressive heartbeats can cause 400 errors if they hit different instances.
+# Relaxing these helps maintain a connection through the polling cycle.
+ping_timeout = 60 if is_vercel else 60
+ping_interval = 25 if is_vercel else 20
+
 socketio = SocketIO(
     app,
     cors_allowed_origins="*",
     async_mode=socket_async_mode,
-    ping_timeout=60,   # 60s timeout for stability
-    ping_interval=20,  # 20s heartbeat to keep connection alive
+    ping_timeout=120 if is_vercel else 60,
+    ping_interval=25 if is_vercel else 20,
     logger=False,
-    engineio_logger=False
+    engineio_logger=False,
+    manage_session=False,
+    cookie=None, # Disable cookies to avoid state issues on serverless
+    allow_upgrades=not is_vercel # Hard-disable upgrades on Vercel side
 )
+
+@app.route('/')
+def index():
+    """Serve main UI"""
+    if is_vercel:
+        start_background_workers()
+    return render_template('ui.html', is_vercel=is_vercel)
 
 # --- Exchange Specific Kline Fetchers (Ported from fast_analysis.py) ---
 # --- Global Request Headers ---
@@ -1186,16 +1202,23 @@ def run_session_analysis(sid, symbols, indicators, timeframes, min_conf, exchang
             client_sessions[sid]['active'] = True
         
         # Stream output using a non-blocking queue (Institutional Stability)
-        # Using tpool for real OS-threaded reading to prevent Windows hub freezes
-        import eventlet.queue
-        import eventlet.tpool
-        output_q = eventlet.queue.Queue()
+        if not is_vercel:
+            import eventlet.queue
+            import eventlet.tpool
+            output_q = eventlet.queue.Queue()
+        else:
+            import queue
+            output_q = queue.Queue()
         
         def _pipe_reader_task(pipe, queue):
             try:
-                # Use tpool for the actual read to avoid blocking the hub
+                # Use tpool for the actual read to avoid blocking the hub (Only for Eventlet)
                 while True:
-                    l = eventlet.tpool.execute(pipe.readline)
+                    if not is_vercel:
+                        import eventlet.tpool
+                        l = eventlet.tpool.execute(pipe.readline)
+                    else:
+                        l = pipe.readline()
                     if not l: break
                     queue.put(l)
             except: pass
@@ -1216,8 +1239,13 @@ def run_session_analysis(sid, symbols, indicators, timeframes, min_conf, exchang
 
             try:
                 # Use a timeout to allow flushing the buffer even if no new lines arrive
-                line = output_q.get(timeout=0.1)
-            except eventlet.queue.Empty:
+                if not is_vercel:
+                    import eventlet.queue
+                    line = output_q.get(timeout=0.1)
+                else:
+                    import queue
+                    line = output_q.get(timeout=0.1)
+            except (eventlet.queue.Empty if not is_vercel else queue.Empty):
                 line = "" # Just a tick to check if we should flush
             
             if line is None: break # EOF
@@ -1343,8 +1371,12 @@ def auto_run_analysis():
             )
             
             # Stream output via non-blocking queue
-            import eventlet.queue
-            output_q = eventlet.queue.LightQueue()
+            if not is_vercel:
+                import eventlet.queue
+                output_q = eventlet.queue.LightQueue()
+            else:
+                import queue
+                output_q = queue.Queue()
             
             def _pipe_reader(pipe, queue):
                 try:
@@ -1359,7 +1391,10 @@ def auto_run_analysis():
             threading.Thread(target=_pipe_reader, args=(proc.stdout, output_q), daemon=True).start()
 
             while True:
-                line = output_q.get()
+                if not is_vercel:
+                    line = output_q.get()
+                else:
+                    line = output_q.get()
                 if line is None: break
                 
                 if line.startswith('SIGNAL_DATA:'):
@@ -1399,16 +1434,6 @@ def auto_run_analysis():
             print(f"Auto-run error: {e}")
 
     safe_spawn(_run_auto)
-
-@app.route('/')
-def index():
-    """Serve main UI"""
-    return render_template('ui.html')
-
-@app.route('/favicon.ico')
-def favicon():
-    """Ignore favicon requests to keep logs clean"""
-    return "", 204
 
 @app.route('/api/config', methods=['GET'])
 def get_config():
@@ -2168,6 +2193,37 @@ def update_scheduler():
             scheduler.start()
 
 
+@app.route('/favicon.ico')
+def favicon():
+    """Ignore favicon requests to keep logs clean"""
+    return "", 204
+
+workers_started = False
+def start_background_workers():
+    """Global initializer for background loops (Safe for Vercel and Local)"""
+    global workers_started
+    if workers_started:
+        return
+    
+    print("🚀 Initializing Background Workers...")
+    # Start Market Monitor (News + Volatility)
+    safe_spawn(market_monitor_loop)
+
+    # Start Telegram Bot Listener
+    safe_spawn(telegram_worker_loop)
+
+    # Start WhatsApp Web Bridge
+    safe_spawn(start_whatsapp_bridge)
+    
+    # Start Trade Tracking loop 
+    safe_spawn(lambda: trade_tracker.update_loop() if hasattr(trade_tracker, 'update_loop') else None)
+    
+    # Apply initial scheduler config
+    update_scheduler()
+    
+    workers_started = True
+    print("✓ Background Workers Started Successfully")
+
 @app.route('/api/proxy/klines')
 def proxy_klines():
     """Proxy kline requests to the specific exchange requested"""
@@ -2249,24 +2305,12 @@ def server_error(e):
     return jsonify({'error': 'Internal server error'}), 500
 
 if __name__ == '__main__':
-    # Start Market Monitor (News + Volatility)
-    safe_spawn(market_monitor_loop)
-
-    # Start Telegram Bot Listener
-    safe_spawn(telegram_worker_loop)
-
-    # Start WhatsApp Web Bridge
-    start_whatsapp_bridge()
-
-    # Apply initial scheduler config
-    update_scheduler()
-
+    start_background_workers()
     
     print("RBot Pro Multi-Exchange Analysis UI Server")
     print("📱 Open: http://localhost:5000")
     print("✓ Using queue-based streaming for stability")
     
-    # Start Trade Tracking loop
     safe_spawn(trade_tracker.update_loop)
     
     # Fast Exit Handler for Windows (Ctrl+C)
