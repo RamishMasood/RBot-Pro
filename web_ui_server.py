@@ -1206,22 +1206,27 @@ def run_session_analysis(sid, symbols, indicators, timeframes, min_conf, exchang
                         socketio.emit('trade_signal', signal_data, room=sid, namespace='/')
                         
                         if track_status == 'NEW':
-                            # INTELLIGENT ROUTING: 
-                            # If source is a messenger, ONLY alert that messenger. 
-                            # If source is WEB (None), alert BOTH.
-                            m_conf = messenger_configs.get(source_messenger or 'telegram', config)
+                            # INDEPENDENT ROUTING: 
+                            # Messengers ONLY receive signals from their OWN analysis runs.
+                            # Web UI signals stay in Web UI only.
                             
-                            if not source_messenger or source_messenger == 'telegram':
+                            if source_messenger == 'telegram':
+                                # Telegram bot triggered this analysis
+                                m_conf = messenger_configs.get('telegram', config)
                                 q = m_conf.get('telegram_quality', 'ELITE')
                                 eventlet.spawn(send_telegram_alert, signal_data, q)
-                                if source_messenger == 'telegram': signals_sent += 1
+                                signals_sent += 1
                                 
-                            if not source_messenger or source_messenger == 'whatsapp':
+                            elif source_messenger == 'whatsapp':
+                                # WhatsApp bot triggered this analysis
+                                m_conf = messenger_configs.get('whatsapp', config)
                                 q = m_conf.get('whatsapp_quality', 'ELITE')
                                 eventlet.spawn(send_whatsapp_alert, signal_data, q)
-                                if source_messenger == 'whatsapp': signals_sent += 1
-                                
-                            eventlet.spawn(execute_auto_trade, signal_data, sid)
+                                signals_sent += 1
+                            
+                            # Auto-trade only for web UI or if explicitly enabled for bots
+                            if not source_messenger:
+                                eventlet.spawn(execute_auto_trade, signal_data, sid)
                 except Exception as e:
                     print(f"Error processing trade signal: {e}")
                 continue
@@ -1250,23 +1255,12 @@ def run_session_analysis(sid, symbols, indicators, timeframes, min_conf, exchang
              client_sessions[sid]['process'] = None
              
              # SEPARATE NOTIFICATION LOGIC
-             if sid.startswith('bot_'):
-                messenger_label = sid.split('_')[1]
-                msg = "✅ *Analysis Completed*"
-                if signals_sent > 0:
-                    msg += f"\n🎯 Found {signals_sent} matching signals!"
-                else:
-                    # Inform user if nothing matched their filter
-                    m_conf = messenger_configs.get(source_messenger or messenger_label, config)
-                    qual = m_conf.get(f'{source_messenger or messenger_label}_quality', 'ELITE')
-                    msg += f"\n🎯 Found 0 matching signals for {qual} filter."
-
-                if source_messenger == 'telegram':
-                    tg_chat = config.get('telegram_chat_id')
-                    if tg_chat: send_tg_message(tg_chat, msg)
-                elif source_messenger == 'whatsapp':
-                    wa_chat = config.get('whatsapp_chat_id')
-                    if wa_chat: send_whatsapp_message(wa_chat, msg)
+             if source_messenger == 'telegram':
+                tg_chat = config.get('telegram_chat_id')
+                if tg_chat: send_tg_message(tg_chat, "Analysis Completed")
+             elif source_messenger == 'whatsapp':
+                wa_chat = config.get('whatsapp_chat_id')
+                if wa_chat: send_whatsapp_message(wa_chat, "Analysis Completed")
 
     except Exception as e:
         error_msg = str(e)
@@ -1349,10 +1343,8 @@ def auto_run_analysis():
                             # GLOBAL BROADCAST for auto-runs
                             socketio.emit('trade_signal', signal_data, namespace='/')
                         
-                        # Telegram if NEW
+                        # Auto-run is WEB ONLY - no messenger alerts
                         if track_status == 'NEW':
-                            eventlet.spawn(send_telegram_alert, signal_data)
-                            eventlet.spawn(send_whatsapp_alert, signal_data)
                             eventlet.spawn(execute_auto_trade, signal_data, None)
                             
                             # Micro-delay to avoid saturation
