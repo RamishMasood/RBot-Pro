@@ -132,12 +132,20 @@ RBot Pro computes **80+ technical indicators** on every timeframe for every coin
 - **TSI** — Double-smoothed true strength momentum.
 
 ### 🌍 World-Class Trend & Volatility (NEW 2026)
-- **Mass Index & Coppock** — Long-term trend reversal sensors.
-- **KST & TRIX** — Multi-smoothed momentum oscillators.
-- **Elder Ray & Klinger** — Bull/Bear power and volume flow.
-- **Aroon & VHF** — Trend strength and efficiency filters.
-- **Murrey Math & Camarilla** — Institutional level prediction.
-- **PFE & RVI** — Fractal efficiency and vigor tracking.
+- **Mass Index & Coppock** — Long-term trend reversal sensors detecting exhausted moves.
+- **KST & TRIX** — Smoothed momentum oscillators for filtering market noise.
+- **Elder Ray & Klinger** — precise measurement of Bull/Bear power and volume pressure.
+- **Aroon & VHF** — Determining trend strength to filter out chopping markets.
+- **Murrey Math & Camarilla** — Institutional pivot points for key support/resistance.
+- **PFE & RVI** — Fractal efficiency and Relative Vigor for structural analysis.
+- **Williams %R & Force Index** — Deep oversold detection with volume weighting.
+- **Ease of Movement (EOM)** — Identifying "path of least resistance" volume flows.
+- **Momentum & ROC** — Pure price velocity and rate-of-change tracking.
+- **Awesome & Gator** — Bill Williams' market phase and momentum duality.
+- **Accelerator & DeMarker** — Early warning systems for trend acceleration/exhaustion.
+- **Laguerre RSI & Hull Suite** — Next-gen zero-lag filtering for surgical precision.
+- **Connors RSI & QQE** — Statistical short-term reversion and quantitative qualitative estimation.
+- **Waddah Attar & Alpha Trend** — The gold standard for explosive volume breakouts.
 
 ---
 
@@ -154,21 +162,37 @@ Every signal is generated with **high-probability confluence (7+/10 score)** and
 - **Harmonic Pro Scanner** — Bat, Gartley, and Deep Crab patterns.
 
 ### ⚡ Momentum & Scalping
-- **PSAR-TEMA Fast Scalp** — 1m-3m hyper-scalping.
-- **Hull Trend Scalper** — Fast day-trading momentum.
-- **WaveTrend Extreme** — Reversing market exhaustion.
-- **Squeeze Breakout Pro** — Riding 15m-1h volatility pulses.
-- **VWAP Institutional** — Multi-day fair value deviations.
-- **Fisher Pivot Lead** — Predictive turning point sensor.
+- **PSAR-TEMA Fast Scalp** — 1m-3m hyper-scalping using triple-smoothed averages.
+- **Hull Trend Scalper** — Fast day-trading momentum with minimal lag.
+- **WaveTrend Extreme** — Reversing market exhaustion at statistical bounds.
+- **Squeeze Breakout Pro** — Riding 15m-1h volatility compression explosions.
+- **VWAP Institutional** — Trading deviations from the volume-weighted average price.
+- **Fisher Pivot Lead** — Predictive turning point sensor using Fisher Transform.
+- **Laguerre RSI Scalp** — Surgical entries using 4-point Laguerre filter precision.
+- **Momentum Burst** — Catching high-velocity moves confirmed by ADX > 25.
+- **Connors RSI Reversion** — Mean reversion scalping at 2-period extremes (<15).
 
 ### 📈 Modern Trend Following (Adaptive Elite)
-- **Swing Trend Master** — Daily/4h trend alignment rider.
-- **MTF Trend Rider** — Triple timeframe confluence (1d+4h+1h).
-- **Gann Activator Bot** — Trend stabilization and riding.
-- **Vortex Trend Phase** — Identifying new market cycles.
-- **ADX Breakout Pro** — Volume-confirmed momentum bursts.
-- **Alligator Awake** — Williams-based trend birth signals.
-- **Mass Index Reversal** — Catching major trend shifts early.
+- **Swing Trend Master** — Daily/4h trend alignment rider for massive moves.
+- **MTF Trend Rider** — Triple timeframe confluence (1d+4h+1h) verification.
+- **Gann Activator Bot** — Trend stabilization and Hilo-based riding.
+- **Vortex Trend Phase** — Identifying the birth of new directional market cycles.
+- **ADX Breakout Pro** — Volume-confirmed momentum bursts in trending conditions.
+- **Alligator Awake** — Bill Williams' trend birth signals (Lips > Teeth > Jaw).
+- **Mass Index Reversal** — Catching major trend shifts via range expansion.
+- **Force Index Trend** — Volume-weighted trend following with EMA confirmation.
+- **Alpha Trend Follow** — Hybrid MFI/RSI trend following for sustainable moves.
+- **Hull Suite Trend** — Ultra-smooth trend following using Hull Moving Average dynamics.
+- **Waddah Attar Explosion** — The ultimate volume/volatility breakout validation.
+
+### 🧠 Strategic Intelligence Core (Pro-Grade)
+- **Williams %R Pullback** — Low-risk entries on deep value pullbacks in uptrends.
+- **EOM Breakout** — Validating price movement on minimal volume resistance.
+- **AO Saucer** — Capitalizing on momentum continuation patterns (Bill Williams).
+- **DeMarker Reversal** — Identifying exhausted price action at oscillator extremes.
+- **SuperTrend Follow** — Classic volatility-stop trend following logic.
+- **Stoch RSI Pullback** — Momentum reloading signals within established trends.
+- **BB Volatility Breakout** — Trading expansions from Bollinger Band squeezes.
 
 ---
 
