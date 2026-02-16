@@ -2085,7 +2085,6 @@ def stop_bot_analysis(messenger=None):
 def handle_connect():
     """Client connected"""
     sid = request.sid
-    print(f"Client connected: {sid}")
     client_sessions[sid] = {'active': False, 'process': None}
     emit('status', {'status': 'connected', 'config': config})
     if not is_vercel:
@@ -2095,21 +2094,26 @@ def handle_connect():
 def handle_disconnect():
     """Client disconnected"""
     sid = request.sid
-    print(f"Client disconnected: {sid}")
-    
-    # On Vercel, disconnects happen every few seconds due to serverless timeouts.
-    # Killing the process immediately stops any ongoing analysis.
     if not is_vercel:
         kill_analysis_process(sid)
-    
-    # Remove from active sessions
     if sid in client_sessions:
         del client_sessions[sid]
+
+@socketio.on('join_tab_room', namespace='/')
+def on_join_tab_room(data):
+    """Client joins a stable room for their individual tab session ID"""
+    tab_sid = data.get('sid')
+    if tab_sid:
+        from flask_socketio import join_room
+        join_room(tab_sid)
+        # Ensure session entry exists for the tab ID
+        if tab_sid not in client_sessions:
+            client_sessions[tab_sid] = {'active': False, 'process': None}
 
 @socketio.on('start_analysis', namespace='/')
 def handle_start(data):
     """Start analysis for THIS session"""
-    sid = request.sid
+    sid = data.get('sid') or request.sid
     _trigger_analysis(sid, data)
 
 @app.route('/api/start-analysis', methods=['POST'])

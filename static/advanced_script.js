@@ -526,6 +526,56 @@ function copyTradeFromBtn(btn) {
     }
 }
 
+// ===== Session ID Management (Robust for Vercel/Serverless) =====
+function getTabSessionID() {
+    if (!window.tabSessionID) {
+        // Create a unique, persistent ID for this tab session
+        window.tabSessionID = 'ts_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+        console.log('🏁 Generated Tab Session ID:', window.tabSessionID);
+    }
+    return window.tabSessionID;
+}
+
+// Ensure SID is ready
+const tabSessionID = getTabSessionID();
+
+// Socket.IO Event Handlers
+socket.on('connect', () => {
+    console.log('✓ Connected to server. SID:', socket.id);
+    updateStatus('Connected', 'connected');
+
+    // Join a stable room based on our Tab Session ID
+    // This allows the server to send us updates even if our socket.id changes (common on Vercel)
+    socket.emit('join_tab_room', { sid: tabSessionID });
+
+    if (window.wasDisconnected) {
+        if (!isVercelEnvironment) {
+            addTerminalLine('✓ Reconnected to RBot Pro server', 'success');
+        }
+        window.wasDisconnected = false;
+    }
+});
+
+socket.on('connect_error', (error) => {
+    console.warn('Connection/Polling Warning:', error.message);
+});
+
+socket.on('disconnect', (reason) => {
+    console.log('✗ Socket Disconnected:', reason);
+    if (reason === 'io server disconnect') {
+        socket.connect();
+    }
+    if (!window.wasDisconnected) {
+        window.wasDisconnected = true;
+        if (!isVercelEnvironment) {
+            updateStatus('Reconnecting...', 'warning');
+        }
+    }
+});
+
+// Rest of your handlers (output, trade_signal, etc.) should remain as they are
+// but ensure the server emits to 'room=sid' where sid is our tabSessionID.
+
 // ===== Control Functions =====
 
 function getSelectedExchanges() {
@@ -611,7 +661,7 @@ function startAnalysis() {
 
     // Trigger analysis via REST API (More robust for Vercel/Serverless than socket.emit)
     const analysisData = {
-        sid: socket.id, // CRITICAL: Pass SID so server knows where to emit
+        sid: tabSessionID, // CRITICAL: Use stable Tab Session ID
         symbols: symbols,
         indicators: indicators,
         strategies: strategies,

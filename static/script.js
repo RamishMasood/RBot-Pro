@@ -121,6 +121,19 @@ function addOutputLine(text) {
     terminal.scrollTop = terminal.scrollHeight;
 }
 
+// ===== Session ID Management (Robust for Vercel/Serverless) =====
+function getTabSessionID() {
+    if (!window.tabSessionID) {
+        window.tabSessionID = 'ts_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+    }
+    return window.tabSessionID;
+}
+const tabSessionID = getTabSessionID();
+
+socket.on('connect', () => {
+    socket.emit('join_tab_room', { sid: tabSessionID });
+});
+
 // Start analysis
 function startAnalysis() {
     if (isAnalysisRunning) {
@@ -134,10 +147,14 @@ function startAnalysis() {
     fetch('/api/start-analysis', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sid: socket.id })
+        body: JSON.stringify({ sid: tabSessionID })
+    }).then(r => r.json()).then(res => {
+        if (res.status !== 'ok') {
+            addOutputLine(`❌ API Error: ${res.msg}\n`);
+        }
     }).catch(err => {
         console.warn('REST start failed, falling back to socket', err);
-        socket.emit('start_analysis');
+        socket.emit('start_analysis', { sid: tabSessionID });
     });
 }
 
