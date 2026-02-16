@@ -670,19 +670,87 @@ function startAnalysis() {
         exchanges: exchanges
     };
 
-    fetch('/api/start-analysis', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(analysisData)
-    }).then(r => r.json()).then(res => {
-        if (res.status !== 'ok') {
-            addTerminalLine(`❌ API Error: ${res.msg}`, 'error');
-        }
-    }).catch(err => {
-        console.error('Failed to trigger analysis:', err);
-        // Fallback to socket if API fails
-        socket.emit('start_analysis', analysisData);
-    });
+    if (isVercelEnvironment) {
+        addTerminalLine('📡 Initializing Vercel-Optimized Stream...', 'info');
+
+        fetch('/api/start-analysis', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(analysisData)
+        }).then(async response => {
+            if (!response.ok) throw new Error('Network response was not ok');
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            try {
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+
+                    // Parse SSE format (event:xxx\ndata:yyy\n\n)
+                    let parts = buffer.split('\n\n');
+                    buffer = parts.pop(); // Keep incomplete part in buffer
+
+                    for (const part of parts) {
+                        const eventMatch = part.match(/event:(.*)\ndata:(.*)/s);
+                        if (eventMatch) {
+                            const event = eventMatch[1].trim();
+                            const data = JSON.parse(eventMatch[2].trim());
+
+                            // Manually route events since we are bypassing socket.io logic
+                            if (event === 'output') {
+                                if (data && data.data) addTerminalLine(data.data);
+                            } else if (event === 'status') {
+                                // Simulate status event
+                                if (data && data.status) {
+                                    if (data.status === 'started') {
+                                        isRunning = true;
+                                        document.getElementById('startBtn').disabled = true;
+                                        document.getElementById('stopBtn').disabled = false;
+                                        updateStatus('Analyzing...', 'success');
+                                        startTimer();
+                                    } else if (data.status === 'completed' || data.status === 'error') {
+                                        isRunning = false;
+                                        document.getElementById('startBtn').disabled = false;
+                                        document.getElementById('stopBtn').disabled = true;
+                                        updateStatus('Ready', 'connected');
+                                        stopTimer();
+                                    }
+                                }
+                            } else if (event === 'trade_signal') {
+                                if (data) addTradeSignal(data);
+                            }
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('Stream read error:', e);
+                addTerminalLine('❌ Stream Connection Error: ' + e.message, 'error');
+            }
+        }).catch(err => {
+            console.error('Failed to start streaming analysis:', err);
+            addTerminalLine('❌ Analysis Failed to Start: ' + err.message, 'error');
+        });
+
+    } else {
+        // Local: Standard logic
+        fetch('/api/start-analysis', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(analysisData)
+        }).then(r => r.json()).then(res => {
+            if (res.status !== 'ok') {
+                addTerminalLine(`❌ API Error: ${res.msg}`, 'error');
+            }
+        }).catch(err => {
+            console.error('Failed to trigger analysis:', err);
+            socket.emit('start_analysis', analysisData);
+        });
+    }
 }
 
 function stopAnalysis() {

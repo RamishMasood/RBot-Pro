@@ -143,19 +143,53 @@ function startAnalysis() {
 
     addOutputLine(`\n>>> Analysis started at ${new Date().toLocaleTimeString()}\n`);
 
-    // Use REST API for robustness on Vercel
-    fetch('/api/start-analysis', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sid: tabSessionID })
-    }).then(r => r.json()).then(res => {
-        if (res.status !== 'ok') {
-            addOutputLine(`❌ API Error: ${res.msg}\n`);
-        }
-    }).catch(err => {
-        console.warn('REST start failed, falling back to socket', err);
-        socket.emit('start_analysis', { sid: tabSessionID });
-    });
+    // Trigger analysis via REST API
+    const analysisData = { sid: tabSessionID };
+
+    if (isVercelEnvironment) {
+        addOutputLine('📡 Initializing Vercel-Optimized Stream...\n');
+
+        fetch('/api/start-analysis', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(analysisData)
+        }).then(async response => {
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                let parts = buffer.split('\n\n');
+                buffer = parts.pop();
+                for (const part of parts) {
+                    const eventMatch = part.match(/event:(.*)\ndata:(.*)/s);
+                    if (eventMatch) {
+                        const event = eventMatch[1].trim();
+                        const data = JSON.parse(eventMatch[2].trim());
+                        if (event === 'output' && data.data) addOutputLine(data.data);
+                        else if (event === 'status') {
+                            if (data.status === 'started') { isAnalysisRunning = true; updateStatus('Analyzing...', 'success'); startTimer(); }
+                            else { isAnalysisRunning = false; updateStatus('Ready', 'connected'); stopTimer(); }
+                        }
+                    }
+                }
+            }
+        }).catch(err => {
+            addOutputLine('❌ Analysis Failed to Start: ' + err.message + '\n');
+        });
+    } else {
+        fetch('/api/start-analysis', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(analysisData)
+        }).then(r => r.json()).then(res => {
+            if (res.status !== 'ok') addOutputLine(`❌ API Error: ${res.msg}\n`);
+        }).catch(err => {
+            socket.emit('start_analysis', analysisData);
+        });
+    }
 }
 
 // Clear output

@@ -1164,10 +1164,17 @@ def market_monitor_loop():
             print(f"Market Monitor Error: {e}")
             safe_sleep(10)
 
-def run_session_analysis(sid, symbols, indicators, timeframes, min_conf, exchanges, strategies, source_messenger=None):
-    """Run analysis for a specific session"""
+def run_session_analysis(sid, symbols, indicators, timeframes, min_conf, exchanges, strategies, source_messenger=None, yield_mode=False):
+    """Run analysis for a specific session. If yield_mode=True, it behaves as a generator."""
     print(f"🚀 Starting analysis for session {sid} (Source: {source_messenger or 'Web'})")
     
+    def _emit(event, data):
+        if not yield_mode:
+            socketio.emit(event, data, room=sid, namespace='/')
+        else:
+            # When yielding, we'll prefix with event type for the frontend to parse
+            return f"event:{event}\ndata:{json.dumps(data)}\n\n"
+
     try:
         script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fast_analysis.py')
         
@@ -1181,11 +1188,8 @@ def run_session_analysis(sid, symbols, indicators, timeframes, min_conf, exchang
             '--strategies', ','.join(strategies)
         ]
         
-        # Send start message to specific room (sid) - Concise version for UI
+        # Send start message
         coins_count = len(symbols)
-        socketio.emit('output', {'data': f"🚀 Starting RBot Pro Analysis - {coins_count} Symbols | {len(strategies)} Strategies...\n"}, room=sid, namespace='/')
-        
-        env = os.environ.copy()
         env['PYTHONIOENCODING'] = 'utf-8'
         env['PYTHONUNBUFFERED'] = '1'
         if is_vercel:
@@ -1240,99 +1244,86 @@ def run_session_analysis(sid, symbols, indicators, timeframes, min_conf, exchang
         signals_sent = 0
         
         while True:
-            # SAFETY CHECK: If browser tab closed, stop analysis immediately
-            if sid not in client_sessions:
+            if not yield_mode and sid not in client_sessions:
                 kill_analysis_process(sid)
                 return
 
             try:
-                # Use a timeout to allow flushing the buffer even if no new lines arrive
-                if not is_vercel:
-                    import eventlet.queue
-                    line = output_q.get(timeout=0.1)
-                else:
-                    import queue
-                    line = output_q.get(timeout=0.1)
-            except (eventlet.queue.Empty if not is_vercel else queue.Empty):
-                line = "" # Just a tick to check if we should flush
+                # Institutional non-blocking read
+                line = output_q.get(timeout=0.1)
+            except:
+                line = "" 
             
-            if line is None: break # EOF
+            if line is None: break 
             
             if line and 'SIGNAL_DATA:' in line:
-                # FORCE FLUSH buffer before signal
                 if output_buffer:
-                    socketio.emit('output', {'data': "".join(output_buffer)}, room=sid, namespace='/')
+                    msg = {"data": "".join(output_buffer)}
+                    if yield_mode: yield _emit('output', msg)
+                    else: _emit('output', msg)
                     output_buffer = []
                     
                 try:
                     signal_str = line.split('SIGNAL_DATA:')[1].strip()
                     signal_data = json.loads(signal_str)
                     
-                    # 1. Add/Update tracker FIRST
                     track_status, current_tracking_status = trade_tracker.add_trade(signal_data)
                     signal_data['tracking_status'] = current_tracking_status
                     if 'registration_time' not in signal_data:
                         signal_data['registration_time'] = time.time()
 
-                    # 2. Emit signal immediately
                     is_final_merged = 'agreeing_strategies_details' in signal_data
                     if track_status == 'NEW' or is_final_merged:
-                        socketio.emit('trade_signal', signal_data, room=sid, namespace='/')
+                        if yield_mode: yield _emit('trade_signal', signal_data)
+                        else: _emit('trade_signal', signal_data)
                         
                         if track_status == 'NEW':
-                            # INDEPENDENT ROUTING: 
-                            # Messengers ONLY receive signals from their OWN analysis runs.
-                            # Web UI signals stay in Web UI only.
-                            
                             if source_messenger == 'telegram':
-                                # Telegram bot triggered this analysis
                                 m_conf = messenger_configs.get('telegram', config)
                                 q = m_conf.get('telegram_quality', 'ELITE')
                                 safe_spawn(send_telegram_alert, signal_data, q)
-                                signals_sent += 1
-                                
                             elif source_messenger == 'whatsapp':
-                                # WhatsApp bot triggered this analysis
                                 m_conf = messenger_configs.get('whatsapp', config)
                                 q = m_conf.get('whatsapp_quality', 'ELITE')
                                 safe_spawn(send_whatsapp_alert, signal_data, q)
-                                signals_sent += 1
-                            
-                            # Auto-trade only for web UI or if explicitly enabled for bots
                             if not source_messenger:
                                 safe_spawn(execute_auto_trade, signal_data, sid)
-                except Exception as e:
-                    print(f"Error processing trade signal: {e}")
+                except: pass
                 continue
             
-            # Buffer standard output
             if line:
                 output_buffer.append(line)
             
-            # Flush if buffer is large or 200ms elapsed since last flush
             now = time.time()
             if output_buffer and (len(output_buffer) > 20 or (now - last_flush > 0.2)):
-                socketio.emit('output', {'data': "".join(output_buffer)}, room=sid, namespace='/')
+                msg = {"data": "".join(output_buffer)}
+                if yield_mode: yield _emit('output', msg)
+                else: _emit('output', msg)
                 output_buffer = []
                 last_flush = now
-                safe_sleep(0) # Standard yielding
+                safe_sleep(0.01) # Critical yielding for serverless stability
         
-        # Final flush
         if output_buffer:
-            socketio.emit('output', {'data': "".join(output_buffer)}, room=sid, namespace='/')
+            msg = {"data": "".join(output_buffer)}
+            if yield_mode: yield _emit('output', msg)
+            else: _emit('output', msg)
         
-        # Process finished
-        if sid in client_sessions and client_sessions[sid]['active']:
-             socketio.emit('output', {'data': "\n✅ Analysis completed\n"}, room=sid, namespace='/')
-             socketio.emit('status', {'status': 'completed'}, room=sid, namespace='/')
-             client_sessions[sid]['active'] = False
-             client_sessions[sid]['process'] = None
+        if yield_mode:
+            yield _emit('output', {'data': "\n✅ Analysis completed\n"})
+            yield _emit('status', {'status': 'completed'})
+        else:
+            if sid in client_sessions and client_sessions[sid]['active']:
+                _emit('output', {'data': "\n✅ Analysis completed\n"})
+                _emit('status', {'status': 'completed'})
+                client_sessions[sid]['active'] = False
+                client_sessions[sid]['process'] = None
              
-             # SEPARATE NOTIFICATION LOGIC
-             if source_messenger == 'telegram':
+        # Separate Messenger Notification Logic
+        if not yield_mode:
+            if source_messenger == 'telegram':
                 tg_chat = config.get('telegram_chat_id')
                 if tg_chat: send_tg_message(tg_chat, "Analysis Completed")
-             elif source_messenger == 'whatsapp':
+            elif source_messenger == 'whatsapp':
                 wa_chat = config.get('whatsapp_chat_id')
                 if wa_chat: send_whatsapp_message(wa_chat, "Analysis Completed")
 
@@ -2118,14 +2109,31 @@ def handle_start(data):
 
 @app.route('/api/start-analysis', methods=['POST'])
 def api_start_analysis():
-    """REST endpoint to trigger analysis (More robust for Vercel/Serverless)"""
+    """REST endpoint to trigger analysis. On Vercel, it uses HTTP streaming for robustness."""
     data = request.json or {}
     sid = data.get('sid')
     if not sid:
         return jsonify({'status': 'error', 'msg': 'Missing SID'}), 400
     
-    _trigger_analysis(sid, data)
-    return jsonify({'status': 'ok', 'msg': 'Analysis triggered'})
+    if is_vercel:
+        # Vercel Serverless: Background threads/Sockets are unreliable. 
+        # We MUST block and stream the analysis output in this request.
+        symbols = data.get('symbols', config['symbols'])
+        indicators = data.get('indicators', config['indicators'])
+        timeframes = data.get('timeframes', config['timeframes'])
+        min_conf = data.get('min_confidence', config['min_confidence'])
+        exchanges = data.get('exchanges', config['exchanges'])
+        strategies = data.get('strategies', config['strategies'])
+        
+        from flask import Response
+        return Response(
+            run_session_analysis(sid, symbols, indicators, timeframes, min_conf, exchanges, strategies, yield_mode=True),
+            mimetype='text/event-stream'
+        )
+    else:
+        # Local: Background thread + Socket.IO is perfect
+        _trigger_analysis(sid, data)
+        return jsonify({'status': 'ok', 'msg': 'Analysis triggered'})
 
 def _trigger_analysis(sid, data):
     """Internal helper to launch analysis"""
