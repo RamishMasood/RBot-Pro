@@ -5,13 +5,14 @@ const isVercelEnvironment = typeof window.IS_VERCEL !== 'undefined' ? window.IS_
 
 const socket = io(window.location.origin, {
     reconnection: true,
-    reconnectionDelay: isVercelEnvironment ? 1000 : 1000, // Regular reconnection to allow server to wake up
-    reconnectionDelayMax: isVercelEnvironment ? 5000 : 5000,
+    reconnectionDelay: isVercelEnvironment ? 500 : 1000,
+    reconnectionDelayMax: isVercelEnvironment ? 2000 : 5000,
     reconnectionAttempts: Infinity,
     transports: isVercelEnvironment ? ['polling'] : ['polling', 'websocket'],
     upgrade: !isVercelEnvironment,
     rememberUpgrade: false,
-    timeout: isVercelEnvironment ? 30000 : 20000 // Higher timeout for cold starts
+    timeout: isVercelEnvironment ? 15000 : 20000,
+    closeOnBeforeunload: false
 });
 
 let lineCount = 0;
@@ -25,19 +26,30 @@ let signalsCount = 0;
 socket.on('connect', () => {
     console.log('✓ Connected to server');
     updateStatus('Connected', 'connected');
-    addTerminalLine('✓ Connected to RBot Pro server', 'success');
+    // Only show connection message if we were previously disconnected
+    if (window.wasDisconnected) {
+        addTerminalLine('✓ Reconnected to RBot Pro server', 'success');
+        window.wasDisconnected = false;
+    }
 });
 
 socket.on('connect_error', (error) => {
     console.error('Connection error:', error);
-    updateStatus('Connection Error', 'error');
-    addTerminalLine(`✗ Connection error: ${error}`, 'error');
+    // Suppress transient serverless errors in terminal to avoid flooding
+    if (!isVercelEnvironment || !error.message.includes('xhr poll error')) {
+        updateStatus('Connecting...', 'warning');
+    }
 });
 
-socket.on('disconnect', () => {
-    console.log('✗ Disconnected from server');
-    updateStatus('Disconnected', 'error');
-    addTerminalLine('✗ Disconnected from server', 'error');
+socket.on('disconnect', (reason) => {
+    console.log('✗ Disconnected:', reason);
+    if (!window.wasDisconnected) {
+        updateStatus('Reconnecting...', 'warning');
+        if (!isVercelEnvironment) {
+            addTerminalLine('✗ Connection lost. Reconnecting...', 'warning');
+        }
+        window.wasDisconnected = true;
+    }
 });
 
 socket.on('output', (data) => {

@@ -5,12 +5,13 @@ const isVercelEnv = typeof window.IS_VERCEL !== 'undefined' ? window.IS_VERCEL :
 
 const socket = io({
     reconnection: true,
-    reconnectionDelay: isVercelEnv ? 1000 : 1000,
-    reconnectionDelayMax: isVercelEnv ? 5000 : 5000,
+    reconnectionDelay: isVercelEnv ? 500 : 1000,
+    reconnectionDelayMax: isVercelEnv ? 2000 : 5000,
     reconnectionAttempts: Infinity,
     transports: isVercelEnv ? ['polling'] : ['polling', 'websocket'],
     upgrade: !isVercelEnv,
-    timeout: isVercelEnv ? 30000 : 20000
+    timeout: isVercelEnv ? 15000 : 20000,
+    closeOnBeforeunload: false
 });
 let lineCount = 0;
 let startTime = null;
@@ -21,12 +22,23 @@ let isAnalysisRunning = false;
 socket.on('connect', function () {
     updateStatus('Connected', 'connected');
     console.log('Connected to server');
+    window.wasDisconnectedEnv = false;
 });
 
 // Disconnect event
-socket.on('disconnect', function () {
-    updateStatus('Disconnected', 'disconnected');
-    console.log('Disconnected from server');
+socket.on('disconnect', function (reason) {
+    if (!window.wasDisconnectedEnv) {
+        updateStatus('Reconnecting...', 'warning');
+        console.log('Disconnected:', reason);
+        window.wasDisconnectedEnv = true;
+    }
+});
+
+socket.on('connect_error', (error) => {
+    console.error('Connection error:', error);
+    if (!isVercelEnv || !error.message.includes('xhr poll error')) {
+        updateStatus('Connecting...', 'warning');
+    }
 });
 
 // Receive output

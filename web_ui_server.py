@@ -94,22 +94,23 @@ app.config['SECRET_KEY'] = 'rbot-pro-analysis-ui-secret'
 socket_async_mode = 'threading' if is_vercel else 'eventlet'
 
 # Performance tuning for Vercel/Serverless
-# Vercel kills functions quickly, but aggressive heartbeats can cause 400 errors if they hit different instances.
-# Relaxing these helps maintain a connection through the polling cycle.
-ping_timeout = 60 if is_vercel else 60
-ping_interval = 25 if is_vercel else 20
+# Vercel kills functions quickly (10s Hobby, 60s Pro). 
+# Shorter intervals ensure we don't hold requests open beyond the lambda limit.
+ping_timeout = 10 if is_vercel else 60
+ping_interval = 5 if is_vercel else 20
 
 socketio = SocketIO(
     app,
     cors_allowed_origins="*",
     async_mode=socket_async_mode,
-    ping_timeout=120 if is_vercel else 60,
-    ping_interval=25 if is_vercel else 20,
+    ping_timeout=ping_timeout,
+    ping_interval=ping_interval,
     logger=False,
     engineio_logger=False,
-    manage_session=False,
-    cookie=None, # Disable cookies to avoid state issues on serverless
-    allow_upgrades=not is_vercel # Hard-disable upgrades on Vercel side
+    manage_session=True, # Switch back to True for better SID tracking within same process
+    cookie=None,
+    allow_upgrades=not is_vercel,
+    max_http_buffer_size=1e6 # 1MB limit for serverless payloads
 )
 
 @app.route('/')
@@ -689,8 +690,10 @@ class TradeTracker:
                         continue
                     current_trades = list(self.active_trades)
 
-                if current_time - last_heartbeat > 10:
-                    print(f"💓 Tracking heartbeat: {len(current_trades)} active trades", flush=True)
+                heartbeat_interval = 60 if is_vercel else 10
+                if current_time - last_heartbeat > heartbeat_interval:
+                    if not is_vercel:
+                        print(f"💓 Tracking heartbeat: {len(current_trades)} active trades", flush=True)
                     last_heartbeat = current_time
 
                 # 1. Institutional Bulk Sync
@@ -2079,7 +2082,8 @@ def handle_connect():
     print(f"Client connected: {sid}")
     client_sessions[sid] = {'active': False, 'process': None}
     emit('status', {'status': 'connected', 'config': config})
-    emit('output', {'data': f'✓ Connected at {datetime.now().strftime("%H:%M:%S")}\n'})
+    if not is_vercel:
+        emit('output', {'data': f'✓ Connected at {datetime.now().strftime("%H:%M:%S")}\n'})
 
 @socketio.on('disconnect', namespace='/')
 def handle_disconnect():
