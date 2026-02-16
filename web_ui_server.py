@@ -106,10 +106,12 @@ socketio = SocketIO(
     ping_interval=ping_interval,
     logger=False,
     engineio_logger=False,
-    manage_session=False, # Crucial for Vercel: Don't track SID state in memory
+    manage_session=False, 
     cookie=None,
     allow_upgrades=not is_vercel,
-    max_http_buffer_size=1e6
+    max_http_buffer_size=10e6, # 10MB to handle large trade payloads
+    ping_timeout=120 if is_vercel else 60,
+    ping_interval=25 if is_vercel else 20
 )
 
 @app.route('/')
@@ -2097,8 +2099,10 @@ def handle_disconnect():
     sid = request.sid
     print(f"Client disconnected: {sid}")
     
-    # Kill process on disconnect to save resources
-    kill_analysis_process(sid)
+    # On Vercel, disconnects happen every few seconds due to serverless timeouts.
+    # Killing the process immediately stops any ongoing analysis.
+    if not is_vercel:
+        kill_analysis_process(sid)
     
     # Remove from active sessions
     if sid in client_sessions:
@@ -2158,6 +2162,7 @@ def handle_stop():
         
         if sid in client_sessions:
             kill_analysis_process(sid)
+            client_sessions[sid]['active'] = False
             socketio.emit('output', {'data': '⏹️  Process terminated.\n'}, room=sid, namespace='/')
             socketio.emit('status', {'status': 'stopped'}, room=sid, namespace='/')
         else:
