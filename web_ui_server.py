@@ -1405,6 +1405,11 @@ def index():
     """Serve main UI"""
     return render_template('ui.html')
 
+@app.route('/favicon.ico')
+def favicon():
+    """Ignore favicon requests to keep logs clean"""
+    return "", 204
+
 @app.route('/api/config', methods=['GET'])
 def get_config():
     """Get current configuration"""

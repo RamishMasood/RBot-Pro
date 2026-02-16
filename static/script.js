@@ -1,7 +1,11 @@
 // WebSocket connection and UI handling for RBot Pro Analysis UI
 
+// Detect environment to handle Vercel's lack of WebSocket support
+const isVercelEnv = window.location.hostname.includes('vercel.app');
+
 const socket = io({
-    transports: ['polling', 'websocket']
+    transports: isVercelEnv ? ['polling'] : ['polling', 'websocket'],
+    upgrade: !isVercelEnv
 });
 let lineCount = 0;
 let startTime = null;

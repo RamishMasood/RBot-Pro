@@ -1,12 +1,15 @@
 // RBot Pro Multi-Exchange Analysis UI - JavaScript Client
 
-// Explicit WebSocket connection with proper configuration
+// Detect environment to handle Vercel's lack of WebSocket support
+const isVercelEnvironment = window.location.hostname.includes('vercel.app');
+
 const socket = io(window.location.origin, {
     reconnection: true,
     reconnectionDelay: 1000,
     reconnectionDelayMax: 5000,
     reconnectionAttempts: 10,
-    transports: ['polling', 'websocket']
+    transports: isVercelEnvironment ? ['polling'] : ['polling', 'websocket'],
+    upgrade: !isVercelEnvironment
 });
 
 let lineCount = 0;
