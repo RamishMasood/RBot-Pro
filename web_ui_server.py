@@ -94,10 +94,9 @@ app.config['SECRET_KEY'] = 'rbot-pro-analysis-ui-secret'
 socket_async_mode = 'threading' if is_vercel else 'eventlet'
 
 # Performance tuning for Vercel/Serverless
-# Vercel kills functions quickly (10s Hobby, 60s Pro). 
-# Shorter intervals ensure we don't hold requests open beyond the lambda limit.
-ping_timeout = 10 if is_vercel else 60
-ping_interval = 5 if is_vercel else 20
+# We use standard timeouts but disable session management to tolerate SID mismatches across lambdas.
+ping_timeout = 60 if is_vercel else 60
+ping_interval = 25 if is_vercel else 20
 
 socketio = SocketIO(
     app,
@@ -107,10 +106,10 @@ socketio = SocketIO(
     ping_interval=ping_interval,
     logger=False,
     engineio_logger=False,
-    manage_session=True, # Switch back to True for better SID tracking within same process
+    manage_session=False, # Crucial for Vercel: Don't track SID state in memory
     cookie=None,
     allow_upgrades=not is_vercel,
-    max_http_buffer_size=1e6 # 1MB limit for serverless payloads
+    max_http_buffer_size=1e6
 )
 
 @app.route('/')

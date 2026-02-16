@@ -5,13 +5,13 @@ const isVercelEnvironment = typeof window.IS_VERCEL !== 'undefined' ? window.IS_
 
 const socket = io(window.location.origin, {
     reconnection: true,
-    reconnectionDelay: isVercelEnvironment ? 500 : 1000,
-    reconnectionDelayMax: isVercelEnvironment ? 2000 : 5000,
+    reconnectionDelay: isVercelEnvironment ? 1500 : 1000,
+    reconnectionDelayMax: isVercelEnvironment ? 7000 : 5000,
     reconnectionAttempts: Infinity,
     transports: isVercelEnvironment ? ['polling'] : ['polling', 'websocket'],
     upgrade: !isVercelEnvironment,
     rememberUpgrade: false,
-    timeout: isVercelEnvironment ? 15000 : 20000,
+    timeout: isVercelEnvironment ? 30000 : 20000,
     closeOnBeforeunload: false
 });
 
@@ -26,29 +26,36 @@ let signalsCount = 0;
 socket.on('connect', () => {
     console.log('✓ Connected to server');
     updateStatus('Connected', 'connected');
-    // Only show connection message if we were previously disconnected
+
     if (window.wasDisconnected) {
-        addTerminalLine('✓ Reconnected to RBot Pro server', 'success');
+        if (!isVercelEnvironment) {
+            addTerminalLine('✓ Reconnected to RBot Pro server', 'success');
+        }
         window.wasDisconnected = false;
     }
 });
 
 socket.on('connect_error', (error) => {
-    console.error('Connection error:', error);
-    // Suppress transient serverless errors in terminal to avoid flooding
-    if (!isVercelEnvironment || !error.message.includes('xhr poll error')) {
+    console.warn('Connection/Polling Warning:', error.message);
+    if (!isVercelEnvironment) {
         updateStatus('Connecting...', 'warning');
     }
 });
 
 socket.on('disconnect', (reason) => {
-    console.log('✗ Disconnected:', reason);
+    console.log('✗ Socket Disconnected:', reason);
+
+    if (reason === 'io server disconnect') {
+        socket.connect();
+    }
+
     if (!window.wasDisconnected) {
-        updateStatus('Reconnecting...', 'warning');
+        window.wasDisconnected = true;
+        // Don't flip the UI immediately on Vercel to avoid flickering
         if (!isVercelEnvironment) {
+            updateStatus('Reconnecting...', 'warning');
             addTerminalLine('✗ Connection lost. Reconnecting...', 'warning');
         }
-        window.wasDisconnected = true;
     }
 });
 
