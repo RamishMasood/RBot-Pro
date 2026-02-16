@@ -93,31 +93,15 @@ app.config['SECRET_KEY'] = 'rbot-pro-analysis-ui-secret'
 # Auto-switch async_mode for Vercel compatibility
 socket_async_mode = 'threading' if is_vercel else 'eventlet'
 
-# Performance tuning for Vercel/Serverless
-# We use standard timeouts but disable session management to tolerate SID mismatches across lambdas.
-ping_timeout = 120 if is_vercel else 60
-ping_interval = 25 if is_vercel else 20
-
 socketio = SocketIO(
     app,
     cors_allowed_origins="*",
     async_mode=socket_async_mode,
-    ping_timeout=ping_timeout,
-    ping_interval=ping_interval,
+    ping_timeout=60,   # 60s timeout for stability
+    ping_interval=20,  # 20s heartbeat to keep connection alive
     logger=False,
-    engineio_logger=False,
-    manage_session=False, 
-    cookie=None,
-    allow_upgrades=not is_vercel,
-    max_http_buffer_size=10e6 # 10MB to handle large trade payloads
+    engineio_logger=False
 )
-
-@app.route('/')
-def index():
-    """Serve main UI"""
-    if is_vercel:
-        start_background_workers()
-    return render_template('ui.html', is_vercel=is_vercel)
 
 # --- Exchange Specific Kline Fetchers (Ported from fast_analysis.py) ---
 # --- Global Request Headers ---
@@ -689,10 +673,8 @@ class TradeTracker:
                         continue
                     current_trades = list(self.active_trades)
 
-                heartbeat_interval = 60 if is_vercel else 10
-                if current_time - last_heartbeat > heartbeat_interval:
-                    if not is_vercel:
-                        print(f"💓 Tracking heartbeat: {len(current_trades)} active trades", flush=True)
+                if current_time - last_heartbeat > 10:
+                    print(f"💓 Tracking heartbeat: {len(current_trades)} active trades", flush=True)
                     last_heartbeat = current_time
 
                 # 1. Institutional Bulk Sync
@@ -1164,22 +1146,13 @@ def market_monitor_loop():
             print(f"Market Monitor Error: {e}")
             safe_sleep(10)
 
-def run_session_analysis(sid, symbols, indicators, timeframes, min_conf, exchanges, strategies, source_messenger=None, yield_mode=False):
-    """Run analysis for a specific session. If yield_mode=True, it behaves as a generator."""
+def run_session_analysis(sid, symbols, indicators, timeframes, min_conf, exchanges, strategies, source_messenger=None):
+    """Run analysis for a specific session"""
     print(f"🚀 Starting analysis for session {sid} (Source: {source_messenger or 'Web'})")
     
-    def _emit(event, data):
-        if not yield_mode:
-            socketio.emit(event, data, room=sid, namespace='/')
-        else:
-            # When yielding, we'll prefix with event type for the frontend to parse
-            return f"event:{event}\ndata:{json.dumps(data)}\n\n"
-
     try:
-        script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fast_analysis.py')
-        
         cmd = [
-            sys.executable, script_path,
+            sys.executable, 'fast_analysis.py',
             '--symbols', ','.join(symbols),
             '--indicators', ','.join(indicators),
             '--timeframes', ','.join(timeframes),
@@ -1188,19 +1161,18 @@ def run_session_analysis(sid, symbols, indicators, timeframes, min_conf, exchang
             '--strategies', ','.join(strategies)
         ]
         
-        # Send start message
+        # Send start message to specific room (sid) - Concise version for UI
         coins_count = len(symbols)
+        socketio.emit('output', {'data': f"🚀 Starting RBot Pro Analysis - {coins_count} Symbols | {len(strategies)} Strategies...\n"}, room=sid, namespace='/')
+        
+        env = os.environ.copy()
         env['PYTHONIOENCODING'] = 'utf-8'
         env['PYTHONUNBUFFERED'] = '1'
-        if is_vercel:
-            env['IS_VERCEL_RUNTIME'] = '1'
-        
-        print(f"Executing: {' '.join(cmd)}")
         
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT, 
+            stderr=subprocess.STDOUT, # Merge stderr into stdout
             text=True,
             encoding='utf-8',
             bufsize=1,
@@ -1214,23 +1186,16 @@ def run_session_analysis(sid, symbols, indicators, timeframes, min_conf, exchang
             client_sessions[sid]['active'] = True
         
         # Stream output using a non-blocking queue (Institutional Stability)
-        if not is_vercel:
-            import eventlet.queue
-            import eventlet.tpool
-            output_q = eventlet.queue.Queue()
-        else:
-            import queue
-            output_q = queue.Queue()
+        # Using tpool for real OS-threaded reading to prevent Windows hub freezes
+        import eventlet.queue
+        import eventlet.tpool
+        output_q = eventlet.queue.Queue()
         
         def _pipe_reader_task(pipe, queue):
             try:
-                # Use tpool for the actual read to avoid blocking the hub (Only for Eventlet)
+                # Use tpool for the actual read to avoid blocking the hub
                 while True:
-                    if not is_vercel:
-                        import eventlet.tpool
-                        l = eventlet.tpool.execute(pipe.readline)
-                    else:
-                        l = pipe.readline()
+                    l = eventlet.tpool.execute(pipe.readline)
                     if not l: break
                     queue.put(l)
             except: pass
@@ -1244,98 +1209,105 @@ def run_session_analysis(sid, symbols, indicators, timeframes, min_conf, exchang
         signals_sent = 0
         
         while True:
-            if not yield_mode and sid not in client_sessions:
+            # SAFETY CHECK: If browser tab closed, stop analysis immediately
+            if sid not in client_sessions:
                 kill_analysis_process(sid)
                 return
 
             try:
-                # Institutional non-blocking read
+                # Use a timeout to allow flushing the buffer even if no new lines arrive
                 line = output_q.get(timeout=0.1)
-            except:
-                line = "" 
+            except eventlet.queue.Empty:
+                line = "" # Just a tick to check if we should flush
             
-            if line is None: break 
+            if line is None: break # EOF
             
             if line and 'SIGNAL_DATA:' in line:
+                # FORCE FLUSH buffer before signal
                 if output_buffer:
-                    msg = {"data": "".join(output_buffer)}
-                    if yield_mode: yield _emit('output', msg)
-                    else: _emit('output', msg)
+                    socketio.emit('output', {'data': "".join(output_buffer)}, room=sid, namespace='/')
                     output_buffer = []
                     
                 try:
                     signal_str = line.split('SIGNAL_DATA:')[1].strip()
                     signal_data = json.loads(signal_str)
                     
+                    # 1. Add/Update tracker FIRST
                     track_status, current_tracking_status = trade_tracker.add_trade(signal_data)
                     signal_data['tracking_status'] = current_tracking_status
                     if 'registration_time' not in signal_data:
                         signal_data['registration_time'] = time.time()
 
+                    # 2. Emit signal immediately
                     is_final_merged = 'agreeing_strategies_details' in signal_data
                     if track_status == 'NEW' or is_final_merged:
-                        if yield_mode: yield _emit('trade_signal', signal_data)
-                        else: _emit('trade_signal', signal_data)
+                        socketio.emit('trade_signal', signal_data, room=sid, namespace='/')
                         
                         if track_status == 'NEW':
+                            # INDEPENDENT ROUTING: 
+                            # Messengers ONLY receive signals from their OWN analysis runs.
+                            # Web UI signals stay in Web UI only.
+                            
                             if source_messenger == 'telegram':
+                                # Telegram bot triggered this analysis
                                 m_conf = messenger_configs.get('telegram', config)
                                 q = m_conf.get('telegram_quality', 'ELITE')
                                 safe_spawn(send_telegram_alert, signal_data, q)
+                                signals_sent += 1
+                                
                             elif source_messenger == 'whatsapp':
+                                # WhatsApp bot triggered this analysis
                                 m_conf = messenger_configs.get('whatsapp', config)
                                 q = m_conf.get('whatsapp_quality', 'ELITE')
                                 safe_spawn(send_whatsapp_alert, signal_data, q)
+                                signals_sent += 1
+                            
+                            # Auto-trade only for web UI or if explicitly enabled for bots
                             if not source_messenger:
                                 safe_spawn(execute_auto_trade, signal_data, sid)
-                except: pass
+                except Exception as e:
+                    print(f"Error processing trade signal: {e}")
                 continue
             
+            # Buffer standard output
             if line:
                 output_buffer.append(line)
             
+            # Flush if buffer is large or 200ms elapsed since last flush
             now = time.time()
             if output_buffer and (len(output_buffer) > 20 or (now - last_flush > 0.2)):
-                msg = {"data": "".join(output_buffer)}
-                if yield_mode: yield _emit('output', msg)
-                else: _emit('output', msg)
+                socketio.emit('output', {'data': "".join(output_buffer)}, room=sid, namespace='/')
                 output_buffer = []
                 last_flush = now
-                safe_sleep(0.01) # Critical yielding for serverless stability
+                safe_sleep(0) # Standard yielding
         
+        # Final flush
         if output_buffer:
-            msg = {"data": "".join(output_buffer)}
-            if yield_mode: yield _emit('output', msg)
-            else: _emit('output', msg)
+            socketio.emit('output', {'data': "".join(output_buffer)}, room=sid, namespace='/')
         
-        if yield_mode:
-            yield _emit('output', {'data': "\n✅ Analysis completed\n"})
-            yield _emit('status', {'status': 'completed'})
-        else:
-            if sid in client_sessions and client_sessions[sid]['active']:
-                _emit('output', {'data': "\n✅ Analysis completed\n"})
-                _emit('status', {'status': 'completed'})
-                client_sessions[sid]['active'] = False
-                client_sessions[sid]['process'] = None
+        # Process finished
+        if sid in client_sessions and client_sessions[sid]['active']:
+             socketio.emit('output', {'data': "\n✅ Analysis completed\n"}, room=sid, namespace='/')
+             socketio.emit('status', {'status': 'completed'}, room=sid, namespace='/')
+             client_sessions[sid]['active'] = False
+             client_sessions[sid]['process'] = None
              
-        # Separate Messenger Notification Logic
-        if not yield_mode:
-            if source_messenger == 'telegram':
+             # SEPARATE NOTIFICATION LOGIC
+             if source_messenger == 'telegram':
                 tg_chat = config.get('telegram_chat_id')
                 if tg_chat: send_tg_message(tg_chat, "Analysis Completed")
-            elif source_messenger == 'whatsapp':
+             elif source_messenger == 'whatsapp':
                 wa_chat = config.get('whatsapp_chat_id')
                 if wa_chat: send_whatsapp_message(wa_chat, "Analysis Completed")
 
     except Exception as e:
-        error_msg = f"Analysis Error: {str(e)}"
-        print(f"❌ {error_msg}")
-        socketio.emit('output', {'data': f"❌ {error_msg}\n"}, room=sid, namespace='/')
-        socketio.emit('status', {'status': 'error'}, room=sid, namespace='/')
+        error_msg = str(e)
+        if 'killed' not in error_msg.lower() and 'terminated' not in error_msg.lower():
+            socketio.emit('output', {'data': f"❌ ERROR: {error_msg}\n"}, room=sid, namespace='/')
+            socketio.emit('status', {'status': 'error'}, room=sid, namespace='/')
     finally:
         if sid in client_sessions:
             client_sessions[sid]['active'] = False
-            client_sessions[sid]['process'] = None
 
 
 def auto_run_analysis():
@@ -1371,12 +1343,8 @@ def auto_run_analysis():
             )
             
             # Stream output via non-blocking queue
-            if not is_vercel:
-                import eventlet.queue
-                output_q = eventlet.queue.LightQueue()
-            else:
-                import queue
-                output_q = queue.Queue()
+            import eventlet.queue
+            output_q = eventlet.queue.LightQueue()
             
             def _pipe_reader(pipe, queue):
                 try:
@@ -1391,10 +1359,7 @@ def auto_run_analysis():
             threading.Thread(target=_pipe_reader, args=(proc.stdout, output_q), daemon=True).start()
 
             while True:
-                if not is_vercel:
-                    line = output_q.get()
-                else:
-                    line = output_q.get()
+                line = output_q.get()
                 if line is None: break
                 
                 if line.startswith('SIGNAL_DATA:'):
@@ -1434,6 +1399,16 @@ def auto_run_analysis():
             print(f"Auto-run error: {e}")
 
     safe_spawn(_run_auto)
+
+@app.route('/')
+def index():
+    """Serve main UI"""
+    return render_template('ui.html')
+
+@app.route('/favicon.ico')
+def favicon():
+    """Ignore favicon requests to keep logs clean"""
+    return "", 204
 
 @app.route('/api/config', methods=['GET'])
 def get_config():
@@ -2076,73 +2051,35 @@ def stop_bot_analysis(messenger=None):
 def handle_connect():
     """Client connected"""
     sid = request.sid
+    print(f"Client connected: {sid}")
     client_sessions[sid] = {'active': False, 'process': None}
     emit('status', {'status': 'connected', 'config': config})
-    if not is_vercel:
-        emit('output', {'data': f'✓ Connected at {datetime.now().strftime("%H:%M:%S")}\n'})
+    emit('output', {'data': f'✓ Connected at {datetime.now().strftime("%H:%M:%S")}\n'})
 
 @socketio.on('disconnect', namespace='/')
 def handle_disconnect():
     """Client disconnected"""
     sid = request.sid
-    if not is_vercel:
-        kill_analysis_process(sid)
+    print(f"Client disconnected: {sid}")
+    
+    # Kill process on disconnect to save resources
+    kill_analysis_process(sid)
+    
+    # Remove from active sessions
     if sid in client_sessions:
         del client_sessions[sid]
-
-@socketio.on('join_tab_room', namespace='/')
-def on_join_tab_room(data):
-    """Client joins a stable room for their individual tab session ID"""
-    tab_sid = data.get('sid')
-    if tab_sid:
-        from flask_socketio import join_room
-        join_room(tab_sid)
-        # Ensure session entry exists for the tab ID
-        if tab_sid not in client_sessions:
-            client_sessions[tab_sid] = {'active': False, 'process': None}
 
 @socketio.on('start_analysis', namespace='/')
 def handle_start(data):
     """Start analysis for THIS session"""
-    sid = data.get('sid') or request.sid
-    _trigger_analysis(sid, data)
-
-@app.route('/api/start-analysis', methods=['POST'])
-def api_start_analysis():
-    """REST endpoint to trigger analysis. On Vercel, it uses HTTP streaming for robustness."""
-    data = request.json or {}
-    sid = data.get('sid')
-    if not sid:
-        return jsonify({'status': 'error', 'msg': 'Missing SID'}), 400
+    sid = request.sid
     
-    if is_vercel:
-        # Vercel Serverless: Background threads/Sockets are unreliable. 
-        # We MUST block and stream the analysis output in this request.
-        symbols = data.get('symbols', config['symbols'])
-        indicators = data.get('indicators', config['indicators'])
-        timeframes = data.get('timeframes', config['timeframes'])
-        min_conf = data.get('min_confidence', config['min_confidence'])
-        exchanges = data.get('exchanges', config['exchanges'])
-        strategies = data.get('strategies', config['strategies'])
-        
-        from flask import Response
-        return Response(
-            run_session_analysis(sid, symbols, indicators, timeframes, min_conf, exchanges, strategies, yield_mode=True),
-            mimetype='text/event-stream'
-        )
-    else:
-        # Local: Background thread + Socket.IO is perfect
-        _trigger_analysis(sid, data)
-        return jsonify({'status': 'ok', 'msg': 'Analysis triggered'})
-
-def _trigger_analysis(sid, data):
-    """Internal helper to launch analysis"""
     # Ensure session exists
     if sid not in client_sessions:
         client_sessions[sid] = {'active': False, 'process': None}
         
     if client_sessions[sid]['active']:
-        socketio.emit('output', {'data': '⚠️  Analysis already running in this tab!\n'}, room=sid, namespace='/')
+        emit('output', {'data': '⚠️  Analysis already running in this tab!\n'})
         return
     
     # Use config from request or global defaults
@@ -2153,8 +2090,8 @@ def _trigger_analysis(sid, data):
     exchanges = data.get('exchanges', config['exchanges'])
     strategies = data.get('strategies', config['strategies'])
     
-    socketio.emit('output', {'data': f'🚀 Starting analysis at {datetime.now().strftime("%H:%M:%S")}\n'}, room=sid, namespace='/')
-    socketio.emit('status', {'status': 'started'}, room=sid, namespace='/')
+    emit('output', {'data': f'🚀 Starting analysis at {datetime.now().strftime("%H:%M:%S")}\n'})
+    emit('status', {'status': 'started'})
     
     # Launch session-specific greenthread
     safe_spawn(
@@ -2172,7 +2109,6 @@ def handle_stop():
         
         if sid in client_sessions:
             kill_analysis_process(sid)
-            client_sessions[sid]['active'] = False
             socketio.emit('output', {'data': '⏹️  Process terminated.\n'}, room=sid, namespace='/')
             socketio.emit('status', {'status': 'stopped'}, room=sid, namespace='/')
         else:
@@ -2231,37 +2167,6 @@ def update_scheduler():
         if not scheduler.running:
             scheduler.start()
 
-
-@app.route('/favicon.ico')
-def favicon():
-    """Ignore favicon requests to keep logs clean"""
-    return "", 204
-
-workers_started = False
-def start_background_workers():
-    """Global initializer for background loops (Safe for Vercel and Local)"""
-    global workers_started
-    if workers_started:
-        return
-    
-    print("🚀 Initializing Background Workers...")
-    # Start Market Monitor (News + Volatility)
-    safe_spawn(market_monitor_loop)
-
-    # Start Telegram Bot Listener
-    safe_spawn(telegram_worker_loop)
-
-    # Start WhatsApp Web Bridge
-    safe_spawn(start_whatsapp_bridge)
-    
-    # Start Trade Tracking loop 
-    safe_spawn(lambda: trade_tracker.update_loop() if hasattr(trade_tracker, 'update_loop') else None)
-    
-    # Apply initial scheduler config
-    update_scheduler()
-    
-    workers_started = True
-    print("✓ Background Workers Started Successfully")
 
 @app.route('/api/proxy/klines')
 def proxy_klines():
@@ -2344,12 +2249,24 @@ def server_error(e):
     return jsonify({'error': 'Internal server error'}), 500
 
 if __name__ == '__main__':
-    start_background_workers()
+    # Start Market Monitor (News + Volatility)
+    safe_spawn(market_monitor_loop)
+
+    # Start Telegram Bot Listener
+    safe_spawn(telegram_worker_loop)
+
+    # Start WhatsApp Web Bridge
+    start_whatsapp_bridge()
+
+    # Apply initial scheduler config
+    update_scheduler()
+
     
     print("RBot Pro Multi-Exchange Analysis UI Server")
     print("📱 Open: http://localhost:5000")
     print("✓ Using queue-based streaming for stability")
     
+    # Start Trade Tracking loop
     safe_spawn(trade_tracker.update_loop)
     
     # Fast Exit Handler for Windows (Ctrl+C)

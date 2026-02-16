@@ -1,18 +1,15 @@
 // RBot Pro Multi-Exchange Analysis UI - JavaScript Client
 
 // Detect environment to handle Vercel's lack of WebSocket support
-const isVercelEnvironment = typeof window.IS_VERCEL !== 'undefined' ? window.IS_VERCEL : window.location.hostname.includes('vercel.app');
+const isVercelEnvironment = window.location.hostname.includes('vercel.app');
 
 const socket = io(window.location.origin, {
     reconnection: true,
-    reconnectionDelay: isVercelEnvironment ? 1500 : 1000,
-    reconnectionDelayMax: isVercelEnvironment ? 7000 : 5000,
-    reconnectionAttempts: Infinity,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 5000,
+    reconnectionAttempts: 10,
     transports: isVercelEnvironment ? ['polling'] : ['polling', 'websocket'],
-    upgrade: !isVercelEnvironment,
-    rememberUpgrade: false,
-    timeout: isVercelEnvironment ? 30000 : 20000,
-    closeOnBeforeunload: false
+    upgrade: !isVercelEnvironment
 });
 
 let lineCount = 0;
@@ -26,37 +23,19 @@ let signalsCount = 0;
 socket.on('connect', () => {
     console.log('✓ Connected to server');
     updateStatus('Connected', 'connected');
-
-    if (window.wasDisconnected) {
-        if (!isVercelEnvironment) {
-            addTerminalLine('✓ Reconnected to RBot Pro server', 'success');
-        }
-        window.wasDisconnected = false;
-    }
+    addTerminalLine('✓ Connected to RBot Pro server', 'success');
 });
 
 socket.on('connect_error', (error) => {
-    console.warn('Connection/Polling Warning:', error.message);
-    if (!isVercelEnvironment) {
-        updateStatus('Connecting...', 'warning');
-    }
+    console.error('Connection error:', error);
+    updateStatus('Connection Error', 'error');
+    addTerminalLine(`✗ Connection error: ${error}`, 'error');
 });
 
-socket.on('disconnect', (reason) => {
-    console.log('✗ Socket Disconnected:', reason);
-
-    if (reason === 'io server disconnect') {
-        socket.connect();
-    }
-
-    if (!window.wasDisconnected) {
-        window.wasDisconnected = true;
-        // Don't flip the UI immediately on Vercel to avoid flickering
-        if (!isVercelEnvironment) {
-            updateStatus('Reconnecting...', 'warning');
-            addTerminalLine('✗ Connection lost. Reconnecting...', 'warning');
-        }
-    }
+socket.on('disconnect', () => {
+    console.log('✗ Disconnected from server');
+    updateStatus('Disconnected', 'error');
+    addTerminalLine('✗ Disconnected from server', 'error');
 });
 
 socket.on('output', (data) => {
@@ -526,56 +505,6 @@ function copyTradeFromBtn(btn) {
     }
 }
 
-// ===== Session ID Management (Robust for Vercel/Serverless) =====
-function getTabSessionID() {
-    if (!window.tabSessionID) {
-        // Create a unique, persistent ID for this tab session
-        window.tabSessionID = 'ts_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
-        console.log('🏁 Generated Tab Session ID:', window.tabSessionID);
-    }
-    return window.tabSessionID;
-}
-
-// Ensure SID is ready
-const tabSessionID = getTabSessionID();
-
-// Socket.IO Event Handlers
-socket.on('connect', () => {
-    console.log('✓ Connected to server. SID:', socket.id);
-    updateStatus('Connected', 'connected');
-
-    // Join a stable room based on our Tab Session ID
-    // This allows the server to send us updates even if our socket.id changes (common on Vercel)
-    socket.emit('join_tab_room', { sid: tabSessionID });
-
-    if (window.wasDisconnected) {
-        if (!isVercelEnvironment) {
-            addTerminalLine('✓ Reconnected to RBot Pro server', 'success');
-        }
-        window.wasDisconnected = false;
-    }
-});
-
-socket.on('connect_error', (error) => {
-    console.warn('Connection/Polling Warning:', error.message);
-});
-
-socket.on('disconnect', (reason) => {
-    console.log('✗ Socket Disconnected:', reason);
-    if (reason === 'io server disconnect') {
-        socket.connect();
-    }
-    if (!window.wasDisconnected) {
-        window.wasDisconnected = true;
-        if (!isVercelEnvironment) {
-            updateStatus('Reconnecting...', 'warning');
-        }
-    }
-});
-
-// Rest of your handlers (output, trade_signal, etc.) should remain as they are
-// but ensure the server emits to 'room=sid' where sid is our tabSessionID.
-
 // ===== Control Functions =====
 
 function getSelectedExchanges() {
@@ -641,16 +570,13 @@ function startAnalysis() {
         return;
     }
 
-    socket.emit('output', { 'data': `🚀 Starting analysis on ${exchanges.join(', ')} with ${symbols.length} coins, ${indicators.length} indicators, ${strategies.length} strategies, and ${timeframes.length} timeframes\n` });
+    addTerminalLine(`🚀 Starting analysis on ${exchanges.join(', ')} with ${symbols.length} coins, ${indicators.length} indicators, ${strategies.length} strategies, and ${timeframes.length} timeframes`, 'success');
 
     // Clear previous signals for new run
-    const countEl = document.getElementById('signalsCount');
-    if (countEl) countEl.innerText = '0 Found';
+    document.getElementById('signalsCount').innerText = '0 Found';
     signalsCount = 0;
     const signalsBox = document.getElementById('signalsBox');
-    if (signalsBox) {
-        signalsBox.innerHTML = '<div class="terminal-line" id="noSignalsMsg"><span class="line-prefix">#</span><span class="line-text" style="color: #666;">Signals found during the current run will appear here...</span></div>';
-    }
+    signalsBox.innerHTML = '<div class="terminal-line" id="noSignalsMsg"><span class="line-prefix">#</span><span class="line-text" style="color: #666;">Signals found during the current run will appear here...</span></div>';
 
     // Save exchanges to config first
     fetch('/api/config', {
@@ -659,98 +585,14 @@ function startAnalysis() {
         body: JSON.stringify({ exchanges: exchanges })
     });
 
-    // Trigger analysis via REST API (More robust for Vercel/Serverless than socket.emit)
-    const analysisData = {
-        sid: tabSessionID, // CRITICAL: Use stable Tab Session ID
+    socket.emit('start_analysis', {
         symbols: symbols,
         indicators: indicators,
         strategies: strategies,
         timeframes: timeframes,
         min_confidence: confidence,
         exchanges: exchanges
-    };
-
-    if (isVercelEnvironment) {
-        addTerminalLine('📡 Initializing Vercel-Optimized Stream...', 'info');
-
-        fetch('/api/start-analysis', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(analysisData)
-        }).then(async response => {
-            if (!response.ok) throw new Error('Network response was not ok');
-
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
-
-            try {
-                while (true) {
-                    const { value, done } = await reader.read();
-                    if (done) break;
-
-                    buffer += decoder.decode(value, { stream: true });
-
-                    // Parse SSE format (event:xxx\ndata:yyy\n\n)
-                    let parts = buffer.split('\n\n');
-                    buffer = parts.pop(); // Keep incomplete part in buffer
-
-                    for (const part of parts) {
-                        const eventMatch = part.match(/event:(.*)\ndata:(.*)/s);
-                        if (eventMatch) {
-                            const event = eventMatch[1].trim();
-                            const data = JSON.parse(eventMatch[2].trim());
-
-                            // Manually route events since we are bypassing socket.io logic
-                            if (event === 'output') {
-                                if (data && data.data) addTerminalLine(data.data);
-                            } else if (event === 'status') {
-                                // Simulate status event
-                                if (data && data.status) {
-                                    if (data.status === 'started') {
-                                        isRunning = true;
-                                        document.getElementById('startBtn').disabled = true;
-                                        document.getElementById('stopBtn').disabled = false;
-                                        updateStatus('Analyzing...', 'success');
-                                        startTimer();
-                                    } else if (data.status === 'completed' || data.status === 'error') {
-                                        isRunning = false;
-                                        document.getElementById('startBtn').disabled = false;
-                                        document.getElementById('stopBtn').disabled = true;
-                                        updateStatus('Ready', 'connected');
-                                        stopTimer();
-                                    }
-                                }
-                            } else if (event === 'trade_signal') {
-                                if (data) addTradeSignal(data);
-                            }
-                        }
-                    }
-                }
-            } catch (e) {
-                console.error('Stream read error:', e);
-                addTerminalLine('❌ Stream Connection Error: ' + e.message, 'error');
-            }
-        }).catch(err => {
-            console.error('Failed to start streaming analysis:', err);
-            addTerminalLine('❌ Analysis Failed to Start: ' + err.message, 'error');
-        });
-
-    } else {
-        // Local: Standard logic
-        fetch('/api/start-analysis', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(analysisData)
-        }).then(r => r.json()).then(res => {
-            if (res.status !== 'ok') {
-                addTerminalLine(`❌ API Error: ${res.msg}`, 'error');
-            }
-        }).catch(err => {
-            console.error('Failed to trigger analysis:', err);
-            socket.emit('start_analysis', analysisData);
-        });
-    }
+    });
 }
 
 function stopAnalysis() {

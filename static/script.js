@@ -1,17 +1,11 @@
 // WebSocket connection and UI handling for RBot Pro Analysis UI
 
 // Detect environment to handle Vercel's lack of WebSocket support
-const isVercelEnv = typeof window.IS_VERCEL !== 'undefined' ? window.IS_VERCEL : window.location.hostname.includes('vercel.app');
+const isVercelEnv = window.location.hostname.includes('vercel.app');
 
 const socket = io({
-    reconnection: true,
-    reconnectionDelay: isVercelEnv ? 1500 : 1000,
-    reconnectionDelayMax: isVercelEnv ? 7000 : 5000,
-    reconnectionAttempts: Infinity,
     transports: isVercelEnv ? ['polling'] : ['polling', 'websocket'],
-    upgrade: !isVercelEnv,
-    timeout: isVercelEnv ? 30000 : 20000,
-    closeOnBeforeunload: false
+    upgrade: !isVercelEnv
 });
 let lineCount = 0;
 let startTime = null;
@@ -22,23 +16,12 @@ let isAnalysisRunning = false;
 socket.on('connect', function () {
     updateStatus('Connected', 'connected');
     console.log('Connected to server');
-    window.wasDisconnectedEnv = false;
 });
 
 // Disconnect event
-socket.on('disconnect', function (reason) {
-    if (!window.wasDisconnectedEnv) {
-        updateStatus('Reconnecting...', 'warning');
-        console.log('Disconnected:', reason);
-        window.wasDisconnectedEnv = true;
-    }
-});
-
-socket.on('connect_error', (error) => {
-    console.warn('Connection Warning:', error.message);
-    if (!isVercelEnv) {
-        updateStatus('Connecting...', 'warning');
-    }
+socket.on('disconnect', function () {
+    updateStatus('Disconnected', 'disconnected');
+    console.log('Disconnected from server');
 });
 
 // Receive output
@@ -121,19 +104,6 @@ function addOutputLine(text) {
     terminal.scrollTop = terminal.scrollHeight;
 }
 
-// ===== Session ID Management (Robust for Vercel/Serverless) =====
-function getTabSessionID() {
-    if (!window.tabSessionID) {
-        window.tabSessionID = 'ts_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
-    }
-    return window.tabSessionID;
-}
-const tabSessionID = getTabSessionID();
-
-socket.on('connect', () => {
-    socket.emit('join_tab_room', { sid: tabSessionID });
-});
-
 // Start analysis
 function startAnalysis() {
     if (isAnalysisRunning) {
@@ -142,54 +112,7 @@ function startAnalysis() {
     }
 
     addOutputLine(`\n>>> Analysis started at ${new Date().toLocaleTimeString()}\n`);
-
-    // Trigger analysis via REST API
-    const analysisData = { sid: tabSessionID };
-
-    if (isVercelEnvironment) {
-        addOutputLine('📡 Initializing Vercel-Optimized Stream...\n');
-
-        fetch('/api/start-analysis', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(analysisData)
-        }).then(async response => {
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
-            while (true) {
-                const { value, done } = await reader.read();
-                if (done) break;
-                buffer += decoder.decode(value, { stream: true });
-                let parts = buffer.split('\n\n');
-                buffer = parts.pop();
-                for (const part of parts) {
-                    const eventMatch = part.match(/event:(.*)\ndata:(.*)/s);
-                    if (eventMatch) {
-                        const event = eventMatch[1].trim();
-                        const data = JSON.parse(eventMatch[2].trim());
-                        if (event === 'output' && data.data) addOutputLine(data.data);
-                        else if (event === 'status') {
-                            if (data.status === 'started') { isAnalysisRunning = true; updateStatus('Analyzing...', 'success'); startTimer(); }
-                            else { isAnalysisRunning = false; updateStatus('Ready', 'connected'); stopTimer(); }
-                        }
-                    }
-                }
-            }
-        }).catch(err => {
-            addOutputLine('❌ Analysis Failed to Start: ' + err.message + '\n');
-        });
-    } else {
-        fetch('/api/start-analysis', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(analysisData)
-        }).then(r => r.json()).then(res => {
-            if (res.status !== 'ok') addOutputLine(`❌ API Error: ${res.msg}\n`);
-        }).catch(err => {
-            socket.emit('start_analysis', analysisData);
-        });
-    }
+    socket.emit('start_analysis');
 }
 
 // Clear output
