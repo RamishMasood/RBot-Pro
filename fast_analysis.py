@@ -21,6 +21,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import argparse
 import json
 import math
+import os
 
 # Command-line argument parsing
 parser = argparse.ArgumentParser(description='RBot Pro Multi-Exchange Real-Time Analysis')
@@ -8029,6 +8030,9 @@ def enforce_signal_safety_buffers(trades, symbol_analyses_map):
 
 def save_signal_history(trades, filepath='signals_history.json'):
     """Append trade signals to a JSON history file for performance tracking."""
+    if os.environ.get('IS_VERCEL_RUNTIME') == '1':
+        return # Skip writing on Vercel read-only FS
+        
     try:
         import os
         history = []

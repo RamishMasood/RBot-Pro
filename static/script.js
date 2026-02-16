@@ -129,7 +129,16 @@ function startAnalysis() {
     }
 
     addOutputLine(`\n>>> Analysis started at ${new Date().toLocaleTimeString()}\n`);
-    socket.emit('start_analysis');
+
+    // Use REST API for robustness on Vercel
+    fetch('/api/start-analysis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sid: socket.id })
+    }).catch(err => {
+        console.warn('REST start failed, falling back to socket', err);
+        socket.emit('start_analysis');
+    });
 }
 
 // Clear output

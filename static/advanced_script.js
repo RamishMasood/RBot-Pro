@@ -591,13 +591,16 @@ function startAnalysis() {
         return;
     }
 
-    addTerminalLine(`🚀 Starting analysis on ${exchanges.join(', ')} with ${symbols.length} coins, ${indicators.length} indicators, ${strategies.length} strategies, and ${timeframes.length} timeframes`, 'success');
+    socket.emit('output', { 'data': `🚀 Starting analysis on ${exchanges.join(', ')} with ${symbols.length} coins, ${indicators.length} indicators, ${strategies.length} strategies, and ${timeframes.length} timeframes\n` });
 
     // Clear previous signals for new run
-    document.getElementById('signalsCount').innerText = '0 Found';
+    const countEl = document.getElementById('signalsCount');
+    if (countEl) countEl.innerText = '0 Found';
     signalsCount = 0;
     const signalsBox = document.getElementById('signalsBox');
-    signalsBox.innerHTML = '<div class="terminal-line" id="noSignalsMsg"><span class="line-prefix">#</span><span class="line-text" style="color: #666;">Signals found during the current run will appear here...</span></div>';
+    if (signalsBox) {
+        signalsBox.innerHTML = '<div class="terminal-line" id="noSignalsMsg"><span class="line-prefix">#</span><span class="line-text" style="color: #666;">Signals found during the current run will appear here...</span></div>';
+    }
 
     // Save exchanges to config first
     fetch('/api/config', {
@@ -606,13 +609,29 @@ function startAnalysis() {
         body: JSON.stringify({ exchanges: exchanges })
     });
 
-    socket.emit('start_analysis', {
+    // Trigger analysis via REST API (More robust for Vercel/Serverless than socket.emit)
+    const analysisData = {
+        sid: socket.id, // CRITICAL: Pass SID so server knows where to emit
         symbols: symbols,
         indicators: indicators,
         strategies: strategies,
         timeframes: timeframes,
         min_confidence: confidence,
         exchanges: exchanges
+    };
+
+    fetch('/api/start-analysis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(analysisData)
+    }).then(r => r.json()).then(res => {
+        if (res.status !== 'ok') {
+            addTerminalLine(`❌ API Error: ${res.msg}`, 'error');
+        }
+    }).catch(err => {
+        console.error('Failed to trigger analysis:', err);
+        // Fallback to socket if API fails
+        socket.emit('start_analysis', analysisData);
     });
 }
 

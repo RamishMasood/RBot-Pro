@@ -1169,8 +1169,10 @@ def run_session_analysis(sid, symbols, indicators, timeframes, min_conf, exchang
     print(f"🚀 Starting analysis for session {sid} (Source: {source_messenger or 'Web'})")
     
     try:
+        script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fast_analysis.py')
+        
         cmd = [
-            sys.executable, 'fast_analysis.py',
+            sys.executable, script_path,
             '--symbols', ','.join(symbols),
             '--indicators', ','.join(indicators),
             '--timeframes', ','.join(timeframes),
@@ -1186,11 +1188,15 @@ def run_session_analysis(sid, symbols, indicators, timeframes, min_conf, exchang
         env = os.environ.copy()
         env['PYTHONIOENCODING'] = 'utf-8'
         env['PYTHONUNBUFFERED'] = '1'
+        if is_vercel:
+            env['IS_VERCEL_RUNTIME'] = '1'
+        
+        print(f"Executing: {' '.join(cmd)}")
         
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT, # Merge stderr into stdout
+            stderr=subprocess.STDOUT, 
             text=True,
             encoding='utf-8',
             bufsize=1,
@@ -1331,13 +1337,14 @@ def run_session_analysis(sid, symbols, indicators, timeframes, min_conf, exchang
                 if wa_chat: send_whatsapp_message(wa_chat, "Analysis Completed")
 
     except Exception as e:
-        error_msg = str(e)
-        if 'killed' not in error_msg.lower() and 'terminated' not in error_msg.lower():
-            socketio.emit('output', {'data': f"❌ ERROR: {error_msg}\n"}, room=sid, namespace='/')
-            socketio.emit('status', {'status': 'error'}, room=sid, namespace='/')
+        error_msg = f"Analysis Error: {str(e)}"
+        print(f"❌ {error_msg}")
+        socketio.emit('output', {'data': f"❌ {error_msg}\n"}, room=sid, namespace='/')
+        socketio.emit('status', {'status': 'error'}, room=sid, namespace='/')
     finally:
         if sid in client_sessions:
             client_sessions[sid]['active'] = False
+            client_sessions[sid]['process'] = None
 
 
 def auto_run_analysis():
@@ -2101,13 +2108,27 @@ def handle_disconnect():
 def handle_start(data):
     """Start analysis for THIS session"""
     sid = request.sid
+    _trigger_analysis(sid, data)
+
+@app.route('/api/start-analysis', methods=['POST'])
+def api_start_analysis():
+    """REST endpoint to trigger analysis (More robust for Vercel/Serverless)"""
+    data = request.json or {}
+    sid = data.get('sid')
+    if not sid:
+        return jsonify({'status': 'error', 'msg': 'Missing SID'}), 400
     
+    _trigger_analysis(sid, data)
+    return jsonify({'status': 'ok', 'msg': 'Analysis triggered'})
+
+def _trigger_analysis(sid, data):
+    """Internal helper to launch analysis"""
     # Ensure session exists
     if sid not in client_sessions:
         client_sessions[sid] = {'active': False, 'process': None}
         
     if client_sessions[sid]['active']:
-        emit('output', {'data': '⚠️  Analysis already running in this tab!\n'})
+        socketio.emit('output', {'data': '⚠️  Analysis already running in this tab!\n'}, room=sid, namespace='/')
         return
     
     # Use config from request or global defaults
@@ -2118,8 +2139,8 @@ def handle_start(data):
     exchanges = data.get('exchanges', config['exchanges'])
     strategies = data.get('strategies', config['strategies'])
     
-    emit('output', {'data': f'🚀 Starting analysis at {datetime.now().strftime("%H:%M:%S")}\n'})
-    emit('status', {'status': 'started'})
+    socketio.emit('output', {'data': f'🚀 Starting analysis at {datetime.now().strftime("%H:%M:%S")}\n'}, room=sid, namespace='/')
+    socketio.emit('status', {'status': 'started'}, room=sid, namespace='/')
     
     # Launch session-specific greenthread
     safe_spawn(
