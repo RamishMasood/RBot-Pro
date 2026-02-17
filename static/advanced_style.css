@@ -1144,3 +1144,27 @@ input:checked+.toggle-slider:before {
     margin-bottom: 0 !important;
     border-width: 1px !important;
 }
+
+/* Strategy Agreement List - SCROLL FIX */
+.agreement-list {
+    overflow-y: auto;
+    max-height: 60vh;
+    padding-right: 5px;
+}
+
+.agreement-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.agreement-list::-webkit-scrollbar-track {
+    background: #111;
+}
+
+.agreement-list::-webkit-scrollbar-thumb {
+    background: #333;
+    border-radius: 3px;
+}
+
+.agreement-list::-webkit-scrollbar-thumb:hover {
+    background: var(--primary);
+}
