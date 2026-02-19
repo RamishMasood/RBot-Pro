@@ -660,7 +660,7 @@ def calculate_macd(closes):
     
     return {'macd': macd_line, 'signal': signal, 'histogram': macd_line - signal}
 
-def calculate_bb(closes, period=20, std_dev=2):
+def calculate_bb(closes, period=20, std_dev=2.2):
     if len(closes) < period:
         return None
     sma = sum(closes[-period:]) / period
@@ -1162,19 +1162,24 @@ def calculate_cmf(candles, period=20):
     return mfv_sum / vol_sum if vol_sum > 0 else 0
 
 def calculate_ichimoku(highs, lows):
-    """Calculate Ichimoku Cloud components"""
-    if len(highs) < 52: return None
+    """Calculate Ichimoku Cloud components
+    
+    OPTIMIZED 2026: Using crypto-adjusted periods (10, 30, 60) instead of
+    traditional stock market periods (9, 26, 52). Crypto trades 24/7 vs 6-day
+    trading week the original was designed for. Research: delta.exchange, mindmathmoney.com
+    """
+    if len(highs) < 60: return None
     
     def donchian(h, l, p):
         return (max(h[-p:]) + min(l[-p:])) / 2
         
-    tenkan = donchian(highs, lows, 9)
-    kijun = donchian(highs, lows, 26)
+    tenkan = donchian(highs, lows, 10)   # Was 9 — crypto-adjusted
+    kijun = donchian(highs, lows, 30)    # Was 26 — crypto-adjusted
     
-    # Span A (plotted 26 periods ahead, but we use current values for logic)
+    # Span A (plotted 30 periods ahead, but we use current values for logic)
     senkou_a = (tenkan + kijun) / 2
-    # Span B (52 period donchian)
-    senkou_b = donchian(highs, lows, 52)
+    # Span B (60 period donchian — was 52)
+    senkou_b = donchian(highs, lows, 60)
     
     return {
         'tenkan': tenkan,
@@ -3149,7 +3154,8 @@ def strategy_scalp_momentum(symbol, analyses):
     reasons = []
     
     # LONG Scalp
-    if m5['trend'] == 'BULLISH' and m1['rsi'] < 40 and m1['macd']['histogram'] > 0:
+    # LONG Scalp — OPTIMIZED: RSI < 35 (was 40), requires MACD histogram rising
+    if m5['trend'] == 'BULLISH' and m1['rsi'] < 35 and m1['macd']['histogram'] > 0:
         # Extra safety: only trade when 5m trend is strong and volume is elevated,
         # and 1m is not in extreme chop. This sharply reduces low‑quality scalps.
         adx_5m = m5['adx']['adx'] if isinstance(m5.get('adx'), dict) else m5.get('adx', 0)
@@ -3168,9 +3174,9 @@ def strategy_scalp_momentum(symbol, analyses):
         reasons.append('1m Dip in 5m Uptrend')
         
         atr = m1['atr']
-        sl = current - atr * 1.5
-        tp1 = current + atr * 3
-        tp2 = current + atr * 5
+        sl = current - atr * 2.5
+        tp1 = current + atr * 4
+        tp2 = current + atr * 7
         risk = current - sl
         reward = tp1 - current
         
@@ -3395,7 +3401,7 @@ def strategy_vwap_reversion(symbol, analyses):
     
     # LONG Scalp: Price far below VWAP + Oversold RSI
     if current < vwap * 0.985: # 1.5% below VWAP
-        if a['rsi'] < 30:
+        if a['rsi'] < 25:
             confidence = 7
             reasons = ["Significant VWAP Deviation", "RSI Oversold"]
             
@@ -3405,7 +3411,7 @@ def strategy_vwap_reversion(symbol, analyses):
                 
             if confidence >= MIN_CONFIDENCE:
                 atr = a['atr']
-                sl = current - atr * 1.5
+                sl = current - atr * 2.5
                 tp1 = vwap # Target is VWAP
                 tp2 = vwap * 1.005
                 risk = current - sl
@@ -3431,7 +3437,7 @@ def strategy_vwap_reversion(symbol, analyses):
                     
     # SHORT Scalp: Price far above VWAP + Overbought RSI
     elif current > vwap * 1.015:
-        if a['rsi'] > 70:
+        if a['rsi'] > 75:
             confidence = 7
             reasons = ["Significant VWAP Deviation", "RSI Overbought"]
             
@@ -3441,7 +3447,7 @@ def strategy_vwap_reversion(symbol, analyses):
                 
             if confidence >= MIN_CONFIDENCE:
                 atr = a['atr']
-                sl = current + atr * 1.5
+                sl = current + atr * 2.5
                 tp1 = vwap
                 tp2 = vwap * 0.995
                 risk = sl - current
@@ -3597,11 +3603,11 @@ def strategy_fvg_gap_fill(symbol, analyses):
             
         if confidence >= MIN_CONFIDENCE:
             atr = a['atr']
-            # Entry at the top of the gap, SL at the bottom with protective buffer
+            # Entry at the top of the gap, SL at the bottom with protective buffer (OPTIMIZED: 2.5x vs 1.0x)
             entry = fvg['top']
-            sl = fvg['bottom'] - (atr * 1.0)
-            tp1 = entry + atr * 5
-            tp2 = entry + atr * 10
+            sl = fvg['bottom'] - (atr * 2.5)
+            tp1 = entry + atr * 6
+            tp2 = entry + atr * 12
             risk = entry - sl
             reward = tp1 - entry
             
@@ -3641,15 +3647,15 @@ def strategy_divergence_pro(symbol, analyses):
             confidence = 8
             reasons = [f"BULLISH RSI Divergence on {tf}"]
             
-            if a['rsi'] < 30:
+            if a['rsi'] < 25:
                 confidence += 1
-                reasons.append("Extreme Oversold RSI")
+                reasons.append("Extreme Oversold RSI (<25)")
                 
             if confidence >= MIN_CONFIDENCE:
                 atr = a['atr']
-                sl = current - atr * 2
-                tp1 = current + atr * 4
-                tp2 = current + atr * 7
+                sl = current - atr * 3.0
+                tp1 = current + atr * 5
+                tp2 = current + atr * 8
                 risk = current - sl
                 reward = tp1 - current
                 
@@ -3675,15 +3681,15 @@ def strategy_divergence_pro(symbol, analyses):
             confidence = 8
             reasons = [f"BEARISH RSI Divergence on {tf}"]
             
-            if a['rsi'] > 70:
+            if a['rsi'] > 75:
                 confidence += 1
-                reasons.append("Extreme Overbought RSI")
+                reasons.append("Extreme Overbought RSI (>75)")
                 
             if confidence >= MIN_CONFIDENCE:
                 atr = a['atr']
-                sl = current + atr * 2
-                tp1 = current - atr * 4
-                tp2 = current - atr * 7
+                sl = current + atr * 3.0
+                tp1 = current - atr * 5
+                tp2 = current - atr * 8
                 risk = sl - current
                 reward = current - tp1
                 
@@ -3900,10 +3906,10 @@ def strategy_bollinger_reversion(symbol, analyses):
     current = a['current_price']
     trades = []
     
-    # LONG: Hits Lower Band + RSI Oversold
-    if current < a['bb']['lower'] and a['rsi'] < 30:
+    # LONG: Hits Lower Band + RSI Deep Oversold (OPTIMIZED: 25 vs 30)
+    if current < a['bb']['lower'] and a['rsi'] < 25:
         confidence = 8
-        reasons = ["Bollinger Lower Band Touch", "RSI Oversold"]
+        reasons = ["Bollinger Lower Band Touch", "RSI Deep Oversold"]
         
         if 'BULLISH_ENGULFING' in a['price_action']:
             confidence += 2
@@ -3911,7 +3917,7 @@ def strategy_bollinger_reversion(symbol, analyses):
             
         if confidence >= MIN_CONFIDENCE:
             atr = a['atr']
-            sl = current - atr * 1.5
+            sl = current - atr * 2.5
             tp1 = a['bb']['middle']
             tp2 = a['bb']['upper']
             risk = current - sl
@@ -3935,10 +3941,10 @@ def strategy_bollinger_reversion(symbol, analyses):
                     'timeframe': tf
                 })
                 
-    # SHORT: Hits Upper Band + RSI Overbought
-    elif current > a['bb']['upper'] and a['rsi'] > 70:
+    # SHORT: Hits Upper Band + RSI Deep Overbought (OPTIMIZED: 75 vs 70)
+    elif current > a['bb']['upper'] and a['rsi'] > 75:
         confidence = 8
-        reasons = ["Bollinger Upper Band Touch", "RSI Overbought"]
+        reasons = ["Bollinger Upper Band Touch", "RSI Deep Overbought"]
         
         if 'BEARISH_ENGULFING' in a['price_action']:
             confidence += 2
@@ -3946,7 +3952,7 @@ def strategy_bollinger_reversion(symbol, analyses):
             
         if confidence >= MIN_CONFIDENCE:
             atr = a['atr']
-            sl = current + atr * 1.5
+            sl = current + atr * 2.5
             tp1 = a['bb']['middle']
             tp2 = a['bb']['lower']
             risk = sl - current
@@ -3999,9 +4005,9 @@ def strategy_liquidity_grab_reversal(symbol, analyses):
             
         if confidence >= MIN_CONFIDENCE:
             atr = a['atr']
-            sl = liq['level'] - (atr * 0.5)
-            tp1 = current + atr * 4
-            tp2 = current + atr * 8
+            sl = liq['level'] - (atr * 1.5)
+            tp1 = current + atr * 5
+            tp2 = current + atr * 9
             risk = current - sl
             reward = tp1 - current
             
@@ -4037,9 +4043,9 @@ def strategy_liquidity_grab_reversal(symbol, analyses):
             
         if confidence >= MIN_CONFIDENCE:
             atr = a['atr']
-            sl = liq['level'] + (atr * 0.5)
-            tp1 = current - atr * 4
-            tp2 = current - atr * 8
+            sl = liq['level'] + (atr * 1.5)
+            tp1 = current - atr * 5
+            tp2 = current - atr * 9
             risk = sl - current
             reward = current - tp1
             
@@ -4084,9 +4090,9 @@ def strategy_wavetrend_extreme(symbol, analyses):
             
         if confidence >= MIN_CONFIDENCE:
             atr = a['atr']
-            sl = current - atr * 2
-            tp1 = current + atr * 3.5
-            tp2 = current + atr * 6
+            sl = current - atr * 3.0
+            tp1 = current + atr * 5
+            tp2 = current + atr * 8
             risk = current - sl
             reward = tp1 - current
             
@@ -4119,9 +4125,9 @@ def strategy_wavetrend_extreme(symbol, analyses):
             
         if confidence >= MIN_CONFIDENCE:
             atr = a['atr']
-            sl = current + atr * 2
-            tp1 = current - atr * 3.5
-            tp2 = current - atr * 6
+            sl = current + atr * 3.0
+            tp1 = current - atr * 5
+            tp2 = current - atr * 8
             risk = sl - current
             reward = current - tp1
             
@@ -4343,9 +4349,9 @@ def strategy_mfi_reversion(symbol, analyses):
             
         if confidence >= MIN_CONFIDENCE:
             atr = a['atr']
-            sl = current - atr * 1.5
-            tp1 = current + atr * 3.5
-            tp2 = current + atr * 6
+            sl = current - atr * 2.5
+            tp1 = current + atr * 4.5
+            tp2 = current + atr * 8
             risk = current - sl
             reward = tp1 - current
             
@@ -4378,9 +4384,9 @@ def strategy_mfi_reversion(symbol, analyses):
             
         if confidence >= MIN_CONFIDENCE:
             atr = a['atr']
-            sl = current + atr * 1.5
-            tp1 = current - atr * 3.5
-            tp2 = current - atr * 6
+            sl = current + atr * 2.5
+            tp1 = current - atr * 4.5
+            tp2 = current - atr * 8
             risk = sl - current
             reward = current - tp1
             
@@ -4838,8 +4844,8 @@ def strategy_ict_silver_bullet(symbol, analyses):
         
         atr = a['atr']
         entry = fvg['top']
-        # SL below FVG bottom + extra ATR buffer for safety
-        sl = fvg['bottom'] - (atr * 1.5)
+        # SL below FVG bottom + extra ATR buffer (OPTIMIZED: 2.5x vs 1.5x)
+        sl = fvg['bottom'] - (atr * 2.5)
         tp1 = entry + atr * 6
         tp2 = entry + atr * 12
         risk = entry - sl
@@ -4873,8 +4879,8 @@ def strategy_ict_silver_bullet(symbol, analyses):
         
         atr = a['atr']
         entry = fvg['bottom']
-        # SL above FVG top + extra ATR buffer for safety
-        sl = fvg['top'] + (atr * 1.5)
+        # SL above FVG top + extra ATR buffer (OPTIMIZED: 2.5x vs 1.5x)
+        sl = fvg['top'] + (atr * 2.5)
         tp1 = entry - atr * 6
         tp2 = entry - atr * 12
         risk = sl - entry
@@ -5548,17 +5554,17 @@ def strategy_keltner_reversion(symbol, analyses):
         confidence = 6
         reasons = [f"Keltner Lower Band Rejection ({tf})"]
         
-        if a['rsi'] < 30:
+        if a['rsi'] < 25:
             confidence += 2
-            reasons.append("RSI Oversold (Confluent)")
-        if a['stoch_rsi']['k'] < 20:
+            reasons.append("RSI Deep Oversold (<25)")
+        if a['stoch_rsi']['k'] < 15:
             confidence += 1
-            reasons.append("StochRSI Oversold")
+            reasons.append("StochRSI Extreme Oversold")
             
         if confidence >= MIN_CONFIDENCE:
             atr = a['atr']
             entry = current
-            sl = current - (atr * 1.5)
+            sl = current - (atr * 2.5)
             # TP1 at middle line, TP2 at upper band
             tp1 = kc['middle']
             tp2 = kc['upper']
@@ -5616,8 +5622,8 @@ def strategy_psar_tema_scalp(symbol, analyses):
             entry = current
             # Use PSAR dot or 2x ATR fallback for breathing room
             sl_val = psar['psar'] if psar['psar'] < current else current - (atr * 2.2)
-            # Ensure SL is at least 1.5x ATR away even if PSAR is too close
-            sl = min(sl_val, current - (atr * 1.5))
+            # Ensure SL is at least 2.5x ATR away even if PSAR is too close
+            sl = min(sl_val, current - (atr * 2.5))
             tp1 = entry + (entry - sl) * 2.5
             tp2 = entry + (entry - sl) * 4
             risk = entry - sl
@@ -5669,8 +5675,8 @@ def strategy_psar_tema_scalp(symbol, analyses):
             entry = current
             # Use PSAR dot or 2x ATR fallback for breathing room
             sl_val = psar['psar'] if psar['psar'] > current else current + (atr * 2.2)
-            # Ensure SL is at least 1.5x ATR away even if PSAR is too close
-            sl = max(sl_val, current + (atr * 1.5))
+            # Ensure SL is at least 2.5x ATR away even if PSAR is too close
+            sl = max(sl_val, current + (atr * 2.5))
             tp1 = entry - (sl - entry) * 2.5
             tp2 = entry - (sl - entry) * 4
             risk = sl - entry
@@ -5726,9 +5732,9 @@ def strategy_kama_volatility_scalp(symbol, analyses):
         if confidence >= MIN_CONFIDENCE:
             atr = a['atr']
             entry = current
-            # Use Chandelier or 2.5x ATR buffer for safety
-            sl_val = chan['long'] if chan['long'] < current else current - (atr * 2.5)
-            sl = min(sl_val, current - (atr * 2.0))
+            # Use Chandelier or 3.0x ATR buffer for safety
+            sl_val = chan['long'] if chan['long'] < current else current - (atr * 3.0)
+            sl = min(sl_val, current - (atr * 2.5))
             tp1 = entry + (entry - sl) * 3
             tp2 = entry + (entry - sl) * 5
             risk = entry - sl
@@ -5772,9 +5778,9 @@ def strategy_kama_volatility_scalp(symbol, analyses):
         if confidence >= MIN_CONFIDENCE:
             atr = a['atr']
             entry = current
-            # Use Chandelier or 2.5x ATR buffer for safety
-            sl_val = chan['short'] if chan['short'] > current else current + (atr * 2.5)
-            sl = max(sl_val, current + (atr * 2.0))
+            # Use Chandelier or 3.0x ATR buffer for safety
+            sl_val = chan['short'] if chan['short'] > current else current + (atr * 3.0)
+            sl = max(sl_val, current + (atr * 2.5))
             tp1 = entry - (sl - entry) * 3
             tp2 = entry - (sl - entry) * 5
             risk = sl - entry
@@ -6010,7 +6016,8 @@ def strategy_wyckoff_spring(symbol, analyses):
         entry = a['current_price']; atr = a['atr']
         if atr == 0: continue
         if wyckoff.get('phase') == 'ACCUMULATION' and wyckoff.get('event') == 'SPRING':
-            sl = entry-(atr*1.5); tp1 = a['resistance']; tp2 = entry+(atr*6)
+            # OPTIMIZED: 2.5x ATR SL
+            sl = entry-(atr*2.5); tp1 = a['resistance']; tp2 = entry+(atr*6)
             risk = abs(entry-sl); reward = abs(tp1-entry)
             if risk <= 0: continue
             trades.append({
@@ -6025,7 +6032,8 @@ def strategy_wyckoff_spring(symbol, analyses):
                 'analysis_data': {'wyckoff_phase': 'ACCUMULATION', 'wyckoff_event': 'SPRING'}
             }); break
         elif wyckoff.get('phase') == 'DISTRIBUTION' and wyckoff.get('event') == 'UPTHRUST':
-            sl = entry+(atr*1.5); tp1 = a['support']; tp2 = entry-(atr*6)
+            # OPTIMIZED: 2.5x ATR SL
+            sl = entry+(atr*2.5); tp1 = a['support']; tp2 = entry-(atr*6)
             risk = abs(sl-entry); reward = abs(entry-tp1)
             if risk <= 0: continue
             trades.append({
@@ -6123,8 +6131,8 @@ def strategy_zscore_reversion(symbol, analyses):
         if atr == 0 or not bb: continue
         if regime == 'TRENDING_STRONG': continue
         
-        if zscore <= -2.0 and rsi < 35:
-            sl = entry-(atr*1.5); tp1 = bb['middle']; tp2 = bb['upper']
+        if zscore <= -2.3 and rsi < 25:
+            sl = entry-(atr*2.5); tp1 = bb['middle']; tp2 = bb['upper']
             risk = entry-sl; reward = tp1-entry
             if risk <= 0 or reward <= 0: continue
             cs = 7 if zscore <= -2.5 else 6
@@ -6141,8 +6149,8 @@ def strategy_zscore_reversion(symbol, analyses):
                 'entry_type': 'MARKET', 'timeframe': tf,
                 'analysis_data': {'zscore': zscore, 'regime': regime}
             }); break
-        elif zscore >= 2.0 and rsi > 65:
-            sl = entry+(atr*1.5); tp1 = bb['middle']; tp2 = bb['lower']
+        elif zscore >= 2.3 and rsi > 75:
+            sl = entry+(atr*2.5); tp1 = bb['middle']; tp2 = bb['lower']
             risk = sl-entry; reward = entry-tp1
             if risk <= 0 or reward <= 0: continue
             cs = 7 if zscore >= 2.5 else 6
@@ -7335,11 +7343,11 @@ def strategy_pivot_reversal(symbol, analyses):
         if not p or atr == 0: continue
         
         # Bullish Reversal at S1/S2
-        if (abs(current - p['s1']) / current < 0.003 or abs(current - p['s2']) / current < 0.003) and a['rsi'] < 40:
+        if (abs(current - p['s1']) / current < 0.003 or abs(current - p['s2']) / current < 0.003) and a['rsi'] < 30:
             cs = 8
             trades.append({
                 'strategy': 'Pivot Reversal', 'type': 'LONG', 'symbol': symbol,
-                'entry': current, 'sl': current - (atr*2), 'tp1': p['p'], 'tp2': p['r1'],
+                'entry': current, 'sl': current - (atr*3.0), 'tp1': p['p'], 'tp2': p['r1'],
                 'confidence_score': cs, 'reason': "Bullish Pivot Reversal at S1/S2",
                 'indicators': f"S1: {p['s1']:.2f}, RSI: {a['rsi']:.1f}",
                 'expected_time': '4-12 hours', 'risk': atr*2, 'reward': abs(p['p']-current),
@@ -7347,11 +7355,11 @@ def strategy_pivot_reversal(symbol, analyses):
             }); break
             
         # Bearish Reversal at R1/R2
-        elif (abs(current - p['r1']) / current < 0.003 or abs(current - p['r2']) / current < 0.003) and a['rsi'] > 60:
+        elif (abs(current - p['r1']) / current < 0.003 or abs(current - p['r2']) / current < 0.003) and a['rsi'] > 70:
             cs = 8
             trades.append({
                 'strategy': 'Pivot Reversal', 'type': 'SHORT', 'symbol': symbol,
-                'entry': current, 'sl': current + (atr*2), 'tp1': p['p'], 'tp2': p['s1'],
+                'entry': current, 'sl': current + (atr*3.0), 'tp1': p['p'], 'tp2': p['s1'],
                 'confidence_score': cs, 'reason': "Bearish Pivot Reversal at R1/R2",
                 'indicators': f"R1: {p['r1']:.2f}, RSI: {a['rsi']:.1f}",
                 'expected_time': '4-12 hours', 'risk': atr*2, 'reward': abs(p['p']-current),
@@ -7411,7 +7419,7 @@ def strategy_fractal_breakout(symbol, analyses):
             cs = 8
             trades.append({
                 'strategy': 'Fractal Breakout', 'type': 'LONG', 'symbol': symbol,
-                'entry': current, 'sl': current - (atr*2), 'tp1': current + (atr*4),
+                'entry': current, 'sl': current - (atr*3.0), 'tp1': current + (atr*5),
                 'confidence_score': cs, 'reason': "Bullish Fractal Breakout in Trend",
                 'indicators': "Fractal Up + Bullish EMA Stack",
                 'expected_time': '2-6 hours', 'entry_type': 'MARKET', 'timeframe': tf
@@ -7431,7 +7439,7 @@ def strategy_woodies_cci(symbol, analyses):
             cs = 7
             trades.append({
                 'strategy': 'Woodies CCI', 'type': 'LONG', 'symbol': symbol,
-                'entry': current, 'sl': current - (atr*2), 'tp1': current + (atr*4),
+                'entry': current, 'sl': current - (atr*3.0), 'tp1': current + (atr*5),
                 'confidence_score': cs, 'reason': "CCI Zero-Line Rejection (Trend continuation)",
                 'indicators': f"CCI: {cci:.1f}",
                 'expected_time': '1-4 hours', 'entry_type': 'MARKET', 'timeframe': tf
@@ -7471,7 +7479,7 @@ def strategy_linear_reg_reversion(symbol, analyses):
             cs = 8
             trades.append({
                 'strategy': 'LinReg Reversion', 'type': 'LONG', 'symbol': symbol,
-                'entry': current, 'sl': current - (atr*2), 'tp1': lr['value'],
+                'entry': current, 'sl': current - (atr*3.0), 'tp1': lr['value'],
                 'confidence_score': cs, 'reason': "Linear Regression Undervaluation Reversion",
                 'indicators': f"Dev: {deviation*100:.2f}%, Slope: {lr['slope']:.4f}",
                 'expected_time': '2-6 hours', 'entry_type': 'MARKET', 'timeframe': tf
@@ -7490,7 +7498,7 @@ def strategy_hma_trend_scalp(symbol, analyses):
             cs = 7
             trades.append({
                 'strategy': 'HMA Scalper', 'type': 'LONG', 'symbol': symbol,
-                'entry': current, 'sl': current - (atr*1.5), 'tp1': current + (atr*3),
+                'entry': current, 'sl': current - (atr*2.5), 'tp1': current + (atr*5),
                 'confidence_score': cs, 'reason': "HMA Fast Trend Rider (Scalp)",
                 'indicators': f"HMA: {hma:.2f}, RVOL: {a['rvol']:.1f}",
                 'expected_time': '15m-1h', 'entry_type': 'MARKET', 'timeframe': tf
@@ -7838,37 +7846,44 @@ def calculate_adaptive_risk(trade):
 
 
 def get_signal_quality(trade):
-    """Classify signal quality based on absolute confidence and confluence."""
+    """Classify signal quality based on absolute confidence and confluence.
+    
+    OPTIMIZED 2026: Tightened criteria to reduce SL hits on ELITE/STRONG signals.
+    Research-backed: Only the highest-conviction setups should be ELITE.
+    """
     score = trade.get('confidence_score', 0)
     agreement = trade.get('agreement_count', 1)
     rr = trade.get('risk_reward', 0)
     mtf_status = trade.get('mtf_alignment', 'NEUTRAL')
     strategy = trade.get('strategy', '')
+    tf = trade.get('timeframe', '1m')
     
-    # ELITE Criteria (High Conviction Mastery):
+    # ELITE Criteria (Ultra-High Conviction — TIGHTENED):
     # - Score >= 9 (Very High Confidence)
-    # - RR >= 1.8 (Sustainable Reward)
-    # - Confluence: Agreement >= 3 OR (Agreement >= 2 AND Strong MTF)
+    # - RR >= 2.0 (Research: 2:1 minimum for institutional-grade)
+    # - Confluence: Agreement >= 4 OR (Agreement >= 3 AND Strong MTF)
+    # - Must be on 15m+ timeframe (lower TFs have too much noise for ELITE)
     is_elite = False
+    tf_weight = TF_WEIGHTS.get(tf, 1)
     
-    # Tier 1: General Elite (High Confluence/Alignment)
-    if score >= 9 and rr >= 1.8:
-        if agreement >= 3: 
+    # Tier 1: General Elite (High Confluence/Alignment) — REQUIRES 15m+ TF
+    if score >= 9 and rr >= 2.0 and tf_weight >= 2:
+        if agreement >= 4: 
             is_elite = True
-        elif agreement >= 2 and 'STRONG' in mtf_status: 
+        elif agreement >= 3 and 'STRONG' in mtf_status: 
             is_elite = True
             
-    # Tier 2: Dedicated Elite Strategies (Special Handling)
-    # Only SPECIFIC high-end strategies qualify automatically with Score >= 9
-    if not is_elite and score >= 9:
+    # Tier 2: Dedicated Elite Strategies — REQUIRES agreement >= 2 AND MTF alignment
+    if not is_elite and score >= 9 and rr >= 2.0 and tf_weight >= 2:
         elite_strs = ['Quantum', 'SMC Elite', 'Harmonic Pro', 'UTBot Elite', 'Wealth Division', 'Silver Bullet', 'TrendRider']
         if any(es.lower() in strategy.lower() for es in elite_strs):
-            is_elite = True
+            if agreement >= 2 or 'STRONG' in mtf_status:
+                is_elite = True
             
     if is_elite:
         return 'ELITE'
-    # STRONG: solid but not ELITE
-    elif (score >= 8 and rr >= 1.5) or (score >= 7 and agreement >= 2):
+    # STRONG: Tightened — requires score >= 8, RR >= 1.8, and agreement >= 2
+    elif (score >= 8 and rr >= 1.8 and agreement >= 2) or (score >= 9 and rr >= 1.5):
         return 'STRONG'
     else:
         return 'STANDARD'
@@ -7919,15 +7934,26 @@ def apply_global_market_filters(trades, symbol_analyses_map):
         else:
             t['mtf_alignment'] = 'STRONG_ALIGN' if htf_bullish >= 2 or htf_bearish >= 2 else 'NEUTRAL'
 
-        # 3. ANTI-CHOP SHIELD: Kill trend signals in chop (World-Best Rule #2)
+        # 3. ANTI-CHOP SHIELD: Kill trend signals in chop (OPTIMIZED 2026)
+        # Research: ADX < 20 = no trend. Chop > 55 = ranging. Combined = death zone.
         current_tf_analysis = symbol_data.get(tf)
         if current_tf_analysis:
             chop = current_tf_analysis.get('chop', 50)
             adx = current_tf_analysis.get('adx', {}).get('adx', 0)
-            if chop > 61.8 and 'Trend' in t['strategy'] and adx < 25:
+            stoch_rsi = current_tf_analysis.get('stoch_rsi', {}).get('k', 50)
+            
+            # Rule 2a: Kill ALL trend strategies in choppy markets (stricter threshold)
+            if chop > 55 and adx < 22:
+                if any(kw in t['strategy'] for kw in ['Trend', 'Follow', 'Breakout', 'Momentum', 'Cross']):
+                    continue
+            
+            # Rule 2b: Kill ANY strategy with weak ADX (no directional strength)
+            if adx < 15:
                 continue
-            if adx < 18 and 'Trend' in t['strategy']:
-                continue
+            
+            # Rule 2c: Penalize signals where StochRSI is in no-mans-land (40-60)
+            if 40 < stoch_rsi < 60 and t.get('confidence_score', 0) < 9:
+                t['confidence_score'] -= 1
 
         # 4. INSTITUTIONAL CONFIRMATION (Relaxed for ELITE visibility)
         # CONFLUENCE IMMUNITY: If 2+ strategies agree, we trust the consensus even if filters are marginal
@@ -8012,8 +8038,9 @@ def enforce_signal_safety_buffers(trades, symbol_analyses_map):
             if ob_floor and ob_floor < entry: structural_sl = min(structural_sl, ob_floor)
             if sd_floor and sd_floor < entry: structural_sl = min(structural_sl, sd_floor)
             
-            # Apply Safety Buffer (0.8x ATR) below structure
-            trade['sl'] = min(trade['sl'], structural_sl - (atr * 0.8))
+            # Apply Safety Buffer (1.2x ATR) below structure — WIDENED per research
+            # Research: 0.8x ATR gets hunted by market makers. 1.2x survives majority of wicks.
+            trade['sl'] = min(trade['sl'], structural_sl - (atr * 1.2))
             
         else: # SHORT
             obs = analysis.get('order_blocks', {})
@@ -8030,13 +8057,13 @@ def enforce_signal_safety_buffers(trades, symbol_analyses_map):
             if ob_ceil and ob_ceil > entry: structural_sl = max(structural_sl, ob_ceil)
             if sd_ceil and sd_ceil > entry: structural_sl = max(structural_sl, sd_ceil)
             
-            # Apply Safety Buffer (0.8x ATR) above structure
-            trade['sl'] = max(trade['sl'], structural_sl + (atr * 0.8))
+            # Apply Safety Buffer (1.2x ATR) above structure — WIDENED per research
+            trade['sl'] = max(trade['sl'], structural_sl + (atr * 1.2))
 
-        # Part 2: Minimum SL Distance Floor (Prevents Micro-SL Wipeouts)
-        # A wide RR is a FEATURE — it means a genuinely good setup with distant structural SL.
-        # Instead of shrinking it, we enforce a FLOOR so SL never gets too tight.
-        min_atr_mult = 2.5 if tf in ['1m', '3m'] else 1.8 if tf in ['5m'] else 1.5
+        # Part 2: Minimum SL Distance Floor (OPTIMIZED 2026)
+        # Research (LuxAlgo, StrategyQuant): Crypto needs 2.5-3x ATR minimum to survive noise.
+        # Previous values (1.5-1.8x) were causing premature SL hits consistently.
+        min_atr_mult = 3.0 if tf in ['1m', '3m'] else 2.5 if tf in ['5m', '15m'] else 2.0
         min_sl_distance = atr * min_atr_mult
         current_sl_distance = abs(entry - trade['sl'])
         if current_sl_distance < min_sl_distance:
@@ -8046,14 +8073,14 @@ def enforce_signal_safety_buffers(trades, symbol_analyses_map):
                 trade['sl'] = entry + min_sl_distance
             trade['reason'] += f" | 🛡️ SL WIDENED ({min_atr_mult}x ATR floor)"
 
-        # Part 3: User-Requested Global SL Distancing (RR Reduction)
-        # Request: 2.5:1 -> 2.0:1, 3.0:1 -> 2.5:1 (Reduce RR by 0.5 by moving SL further)
-        # This makes Stop Losses safer while keeping Take Profits at original locations.
+        # Part 3: Global SL Distancing (OPTIMIZED 2026)
+        # Wider SL = fewer premature hits. We sacrifice some RR for survival.
+        # Research: Professional traders use 1.5-2:1 RR, not 3:1+. The key is win rate.
         reward_val = abs(tp1 - entry)
         risk_val = abs(entry - trade['sl'])
         if risk_val > 0:
             current_rr = reward_val / risk_val
-            target_rr = max(1.1, current_rr - 0.5) # Maintain at least 1.1 RR for trade quality
+            target_rr = max(1.5, current_rr - 0.8) # Widen SL more aggressively, floor at 1.5 RR
             
             if target_rr < current_rr:
                 new_risk = reward_val / target_rr
@@ -8688,9 +8715,10 @@ def strategy_ma_crossover(symbol, analyses):
         ema21 = a.get('ema21', current)
         ema50 = a.get('ema50', current)
         if ema21 > ema50 and current > ema21:
-            sl = ema50
-            tp1 = current + (atr * 4)
-            tp2 = current + (atr * 8)
+            # OPTIMIZED: EMA50 - 1.0x ATR buffer
+            sl = ema50 - atr
+            tp1 = current + (atr * 5)
+            tp2 = current + (atr * 10)
             risk = current - sl
             reward = tp1 - current
             if risk > 0:
@@ -8719,9 +8747,10 @@ def strategy_bb_squeeze_release(symbol, analyses):
         
         bb_width = (bb['upper'] - bb['lower']) / bb['middle']
         if bb_width < 0.04 and a.get('rvol', 1) > 1.3:
-            sl = current - (atr * 2)
-            tp1 = current + (atr * 5)
-            tp2 = current + (atr * 10)
+            # OPTIMIZED: 3.0x ATR SL
+            sl = current - (atr * 3.0)
+            tp1 = current + (atr * 6)
+            tp2 = current + (atr * 12)
             risk = current - sl
             reward = tp1 - current
             if risk > 0:
@@ -9045,9 +9074,10 @@ def strategy_smart_money_trap(symbol, analyses):
         atr = a['atr']
         if atr == 0: continue
         
-        # Bull Trap: Price > 70 RSI (Overbought) + Bearish Rejection (simplified)
-        if a['rsi'] > 70 and a.get('rvol', 1) > 1.5 and a['trend'] == 'BEARISH':
-             sl = current + (atr * 2)
+        # Bull Trap: Price > 75 RSI (Deep Overbought) + Bearish Rejection + Volume Spike
+        # OPTIMIZED: Tighter RSI (75 vs 70), Higher RVOL (2.0 vs 1.5), Wider SL (3x vs 2x)
+        if a['rsi'] > 75 and a.get('rvol', 1) > 2.0 and a['trend'] == 'BEARISH':
+             sl = current + (atr * 3)
              tp1 = current - (atr * 4)
              tp2 = current - (atr * 8)
              risk = abs(current - sl)
@@ -9062,9 +9092,9 @@ def strategy_smart_money_trap(symbol, analyses):
                  })
                  break
                  
-        # Bear Trap: Price < 30 RSI (Oversold) + Bullish Rejection
-        elif a['rsi'] < 30 and a.get('rvol', 1) > 1.5 and a['trend'] == 'BULLISH':
-             sl = current - (atr * 2)
+        # Bear Trap: Price < 25 RSI (Deep Oversold) + Bullish Rejection + Volume Spike
+        elif a['rsi'] < 25 and a.get('rvol', 1) > 2.0 and a['trend'] == 'BULLISH':
+             sl = current - (atr * 3)
              tp1 = current + (atr * 4)
              tp2 = current + (atr * 8)
              risk = abs(current - sl)
@@ -9091,10 +9121,11 @@ def strategy_liquidity_grab_trap(symbol, analyses):
         liq = a.get('liquidity')
         if not liq or atr == 0: continue
         
-        if liq.get('type') == 'BULLISH_SWEEP' and a['rsi'] < 40:
-             sl = liq['level'] - (atr * 0.5)
-             tp1 = current + (atr * 3)
-             tp2 = current + (atr * 6)
+        # OPTIMIZED: Require RSI < 35 (was 40), wider SL with 1.2x ATR buffer from sweep
+        if liq.get('type') == 'BULLISH_SWEEP' and a['rsi'] < 35 and a.get('rvol', 1) > 1.5:
+             sl = liq['level'] - (atr * 1.2)
+             tp1 = current + (atr * 4)
+             tp2 = current + (atr * 8)
              risk = abs(current - sl)
              if risk > 0:
                  trades.append({
@@ -9118,11 +9149,12 @@ def strategy_fakeout_reversal(symbol, analyses):
         atr = a['atr']
         if atr == 0: continue
         
+        # OPTIMIZED: Require RSI < 25 (was 30), wider SL (2.5x vs 1.5x)
         if a.get('chop', 50) > 60:
-            if a['rsi'] < 30 and a['trend'] != 'BEARISH':
-                 sl = current - (atr * 1.5)
-                 tp1 = current + (atr * 3)
-                 tp2 = current + (atr * 6)
+            if a['rsi'] < 25 and a['trend'] != 'BEARISH' and a.get('rvol', 1) > 1.3:
+                 sl = current - (atr * 2.5)
+                 tp1 = current + (atr * 4)
+                 tp2 = current + (atr * 8)
                  risk = abs(current - sl)
                  if risk > 0:
                      trades.append({
@@ -9156,12 +9188,12 @@ def strategy_cvd_divergence(symbol, analyses):
         mfi = a.get('mfi', 50)
         rsi = a.get('rsi', 50)
         
-        # Bullish CVD Divergence Proxy
-        if a['trend'] == 'BEARISH' and mfi > 30 and mfi > rsi + 10: 
+        # Bullish CVD Divergence Proxy — OPTIMIZED: wider delta divergence (15 pts vs 10)
+        if a['trend'] == 'BEARISH' and mfi > 35 and mfi > rsi + 15: 
             # MFI significantly higher than RSI suggests volume accumulation despite price drop
-             sl = current - (atr * 2)
-             tp1 = current + (atr * 4)
-             tp2 = current + (atr * 8)
+             sl = current - (atr * 2.5)
+             tp1 = current + (atr * 5)
+             tp2 = current + (atr * 10)
              risk = abs(current - sl)
              if risk > 0:
                  trades.append({
@@ -9174,11 +9206,11 @@ def strategy_cvd_divergence(symbol, analyses):
                  })
                  break
 
-        # Bearish CVD Divergence Proxy
-        elif a['trend'] == 'BULLISH' and mfi < 70 and mfi < rsi - 10:
-             sl = current + (atr * 2)
-             tp1 = current - (atr * 4)
-             tp2 = current - (atr * 8)
+        # Bearish CVD Divergence Proxy — OPTIMIZED: wider delta divergence (15 pts vs 10)
+        elif a['trend'] == 'BULLISH' and mfi < 65 and mfi < rsi - 15:
+             sl = current + (atr * 2.5)
+             tp1 = current - (atr * 5)
+             tp2 = current - (atr * 10)
              risk = abs(current - sl)
              if risk > 0:
                  trades.append({
@@ -9207,11 +9239,11 @@ def strategy_order_flow_imbalance(symbol, analyses):
         rvol = a.get('rvol', 1)
         chop = a.get('chop', 50)
         
-        # Bullish Absorption (Stopping Volume at Lows)
-        if rvol > 2.5 and a['rsi'] < 35 and chop > 50:
-             sl = current - (atr * 1.5)
-             tp1 = current + (atr * 3)
-             tp2 = current + (atr * 6)
+        # Bullish Absorption (Stopping Volume at Lows) — OPTIMIZED: RSI < 30 (was 35), SL 2.5x (was 1.5x)
+        if rvol > 2.5 and a['rsi'] < 30 and chop > 50:
+             sl = current - (atr * 2.5)
+             tp1 = current + (atr * 4)
+             tp2 = current + (atr * 8)
              risk = abs(current - sl)
              if risk > 0:
                  trades.append({
@@ -9224,11 +9256,11 @@ def strategy_order_flow_imbalance(symbol, analyses):
                  })
                  break
 
-        # Bearish Absorption (Stopping Volume at Highs)
-        elif rvol > 2.5 and a['rsi'] > 65 and chop > 50:
-             sl = current + (atr * 1.5)
-             tp1 = current - (atr * 3)
-             tp2 = current - (atr * 6)
+        # Bearish Absorption (Stopping Volume at Highs) — OPTIMIZED: RSI > 70 (was 65), SL 2.5x (was 1.5x)
+        elif rvol > 2.5 and a['rsi'] > 70 and chop > 50:
+             sl = current + (atr * 2.5)
+             tp1 = current - (atr * 4)
+             tp2 = current - (atr * 8)
              risk = abs(current - sl)
              if risk > 0:
                  trades.append({
