@@ -186,6 +186,10 @@ Every signal is generated with **high-probability confluence (7+/10 score)** and
 - **ICT Silver Bullet** — Time-weighted kill-zone FVG setups.
 - **Wyckoff Spring/Upthrust** — Catching accumulation extremes.
 - **Smart Money Trap** — Reversing retail stop hunts.
+- **Liquidity Grab Trap** — Extended wicks into liquidity zones.
+- **Fakeout Reversal** — Failed range breakout traps.
+- **CVD Divergence** — Cumulative Volume Delta price disconnects.
+- **Order Flow Imbalance** — High volume absorption wicks.
 - **Liquidity Void Reentry** — Entering after market cleanouts.
 - **Harmonic Pro Scanner** — Bat, Gartley, and Deep Crab patterns.
 - **OTE ICT** — Optimal Trade Entry (0.618-0.79 retracement)

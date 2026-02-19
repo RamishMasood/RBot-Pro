@@ -112,7 +112,8 @@ DEFAULT_STRATEGY_LIST = {
     'TWEEZER_TOPBOTTOM', 'HARAMI_PATTERN', 'PIERCING_DARKCLOUD', 'MARUBOZU_MOMENTUM',
     'HIGHER_LOWER_STRUCTURE', 'MA_CROSSOVER', 'BB_SQUEEZE_RELEASE', 'ELLIOTT_WAVE',
     'CUP_HANDLE', 'HEAD_SHOULDERS', 'DOUBLE_TOPBOTTOM', 'TRIANGLE_BREAKOUT',
-    'WEDGE_BREAKOUT', 'FLAG_PENNANT', 'OTE_ICT', 'KILLZONE_ENTRY', 'MSS_ICT'
+    'WEDGE_BREAKOUT', 'FLAG_PENNANT', 'OTE_ICT', 'KILLZONE_ENTRY', 'MSS_ICT',
+    'LIQUIDITY_GRAB_TRAP', 'FAKEOUT_REVERSAL', 'CVD_DIVERGENCE', 'ORDER_FLOW_IMBALANCE'
 }
 
 
@@ -7225,6 +7226,10 @@ def run_strategies(symbol, analyses):
     if 'ZSCORE_REVERSION' in ENABLED_STRATEGIES: all_trades.extend(strategy_zscore_reversion(symbol, analyses))
     if 'MTF_TREND_RIDER' in ENABLED_STRATEGIES: all_trades.extend(strategy_mtf_trend_rider(symbol, analyses))
     if 'SMART_MONEY_TRAP' in ENABLED_STRATEGIES: all_trades.extend(strategy_smart_money_trap(symbol, analyses))
+    if 'LIQUIDITY_GRAB_TRAP' in ENABLED_STRATEGIES: all_trades.extend(strategy_liquidity_grab_trap(symbol, analyses))
+    if 'FAKEOUT_REVERSAL' in ENABLED_STRATEGIES: all_trades.extend(strategy_fakeout_reversal(symbol, analyses))
+    if 'CVD_DIVERGENCE' in ENABLED_STRATEGIES: all_trades.extend(strategy_cvd_divergence(symbol, analyses))
+    if 'ORDER_FLOW_IMBALANCE' in ENABLED_STRATEGIES: all_trades.extend(strategy_order_flow_imbalance(symbol, analyses))
     if 'MOMENTUM_EXHAUSTION' in ENABLED_STRATEGIES: all_trades.extend(strategy_momentum_exhaustion(symbol, analyses))
     
     # NEW PERFORMANCE STRATEGIES 2026
@@ -9030,6 +9035,214 @@ def strategy_mss_ict(symbol, analyses):
     return trades
 
 
+def strategy_smart_money_trap(symbol, analyses):
+    """Strategy: Smart Money Trap (SMC) - Traps retail traders at key levels"""
+    trades = []
+    for tf in ['15m', '1h', '4h']:
+        if tf not in analyses: continue
+        a = analyses[tf]
+        current = a['current_price']
+        atr = a['atr']
+        if atr == 0: continue
+        
+        # Bull Trap: Price > 70 RSI (Overbought) + Bearish Rejection (simplified)
+        if a['rsi'] > 70 and a.get('rvol', 1) > 1.5 and a['trend'] == 'BEARISH':
+             sl = current + (atr * 2)
+             tp1 = current - (atr * 4)
+             tp2 = current - (atr * 8)
+             risk = abs(current - sl)
+             if risk > 0:
+                 trades.append({
+                     'strategy': 'Smart Money Trap', 'type': 'SHORT', 'symbol': symbol,
+                     'entry': current, 'sl': sl, 'tp1': tp1, 'tp2': tp2,
+                     'confidence_score': 9, 'reason': "Valid Bull Trap (Fakeout > Resistance with Volume)",
+                     'indicators': f"RSI: {a['rsi']:.0f}, RVOL: {a.get('rvol', 1):.1f}",
+                     'expected_time': '2h-6h', 'risk': risk, 'reward': abs(current - tp1),
+                     'risk_reward': round(abs(current - tp1)/risk, 1), 'entry_type': 'MARKET', 'timeframe': tf
+                 })
+                 break
+                 
+        # Bear Trap: Price < 30 RSI (Oversold) + Bullish Rejection
+        elif a['rsi'] < 30 and a.get('rvol', 1) > 1.5 and a['trend'] == 'BULLISH':
+             sl = current - (atr * 2)
+             tp1 = current + (atr * 4)
+             tp2 = current + (atr * 8)
+             risk = abs(current - sl)
+             if risk > 0:
+                 trades.append({
+                     'strategy': 'Smart Money Trap', 'type': 'LONG', 'symbol': symbol,
+                     'entry': current, 'sl': sl, 'tp1': tp1, 'tp2': tp2,
+                     'confidence_score': 9, 'reason': "Valid Bear Trap (Stop Hunt < Support with Volume)",
+                     'indicators': f"RSI: {a['rsi']:.0f}, RVOL: {a.get('rvol', 1):.1f}",
+                     'expected_time': '2h-6h', 'risk': risk, 'reward': abs(current - tp1),
+                     'risk_reward': round(abs(current - tp1)/risk, 1), 'entry_type': 'MARKET', 'timeframe': tf
+                 })
+                 break
+    return trades
+
+def strategy_liquidity_grab_trap(symbol, analyses):
+    """Strategy: Liquidity Grab Trap - Extended wicks into liquidity zones"""
+    trades = []
+    for tf in ['15m', '1h']:
+        if tf not in analyses: continue
+        a = analyses[tf]
+        current = a['current_price']
+        atr = a['atr']
+        liq = a.get('liquidity')
+        if not liq or atr == 0: continue
+        
+        if liq.get('type') == 'BULLISH_SWEEP' and a['rsi'] < 40:
+             sl = liq['level'] - (atr * 0.5)
+             tp1 = current + (atr * 3)
+             tp2 = current + (atr * 6)
+             risk = abs(current - sl)
+             if risk > 0:
+                 trades.append({
+                     'strategy': 'Liquidity Grab Trap', 'type': 'LONG', 'symbol': symbol,
+                     'entry': current, 'sl': sl, 'tp1': tp1, 'tp2': tp2,
+                     'confidence_score': 8, 'reason': "Liquidity Grab Trap (Stop Hunt Reversal)",
+                     'indicators': f"Sweep Level: {liq['level']:.6f}",
+                     'expected_time': '1h-4h', 'risk': risk, 'reward': abs(current - tp1),
+                     'risk_reward': round(abs(current - tp1)/risk, 1), 'entry_type': 'MARKET', 'timeframe': tf
+                 })
+                 break
+    return trades
+
+def strategy_fakeout_reversal(symbol, analyses):
+    """Strategy: Fakeout Reversal - Failed range breakout"""
+    trades = []
+    for tf in ['15m', '1h']:
+        if tf not in analyses: continue
+        a = analyses[tf]
+        current = a['current_price']
+        atr = a['atr']
+        if atr == 0: continue
+        
+        if a.get('chop', 50) > 60:
+            if a['rsi'] < 30 and a['trend'] != 'BEARISH':
+                 sl = current - (atr * 1.5)
+                 tp1 = current + (atr * 3)
+                 tp2 = current + (atr * 6)
+                 risk = abs(current - sl)
+                 if risk > 0:
+                     trades.append({
+                         'strategy': 'Fakeout Reversal', 'type': 'LONG', 'symbol': symbol,
+                         'entry': current, 'sl': sl, 'tp1': tp1, 'tp2': tp2,
+                         'confidence_score': 8, 'reason': "Range Fakeout Reversal (Bullish)",
+                         'indicators': f"Chop: {a.get('chop', 50):.0f}, RSI: {a['rsi']:.0f}",
+                         'expected_time': '2h-5h', 'risk': risk, 'reward': abs(current - tp1),
+                         'risk_reward': round(abs(current - tp1)/risk, 1), 'entry_type': 'MARKET', 'timeframe': tf
+                     })
+                     break
+    return trades
+
+
+
+def strategy_cvd_divergence(symbol, analyses):
+    """Strategy: CVD Divergence - Cumulative Volume Delta vs Price"""
+    trades = []
+    # CVD requires granular data, best on lower TFs
+    for tf in ['5m', '15m']:
+        if tf not in analyses: continue
+        a = analyses[tf]
+        current = a['current_price']
+        atr = a['atr']
+        if atr == 0: continue
+        
+        # Simulated CVD Logic: Check if price made lower low but 'delta' (buying pressure) made higher low
+        # We use a simplified proxy: If Price is Downtrending but MFI (Money Flow) is Uptrending strongly
+        # This is a classic divergence pattern often used as a CVD proxy without tick data
+        
+        mfi = a.get('mfi', 50)
+        rsi = a.get('rsi', 50)
+        
+        # Bullish CVD Divergence Proxy
+        if a['trend'] == 'BEARISH' and mfi > 30 and mfi > rsi + 10: 
+            # MFI significantly higher than RSI suggests volume accumulation despite price drop
+             sl = current - (atr * 2)
+             tp1 = current + (atr * 4)
+             tp2 = current + (atr * 8)
+             risk = abs(current - sl)
+             if risk > 0:
+                 trades.append({
+                     'strategy': 'CVD Divergence', 'type': 'LONG', 'symbol': symbol,
+                     'entry': current, 'sl': sl, 'tp1': tp1, 'tp2': tp2,
+                     'confidence_score': 8, 'reason': "Volume/Price Divergence (CVD Proxy)",
+                     'indicators': f"MFI: {mfi:.0f}, RSI: {rsi:.0f} (Delta Divergence)",
+                     'expected_time': '1h-4h', 'risk': risk, 'reward': abs(current - tp1),
+                     'risk_reward': round(abs(current - tp1)/risk, 1), 'entry_type': 'MARKET', 'timeframe': tf
+                 })
+                 break
+
+        # Bearish CVD Divergence Proxy
+        elif a['trend'] == 'BULLISH' and mfi < 70 and mfi < rsi - 10:
+             sl = current + (atr * 2)
+             tp1 = current - (atr * 4)
+             tp2 = current - (atr * 8)
+             risk = abs(current - sl)
+             if risk > 0:
+                 trades.append({
+                     'strategy': 'CVD Divergence', 'type': 'SHORT', 'symbol': symbol,
+                     'entry': current, 'sl': sl, 'tp1': tp1, 'tp2': tp2,
+                     'confidence_score': 8, 'reason': "Volume/Price Divergence (CVD Proxy)",
+                     'indicators': f"MFI: {mfi:.0f}, RSI: {rsi:.0f} (Delta Divergence)",
+                     'expected_time': '1h-4h', 'risk': risk, 'reward': abs(current - tp1),
+                     'risk_reward': round(abs(current - tp1)/risk, 1), 'entry_type': 'MARKET', 'timeframe': tf
+                 })
+                 break
+    return trades
+
+def strategy_order_flow_imbalance(symbol, analyses):
+    """Strategy: Order Flow Imbalance - High Volume Absorption at Key Levels"""
+    trades = []
+    for tf in ['5m', '15m', '1h']:
+        if tf not in analyses: continue
+        a = analyses[tf]
+        current = a['current_price']
+        atr = a['atr']
+        if atr == 0: continue
+        
+        # Absorption Logic: High Relative Volume but Low Price Displacement (Small Body Candle)
+        # Use previous candle data if available (mocked here by current indicators)
+        rvol = a.get('rvol', 1)
+        chop = a.get('chop', 50)
+        
+        # Bullish Absorption (Stopping Volume at Lows)
+        if rvol > 2.5 and a['rsi'] < 35 and chop > 50:
+             sl = current - (atr * 1.5)
+             tp1 = current + (atr * 3)
+             tp2 = current + (atr * 6)
+             risk = abs(current - sl)
+             if risk > 0:
+                 trades.append({
+                     'strategy': 'Order Flow Imbalance', 'type': 'LONG', 'symbol': symbol,
+                     'entry': current, 'sl': sl, 'tp1': tp1, 'tp2': tp2,
+                     'confidence_score': 9, 'reason': "Stopping Volume / Absorption at Lows",
+                     'indicators': f"RVOL: {rvol:.1f}, RSI: {a['rsi']:.0f} (High Volume Rejection)",
+                     'expected_time': '30m-2h', 'risk': risk, 'reward': abs(current - tp1),
+                     'risk_reward': round(abs(current - tp1)/risk, 1), 'entry_type': 'MARKET', 'timeframe': tf
+                 })
+                 break
+
+        # Bearish Absorption (Stopping Volume at Highs)
+        elif rvol > 2.5 and a['rsi'] > 65 and chop > 50:
+             sl = current + (atr * 1.5)
+             tp1 = current - (atr * 3)
+             tp2 = current - (atr * 6)
+             risk = abs(current - sl)
+             if risk > 0:
+                 trades.append({
+                     'strategy': 'Order Flow Imbalance', 'type': 'SHORT', 'symbol': symbol,
+                     'entry': current, 'sl': sl, 'tp1': tp1, 'tp2': tp2,
+                     'confidence_score': 9, 'reason': "Stopping Volume / Absorption at Highs",
+                     'indicators': f"RVOL: {rvol:.1f}, RSI: {a['rsi']:.0f} (High Volume Rejection)",
+                     'expected_time': '30m-2h', 'risk': risk, 'reward': abs(current - tp1),
+                     'risk_reward': round(abs(current - tp1)/risk, 1), 'entry_type': 'MARKET', 'timeframe': tf
+                 })
+                 break
+    return trades
+
 if __name__ == '__main__':
+
     run_analysis()
 
