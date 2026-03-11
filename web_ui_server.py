@@ -2209,11 +2209,12 @@ def save_trader_settings():
         data = request.json
         print(f"Received trader settings: {data}")
         auto_enabled = data.get('auto_trade_enabled', False)
-        risk_type = data.get('risk_type', 'percent')
-        risk_value = data.get('risk_value', 1.0)
         filters = data.get('filters', ['STRONG', 'ELITE'])
+        margin_per_trade = data.get('margin_per_trade', 0.3)
+        leverage = data.get('leverage', 10)
+        max_sl_percent = data.get('max_sl_percent', 80)
         
-        real_trader.update_settings(auto_enabled, risk_type, risk_value, filters)
+        real_trader.update_settings(auto_enabled, filters, margin_per_trade, leverage, max_sl_percent)
         return jsonify({'status': 'ok'})
     except Exception as e:
         print(f"Error saving trader settings: {e}")
@@ -2225,7 +2226,7 @@ def get_trader_status():
     return jsonify({
         'connected_exchanges': list(real_trader.exchanges.keys()),
         'auto_trade_enabled': real_trader.auto_trade_enabled,
-        'risk_settings': real_trader.risk_settings,
+        'trading_settings': real_trader.trading_settings,
         'filters': real_trader.trade_filter
     })
 

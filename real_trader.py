@@ -11,6 +11,11 @@ class RealTrader:
         self.config = self.load_config()
         self.active = False
         self.risk_settings = self.config.get('risk_settings', {'type': 'percent', 'value': 1.0})
+        self.trading_settings = self.config.get('trading_settings', {
+            'margin_per_trade': 0.3,
+            'leverage': 10,
+            'max_sl_percent': 80
+        })
         self.trade_filter = self.config.get('trade_filter', ['STRONG', 'ELITE'])
         self.auto_trade_enabled = self.config.get('auto_trade_enabled', False)
         
@@ -48,14 +53,18 @@ class RealTrader:
         self.init_exchanges()
         return True
 
-    def update_settings(self, auto_enabled, risk_type, risk_value, filters):
+    def update_settings(self, auto_enabled, filters, margin_per_trade=0.3, leverage=10, max_sl_percent=80):
         self.auto_trade_enabled = auto_enabled
-        self.risk_settings = {'type': risk_type, 'value': float(risk_value)}
         self.trade_filter = filters
+        self.trading_settings = {
+            'margin_per_trade': float(margin_per_trade),
+            'leverage': int(leverage),
+            'max_sl_percent': float(max_sl_percent)
+        }
         
         self.config['auto_trade_enabled'] = auto_enabled
-        self.config['risk_settings'] = self.risk_settings
         self.config['trade_filter'] = filters
+        self.config['trading_settings'] = self.trading_settings
         self.save_config()
 
     def init_exchanges(self):
@@ -161,28 +170,35 @@ class RealTrader:
         if balance <= 0:
              return {"status": "error", "msg": "Insufficient Balance"}
 
-        risk_val = self.risk_settings['value']
-        if self.risk_settings['type'] == 'percent':
-            risk_amt = balance * (risk_val / 100)
-        else:
-            risk_amt = risk_val
+        # Read dynamic trading settings
+        max_margin = self.trading_settings.get('margin_per_trade', 0.3)
+        leverage = self.trading_settings.get('leverage', 10)
+        max_sl_pct = self.trading_settings.get('max_sl_percent', 80)
 
+        # SL Distance Filter: Skip trades where SL > max_sl_percent% of entry price
         price_diff = abs(price - stop_loss)
         if price_diff == 0: return {"status": "error", "msg": "Invalid SL"}
         
-        position_size_in_assets = risk_amt / price_diff
-        
-        print(f"💰 Balance: {balance:.4f} USDT | Risk: {risk_amt:.4f} USDT | Calculated Size: {position_size_in_assets:.4f}")
+        sl_percent = (price_diff / price) * 100
+        if sl_percent > max_sl_pct:
+            print(f"🚫 Trade SKIPPED: SL distance is {sl_percent:.1f}% of entry (max {max_sl_pct}%)")
+            return {"status": "error", "msg": f"SL too wide ({sl_percent:.1f}% > {max_sl_pct}%)"}
 
-        # Minimum Order Size Bump (6.5 USDT for safety)
-        min_notional = 6.5
+        # Fixed Margin Sizing: margin * leverage = notional
         entry_type = trade_signal.get('entry_type', 'MARKET').upper()
         current_price = price if entry_type == 'LIMIT' else float(trade_signal.get('price', 0)) or price
         
-        current_notional = position_size_in_assets * current_price
-        if current_notional < min_notional:
-            print(f"⚠️ Order size bumped to {min_notional} USDT (Current: {current_notional:.2f})")
-            position_size_in_assets = min_notional / current_price
+        max_notional = max_margin * leverage
+        
+        # Exchange minimum order check (Bitget = 5 USDT, we use 5.5 for safety)
+        min_notional = 5.5
+        if max_notional < min_notional:
+            print(f"⚠️ Notional {max_notional:.1f} USDT below minimum {min_notional}. Bumping up.")
+            max_notional = min_notional
+        
+        position_size_in_assets = max_notional / current_price
+        
+        print(f"💰 Balance: {balance:.4f} USDT | Margin: {max_margin} USDT | Lev: {leverage}x | Notional: {max_notional} USDT | Size: {position_size_in_assets:.4f}")
 
         # Precision adjustments
         try:
@@ -196,6 +212,18 @@ class RealTrader:
         except Exception:
             sl_str = f"{stop_loss:.8f}".rstrip('0').rstrip('.')
             tp_str = f"{take_profit:.8f}".rstrip('0').rstrip('.')
+
+        # Set Leverage on Exchange before placing order
+        try:
+            print(f"⚙️ [LEV] Setting {exchange_name} leverage to {leverage}x...")
+            if exchange_name == 'BITGET':
+                # Bitget V2 leverage needs productType
+                exchange.set_leverage(leverage, market_symbol, params={'productType': 'USDT-FUTURES'})
+            else:
+                exchange.set_leverage(leverage, market_symbol)
+            print(f"✅ [LEV] {exchange_name} Leverage adjusted.")
+        except Exception as e:
+            print(f"⚠️ [LEV] Could not set leverage: {e}")
 
         try:
             params = {}

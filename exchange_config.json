@@ -1,10 +1,12 @@
 {
     "auto_trade_enabled": false,
-    "risk_settings": {
-        "type": "percent",
-        "value": 1.0
-    },
     "trade_filter": [
         "ELITE",
         "STRONG"
-    ]
+    ],
+    "trading_settings": {
+        "margin_per_trade": 0.51,
+        "leverage": 5,
+        "max_sl_percent": 80.0
+    }
+}

@@ -750,18 +750,30 @@
                 <!-- Risk Tab -->
                 <div id="tab-risk" class="tab-content">
                     <div class="config-group">
-                        <label>Risk Per Trade</label>
-                        <div style="display:flex; gap:10px;">
-                            <select id="riskType"
-                                style="padding:8px; background:#111; border:1px solid #444; color:#fff;">
-                                <option value="percent">% of Balance</option>
-                                <option value="fixed">Fixed USDT</option>
-                            </select>
-                            <input type="number" id="riskValue" value="1.0" step="0.1"
-                                style="width:100px; padding:8px; background:#111; border:1px solid #444; color:#fff;">
-                        </div>
-                        <p style="font-size:0.8em; color:#888;">Example: 1.0% means risking 1% of total balance per
-                            trade.</p>
+                        <label>💰 Margin Per Trade (USDT)</label>
+                        <input type="number" id="marginPerTrade" value="0.3" step="0.1" min="0.1"
+                            style="width:100%; padding:8px; background:#111; border:1px solid #444; color:#fff;">
+                        <p style="font-size:0.8em; color:#888;">Max USDT used as margin for each trade. E.g. 0.3 USDT</p>
+                    </div>
+                    <div class="config-group">
+                        <label>⚡ Leverage</label>
+                        <select id="leverageSelect"
+                            style="width:100%; padding:8px; background:#111; border:1px solid #444; color:#fff;">
+                            <option value="3">3x</option>
+                            <option value="5">5x</option>
+                            <option value="10" selected>10x</option>
+                            <option value="20">20x</option>
+                            <option value="50">50x</option>
+                            <option value="75">75x</option>
+                            <option value="100">100x</option>
+                        </select>
+                        <p style="font-size:0.8em; color:#888;">Must match your exchange leverage setting.</p>
+                    </div>
+                    <div class="config-group">
+                        <label>🛑 Max SL Distance (%)</label>
+                        <input type="number" id="maxSlPercent" value="80" step="5" min="5" max="100"
+                            style="width:100%; padding:8px; background:#111; border:1px solid #444; color:#fff;">
+                        <p style="font-size:0.8em; color:#888;">Skip trades where SL is more than this % away from entry. Protects from wild signals.</p>
                     </div>
                     <div class="config-group">
                         <label>Auto-Trade Filters (Only trade these)</label>

@@ -1756,8 +1756,9 @@ function saveKeys() {
 
 
 function saveRiskSettings() {
-    const type = document.getElementById('riskType').value;
-    const value = document.getElementById('riskValue').value;
+    const marginPerTrade = document.getElementById('marginPerTrade').value;
+    const leverage = document.getElementById('leverageSelect').value;
+    const maxSlPercent = document.getElementById('maxSlPercent').value;
     const filters = [];
     if (document.getElementById('filterElite').checked) filters.push('ELITE');
     if (document.getElementById('filterStrong').checked) filters.push('STRONG');
@@ -1770,8 +1771,9 @@ function saveRiskSettings() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             auto_trade_enabled: autoEnabled,
-            risk_type: type,
-            risk_value: value,
+            margin_per_trade: parseFloat(marginPerTrade),
+            leverage: parseInt(leverage),
+            max_sl_percent: parseFloat(maxSlPercent),
             filters: filters
         })
     })
@@ -1797,10 +1799,11 @@ function fetchTraderStatus() {
             document.getElementById('connectedList').innerText = data.connected_exchanges.join(', ') || 'None';
             document.getElementById('autoTradeToggle').checked = data.auto_trade_enabled;
 
-            // Update Risk UI
-            if (data.risk_settings) {
-                document.getElementById('riskType').value = data.risk_settings.type;
-                document.getElementById('riskValue').value = data.risk_settings.value;
+            // Update Trading Settings UI
+            if (data.trading_settings) {
+                document.getElementById('marginPerTrade').value = data.trading_settings.margin_per_trade || 0.3;
+                document.getElementById('leverageSelect').value = data.trading_settings.leverage || 10;
+                document.getElementById('maxSlPercent').value = data.trading_settings.max_sl_percent || 80;
             }
 
             // Update Filters
