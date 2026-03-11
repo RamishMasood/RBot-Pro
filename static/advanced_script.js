@@ -1696,6 +1696,7 @@ document.addEventListener('change', (e) => {
 
 function openTraderConfig() {
     document.getElementById('traderModal').style.display = 'flex';
+    togglePasswordField();
     fetchTraderStatus();
 }
 
@@ -1713,15 +1714,29 @@ function switchTab(tabName) {
     document.getElementById(`tab-${tabName}`).classList.add('active');
 }
 
+function togglePasswordField() {
+    const exch = document.getElementById('keyExchangeSelect').value.toUpperCase();
+    const pwdGroup = document.getElementById('passwordGroup');
+    if (pwdGroup) {
+        if (['BITGET', 'KUCOIN', 'OKX'].includes(exch)) {
+            pwdGroup.style.display = 'block';
+        } else {
+            pwdGroup.style.display = 'none';
+        }
+    }
+}
+
 function saveKeys() {
     const exch = document.getElementById('keyExchangeSelect').value;
     const key = document.getElementById('apiKeyInput').value;
     const secret = document.getElementById('secretKeyInput').value;
+    const pwdInput = document.getElementById('passwordInput');
+    const pwd = pwdInput ? pwdInput.value : '';
 
     fetch('/api/trader/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ exchange: exch, apiKey: key, secretKey: secret })
+        body: JSON.stringify({ exchange: exch, apiKey: key, secretKey: secret, password: pwd })
     })
         .then(r => r.json())
         .then(data => {

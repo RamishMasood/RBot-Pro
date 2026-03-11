@@ -711,7 +711,7 @@
                         API keys for the selected exchange.</p>
                     <div class="config-group">
                         <label>Select Exchange</label>
-                        <select id="keyExchangeSelect"
+                        <select id="keyExchangeSelect" onchange="togglePasswordField()"
                             style="width:100%; padding:8px; background:#111; border:1px solid #444; color:#fff;">
                             <option value="MEXC">MEXC</option>
                             <option value="BINANCE">Binance</option>
@@ -731,6 +731,11 @@
                     <div class="config-group">
                         <label>Secret Key</label>
                         <input type="password" id="secretKeyInput" placeholder="Enter Secret Key"
+                            style="width:100%; padding:8px; background:#111; border:1px solid #444; color:#fff;">
+                    </div>
+                    <div class="config-group" id="passwordGroup" style="display:none;">
+                        <label>Password/Passphrase</label>
+                        <input type="password" id="passwordInput" placeholder="Required for Bitget, KuCoin, OKX"
                             style="width:100%; padding:8px; background:#111; border:1px solid #444; color:#fff;">
                     </div>
                     <button class="btn btn-primary" onclick="saveKeys()" style="width:100%;">💾 Save Exchange

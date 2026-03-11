@@ -1,4 +1,3 @@
-
 import ccxt
 import json
 import os
@@ -11,8 +10,8 @@ class RealTrader:
         self.exchanges = {}
         self.config = self.load_config()
         self.active = False
-        self.risk_settings = self.config.get('risk_settings', {'type': 'percent', 'value': 1.0}) # 1% default
-        self.trade_filter = self.config.get('trade_filter', ['STRONG', 'ELITE']) # Default safe
+        self.risk_settings = self.config.get('risk_settings', {'type': 'percent', 'value': 1.0})
+        self.trade_filter = self.config.get('trade_filter', ['STRONG', 'ELITE'])
         self.auto_trade_enabled = self.config.get('auto_trade_enabled', False)
         
         # Initialize exchanges
@@ -31,18 +30,22 @@ class RealTrader:
         with open(self.config_file, 'w') as f:
             json.dump(self.config, f, indent=4)
 
-    def update_exchange_config(self, exchange_name, api_key, secret_key):
+    def update_exchange_config(self, exchange_name, api_key, secret_key, password=None):
         if 'exchanges' not in self.config:
             self.config['exchanges'] = {}
         
-        self.config['exchanges'][exchange_name.upper()] = {
+        config_entry = {
             'apiKey': api_key,
             'secret': secret_key,
             'enableRateLimit': True,
-            'options': {'defaultType': 'future'} # Default to futures for all
+            'options': {'defaultType': 'swap'}
         }
+        if password:
+            config_entry['password'] = password
+            
+        self.config['exchanges'][exchange_name.upper()] = config_entry
         self.save_config()
-        self.init_exchanges() # Re-init to apply changes
+        self.init_exchanges()
         return True
 
     def update_settings(self, auto_enabled, risk_type, risk_value, filters):
@@ -61,15 +64,20 @@ class RealTrader:
 
         for name, conf in self.config['exchanges'].items():
             try:
-                # Map common names to ccxt IDs
                 ccxt_id = name.lower().replace('.', '').replace(' ', '')
                 if ccxt_id == 'gateio': ccxt_id = 'gate'
                 
                 if hasattr(ccxt, ccxt_id):
                     exchange_class = getattr(ccxt, ccxt_id)
+                    
+                    if 'options' not in conf:
+                        conf['options'] = {}
+                    if 'defaultType' not in conf['options']:
+                        conf['options']['defaultType'] = 'swap'
+                    conf['options']['createMarketBuyOrderRequiresPrice'] = False
+                    
                     exchange = exchange_class(conf)
                     
-                    # Verify Futures Support
                     if not exchange.has['createOrder']:
                         print(f"❌ {name} does not support order creation via CCXT")
                         continue
@@ -86,8 +94,6 @@ class RealTrader:
         if not exchange: return None
         try:
             balance = exchange.fetch_balance()
-            # Try to find USDT free balance
-            msg = ""
             if 'USDT' in balance:
                 return balance['USDT']['free']
             if 'total' in balance:
@@ -100,47 +106,49 @@ class RealTrader:
     def execute_trade(self, trade_signal, manual_override=False):
         """
         Execute a trade based on signal.
-        manual_override: If True, bypasses auto-trade toggle and filters.
         """
         if not manual_override:
             if not self.auto_trade_enabled:
                 return {"status": "skipped", "msg": "Auto-Trade Disabled"}
-            
-            # Check Quality Filter
             quality = trade_signal.get('signal_quality', 'STANDARD')
             if quality not in self.trade_filter:
                 return {"status": "skipped", "msg": f"Quality {quality} not in filter"}
 
-        symbol = trade_signal['symbol'].replace('_', '') # CCXT usually prefers BTC/USDT or BTCUSDT
+        symbol = trade_signal['symbol'].replace('_', '')
         exchange_name = trade_signal.get('exchange', 'BINANCE').upper()
         
         exchange = self.exchanges.get(exchange_name)
         if not exchange:
             return {"status": "error", "msg": f"Exchange {exchange_name} not configured"}
 
-        # Normalize Symbol for CCXT (e.g. BTCUSDT -> BTC/USDT:USDT for futures)
-        # This part is tricky and exchange specific. 
-        # For now, we try standard CCXT discovery or common formats.
+        # Normalize Symbol
         market_symbol = symbol
         try:
             exchange.load_markets()
-            # Try to find the market
             found = False
             for m in exchange.markets:
-                if m.replace('/', '') == symbol or exchange.markets[m]['id'] == symbol:
-                    market_symbol = m
-                    found = True
-                    break
+                market = exchange.markets[m]
+                if market.get('swap') or market.get('future'):
+                    if m.replace('/', '').split(':')[0] == symbol or market.get('id') == symbol:
+                        market_symbol = m
+                        found = True
+                        break
             
             if not found:
-                 # Fallback for common futures formats
-                 if exchange_name == 'BINANCE': market_symbol = symbol # Binance supports BTCUSDT
+                for m in exchange.markets:
+                    if m.replace('/', '') == symbol or exchange.markets[m]['id'] == symbol:
+                        market_symbol = m
+                        found = True
+                        break
+            
+            if not found:
+                 if exchange_name == 'BINANCE': market_symbol = symbol 
                  elif exchange_name == 'BYBIT': market_symbol = symbol 
                  elif exchange_name == 'MEXC': market_symbol = symbol
         except:
              pass
 
-        side = trade_signal['type'].lower() # 'long' or 'short' -> 'buy' or 'sell'
+        side = trade_signal['type'].lower()
         if side == 'long': side = 'buy'
         elif side == 'short': side = 'sell'
         
@@ -148,66 +156,102 @@ class RealTrader:
         stop_loss = float(trade_signal['sl'])
         take_profit = float(trade_signal['tp1'])
         
-        # Calculate Quantity
-        risk_val = self.risk_settings['value']
+        # Balance & Risk
         balance = self.get_balance(exchange_name) or 0
-        
         if balance <= 0:
              return {"status": "error", "msg": "Insufficient Balance"}
 
-        amount = 0
+        risk_val = self.risk_settings['value']
         if self.risk_settings['type'] == 'percent':
             risk_amt = balance * (risk_val / 100)
         else:
             risk_amt = risk_val
 
-        # Position Size = Risk Amount / |Entry - SL| * Entry
-        # Basic formula: Risk = Size * (Entry - SL)
-        # Size = Risk / (Entry - SL)
         price_diff = abs(price - stop_loss)
-        if price_diff == 0: return {"status": "error", "msg": "Invalid SL (Equal to Entry)"}
+        if price_diff == 0: return {"status": "error", "msg": "Invalid SL"}
         
         position_size_in_assets = risk_amt / price_diff
         
-        # Verify min limits (basic check)
-        cost = position_size_in_assets * price
-        if cost > balance * 50: # Sanity check for leverage (max 50x assumed implicitly if user risks too much)
-             return {"status": "error", "msg": "Calculated position too large for balance"}
+        print(f"💰 Balance: {balance:.4f} USDT | Risk: {risk_amt:.4f} USDT | Calculated Size: {position_size_in_assets:.4f}")
+
+        # Minimum Order Size Bump (6.5 USDT for safety)
+        min_notional = 6.5
+        entry_type = trade_signal.get('entry_type', 'MARKET').upper()
+        current_price = price if entry_type == 'LIMIT' else float(trade_signal.get('price', 0)) or price
+        
+        current_notional = position_size_in_assets * current_price
+        if current_notional < min_notional:
+            print(f"⚠️ Order size bumped to {min_notional} USDT (Current: {current_notional:.2f})")
+            position_size_in_assets = min_notional / current_price
+
+        # Precision adjustments
+        try:
+            if exchange.markets and market_symbol in exchange.markets:
+                sl_str = exchange.price_to_precision(market_symbol, stop_loss)
+                tp_str = exchange.price_to_precision(market_symbol, take_profit)
+                position_size_in_assets = float(exchange.amount_to_precision(market_symbol, position_size_in_assets))
+            else:
+                sl_str = f"{stop_loss:.8f}".rstrip('0').rstrip('.')
+                tp_str = f"{take_profit:.8f}".rstrip('0').rstrip('.')
+        except Exception:
+            sl_str = f"{stop_loss:.8f}".rstrip('0').rstrip('.')
+            tp_str = f"{take_profit:.8f}".rstrip('0').rstrip('.')
 
         try:
-            # Place Order
-            # Note: For simple integration, we verify if valid connection, 
-            # then place MARKET order for entry with Conditional Orders for SL/TP?
-            # Or simplified: Just enter. Managing SL/TP via API is complex across 8 exchanges.
-            # Best approach for MVP Auto-Trader:
-            # 1. Place Market Entry
-            # 2. Place Stop Market (SL)
-            # 3. Place Take Profit (Limit/Market)
-            
             params = {}
             if exchange_name == 'BINANCE':
                 params = {'positionSide': 'LONG' if side == 'buy' else 'SHORT'}
+            elif exchange_name == 'BITGET':
+                # BITGET V2: Attached SL via preset (reliable, auto-cancels with position)
+                params.update({
+                    'presetStopLossPrice': sl_str,
+                    'presetStopLossType': 'market',
+                })
+            elif exchange_name == 'BYBIT':
+                params['stopLoss'] = sl_str
+                params['takeProfit'] = tp_str
+            elif exchange_name == 'OKX':
+                params['slTriggerPx'] = sl_str
+                params['tpTriggerPx'] = tp_str
+            elif exchange_name == 'MEXC':
+                params['stopLossPrice'] = sl_str
+                params['takeProfitPrice'] = tp_str
 
-            # 1. Entry
-            order = exchange.create_market_order(market_symbol, side, position_size_in_assets, params=params)
+            print(f"🚀 [EXEC] {exchange_name} | {side.upper()} {market_symbol} | Size: {position_size_in_assets}")
             
-            # 2. Stop Loss (Essential)
-            sl_side = 'sell' if side == 'buy' else 'buy'
-            sl_params = params.copy()
-            sl_params['stopPrice'] = stop_loss
-            
-            # Exchange specific SL params
-            if exchange_name == 'BINANCE':
-                sl_params['type'] = 'STOP_MARKET'
-                sl_params['workingType'] = 'MARK_PRICE'
-                exchange.create_order(market_symbol, 'STOP_MARKET', sl_side, position_size_in_assets, None, sl_params)
+            if entry_type == 'LIMIT':
+                order = exchange.create_limit_order(market_symbol, side, position_size_in_assets, price, params=params)
             else:
-                 # Generic OCO or separate stop trigger if supported
-                 # For MVP, we log that SL needs to be handled if not Binance
-                 pass
+                order = exchange.create_market_order(market_symbol, side, position_size_in_assets, params=params)
 
-            return {"status": "success", "msg": f"Order Placed! ID: {order['id']}", "order": order}
+            # Post-execution: Place TP as a conditional trigger order for Bitget
+            if exchange_name == 'BITGET':
+                threading.Thread(
+                    target=self._set_bitget_tp,
+                    args=(exchange, market_symbol, side, tp_str, position_size_in_assets),
+                    daemon=True
+                ).start()
+            
+            return {"status": "success", "msg": f"Order Placed ({entry_type})! ID: {order['id']}", "order": order}
 
         except Exception as e:
             return {"status": "error", "msg": str(e)}
 
+    def _set_bitget_tp(self, exchange, market_symbol, side, tp_price, size):
+        """
+        Place TP as a conditional trigger order on Bitget.
+        SL is already attached via presetStopLossPrice (auto-cancels with position).
+        TP uses a trigger order with reduceOnly to close the position at profit target.
+        """
+        time.sleep(2.0)
+        try:
+            tp_side = 'sell' if side == 'buy' else 'buy'
+            tp_params = {
+                'triggerPrice': tp_price,
+                'triggerType': 'mark_price',
+                'reduceOnly': True,
+            }
+            exchange.create_order(market_symbol, 'market', tp_side, size, None, tp_params)
+            print(f"✅ [TP] BITGET TP Trigger Placed at {tp_price} (reduceOnly)")
+        except Exception as e:
+            print(f"⚠️ [TP] BITGET TP Trigger Failed: {e}")

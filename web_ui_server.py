@@ -2195,10 +2195,11 @@ def save_trader_config():
     exch = data.get('exchange')
     key = data.get('apiKey')
     secret = data.get('secretKey')
+    password = data.get('password')
     if not exch or not key or not secret:
         return jsonify({'status': 'error', 'msg': 'Missing fields'}), 400
     
-    success = real_trader.update_exchange_config(exch, key, secret)
+    success = real_trader.update_exchange_config(exch, key, secret, password)
     return jsonify({'status': 'ok' if success else 'error'})
 
 @app.route('/api/trader/settings', methods=['POST'])
