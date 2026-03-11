@@ -2,22 +2,9 @@
     "auto_trade_enabled": false,
     "risk_settings": {
         "type": "percent",
-        "value": 0.01
+        "value": 1.0
     },
     "trade_filter": [
         "ELITE",
         "STRONG"
-    ],
-    "exchanges": {
-        "BITGET": {
-            "apiKey": "bg_fa5ffb2fc3c03a2e0a3947adede0424a",
-            "secret": "4c5726237f7b1c29d5a3e7b6d5c9ba336599b402c36f62c4cc4ed3fd3719890e",
-            "enableRateLimit": true,
-            "options": {
-                "defaultType": "swap",
-                "createMarketBuyOrderRequiresPrice": false
-            },
-            "password": "34583425Ramish"
-        }
-    }
-}
+    ]
